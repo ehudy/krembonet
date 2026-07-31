@@ -5,6 +5,7 @@ import { config } from './config.js';
 import { closeDatabase } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
+import { ensureGlobalRules } from './alerts/store.js';
 import { loggerOptions } from './lib/logger.js';
 import { startPoller, stopPoller } from './poller/scheduler.js';
 import { adminRoutes } from './routes/admin.js';
@@ -16,6 +17,9 @@ const app = Fastify({ logger: loggerOptions });
 // Migrate and seed before the poller or any request can touch the database.
 runMigrations();
 seedDatabase();
+// Alert thresholds live in alert_rules now, so a fresh database needs the two
+// catch-all rules before the first poll can evaluate anything.
+ensureGlobalRules();
 
 await registerAuth(app);
 await app.register(healthRoutes);

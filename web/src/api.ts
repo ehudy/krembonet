@@ -9,8 +9,8 @@ import type {
   AlertLogRow,
   AlertStateRow,
   MediaType,
-  PrinterListResponse,
-  PrinterStatus,
+  DeviceListResponse,
+  DeviceStatus,
   SessionInfo,
 } from './types.js';
 
@@ -48,16 +48,16 @@ export const api = {
   /** Operator-configured hub name. Unauthenticated — the shell needs it first. */
   getHub: (signal?: AbortSignal) => request<{ title: string }>('/api/hub', { signal }),
 
-  listPrinters: (signal?: AbortSignal) =>
-    request<PrinterListResponse>('/api/printers', { signal }),
+  listDevices: (signal?: AbortSignal) =>
+    request<DeviceListResponse>('/api/devices', { signal }),
 
   /**
    * `refresh: 'jobs'` is the cadence an open dashboard uses: it keeps the queue
    * live without pulling ink and paper every minute, since those sit on the
    * hourly background poll.
    */
-  printerStatus: (slug: string, options?: { refresh?: 'jobs'; signal?: AbortSignal }) =>
-    request<PrinterStatus>(
+  deviceStatus: (slug: string, options?: { refresh?: 'jobs'; signal?: AbortSignal }) =>
+    request<DeviceStatus>(
       `/api/printers/${encodeURIComponent(slug)}/status${
         options?.refresh === 'jobs' ? '?refresh=jobs' : ''
       }`,

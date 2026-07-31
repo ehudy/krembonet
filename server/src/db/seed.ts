@@ -3,7 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { config } from '../config.js';
 import { db } from './client.js';
 import { loadMediaPack } from './media-pack.js';
-import { mediaTypes, printers, settings } from './schema.js';
+import { devices, mediaTypes, settings } from './schema.js';
 
 /**
  * Slug of the device seeded from the environment.
@@ -25,27 +25,29 @@ export function seedDatabase(): void {
 
   db.transaction((tx) => {
     if (plotter !== null) {
-      tx.insert(printers)
+      const connection = JSON.stringify({ ippUri: plotter.ippUri });
+
+      tx.insert(devices)
         .values({
           slug: PLOTTER_SLUG,
           displayName: plotter.name,
+          adapter: 'ipp',
+          host: plotter.host,
+          config: connection,
           // Left null so the first successful poll fills it in from the device
           // rather than asserting a model nobody verified.
           model: null,
-          host: plotter.host,
-          ippUri: plotter.ippUri,
-          protocol: 'ipp',
           enabled: true,
           pollIntervalSeconds: config.initialBackgroundPollMinutes * 60,
         })
         .onConflictDoUpdate({
-          target: printers.slug,
-          // Connection details come from the environment, so a changed IP in
-          // .env takes effect on restart rather than needing a manual edit.
+          target: devices.slug,
+          // Connection details come from the environment, so a changed address
+          // in .env takes effect on restart rather than needing a manual edit.
           set: {
             displayName: plotter.name,
             host: plotter.host,
-            ippUri: plotter.ippUri,
+            config: connection,
             updatedAt: new Date(),
           },
         })

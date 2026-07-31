@@ -3,14 +3,27 @@
  *
  * Alerts are edge-triggered: mail goes out when a supply *crosses* its
  * threshold, not on every poll where it happens to be past it. Without that, a
- * cartridge sitting at 10% would mail IT once an hour forever.
+ * cartridge sitting at 10% would mail once an hour forever.
  *
  * Clearing requires recovering past the threshold by a hysteresis margin, so a
  * level flickering across the boundary cannot produce a stream of
  * breach/clear/breach mail.
  */
-import type { Supply } from '../devices/types.js';
-import { DEFAULT_HUB_TITLE, type AppSettings } from '../settings/types.js';
+import { describeLevel, levelToPercent, type Supply, type SupplyKind } from '../devices/types.js';
+import { DEFAULT_HUB_TITLE } from '../settings/types.js';
+
+/** A row of `alert_rules`, narrowed to the fields the logic uses. */
+export interface AlertRule {
+  /** Null is the global default; a device id overrides it for that device. */
+  deviceId: number | null;
+  scope: SupplyKind;
+  /** Null applies to every supply of that scope. */
+  supplyName: string | null;
+  comparison: 'below' | 'above';
+  thresholdPercent: number;
+  hysteresisPercent: number;
+  enabled: boolean;
+}
 
 export interface SupplyCondition {
   ruleKey: string;
@@ -23,45 +36,105 @@ export interface SupplyCondition {
   description: string;
 }
 
-export function ruleKeyFor(printerSlug: string, supply: Supply): string {
-  const kind = supply.kind === 'waste' ? 'full' : 'low';
-  return `printer:${printerSlug}:supply:${supply.name}:${kind}`;
+export function ruleKeyFor(deviceSlug: string, supply: Supply): string {
+  const direction = supply.kind === 'receptacle' ? 'full' : 'low';
+  return `device:${deviceSlug}:supply:${supply.name}:${direction}`;
 }
 
 /**
- * Decides where a single supply sits relative to its threshold.
+ * Picks the rule that governs a supply, most specific first.
  *
- * The two kinds move in opposite directions: ink counts down toward empty, a
- * waste receptacle counts up toward full. Treating them the same would leave
- * the maintenance tank silent as it filled and shouting when it was fresh.
+ * Specificity runs device+supply, then device, then global+supply, then global.
+ * Returns undefined when nothing matches, which means "no opinion" rather than
+ * "never alert" — the caller skips the supply.
+ */
+export function selectRule(
+  rules: readonly AlertRule[],
+  deviceId: number,
+  supply: Supply,
+): AlertRule | undefined {
+  const candidates = rules.filter(
+    (rule) =>
+      rule.enabled &&
+      rule.scope === supply.kind &&
+      (rule.deviceId === null || rule.deviceId === deviceId) &&
+      (rule.supplyName === null || rule.supplyName === supply.name),
+  );
+
+  const score = (rule: AlertRule): number =>
+    (rule.deviceId === null ? 0 : 2) + (rule.supplyName === null ? 0 : 1);
+
+  return candidates.sort((a, b) => score(b) - score(a))[0];
+}
+
+/**
+ * Decides where a single supply sits relative to its rule.
+ *
+ * Returns null when the reading cannot be compared — an unknown level, or a
+ * supply no rule covers. That is a real outcome and not an error: a device that
+ * declines to report a level must not be treated as reporting zero, which would
+ * fire a low-supply alert on every poll for a full cartridge.
  */
 export function evaluateSupply(
-  printerSlug: string,
+  deviceSlug: string,
   supply: Supply,
-  settings: AppSettings,
-): SupplyCondition {
-  const ruleKey = ruleKeyFor(printerSlug, supply);
-  const hysteresis = Math.max(0, settings.hysteresisPercent);
+  rule: AlertRule | undefined,
+): SupplyCondition | null {
+  if (rule === undefined) return null;
 
-  if (supply.kind === 'waste') {
-    const threshold = settings.wasteThresholdPercent;
+  const ruleKey = ruleKeyFor(deviceSlug, supply);
+  const hysteresis = Math.max(0, rule.hysteresisPercent);
+
+  // A device that only reports "ok" or "needs attention" still tells us
+  // everything an edge-triggered alert needs, just without a number.
+  if (supply.level.kind === 'binary') {
+    const breached = supply.level.state === 'attention';
     return {
       ruleKey,
       supply,
-      breached: supply.percent >= threshold,
-      recovered: supply.percent <= threshold - hysteresis,
-      description: `${supply.label} is ${supply.percent}% full (alerts at ${threshold}%)`,
+      breached,
+      recovered: !breached,
+      description: `${supply.label} reports ${describeLevel(supply.level)}`,
     };
   }
 
-  const threshold = settings.inkThresholdPercent;
+  const percent = levelToPercent(supply.level);
+  if (percent === null) return null;
+
+  if (rule.comparison === 'above') {
+    return {
+      ruleKey,
+      supply,
+      breached: percent >= rule.thresholdPercent,
+      recovered: percent <= rule.thresholdPercent - hysteresis,
+      description: `${supply.label} is ${percent}% full (alerts at ${rule.thresholdPercent}%)`,
+    };
+  }
+
   return {
     ruleKey,
     supply,
-    breached: supply.percent <= threshold,
-    recovered: supply.percent >= threshold + hysteresis,
-    description: `${supply.label} is at ${supply.percent}% (alerts at ${threshold}%)`,
+    breached: percent <= rule.thresholdPercent,
+    recovered: percent >= rule.thresholdPercent + hysteresis,
+    description: `${supply.label} is at ${percent}% (alerts at ${rule.thresholdPercent}%)`,
   };
+}
+
+/** Evaluates a whole device's supplies, dropping the ones nothing can say anything about. */
+export function evaluateSupplies(
+  deviceSlug: string,
+  deviceId: number,
+  supplies: readonly Supply[],
+  rules: readonly AlertRule[],
+): SupplyCondition[] {
+  const conditions: SupplyCondition[] = [];
+
+  for (const supply of supplies) {
+    const condition = evaluateSupply(deviceSlug, supply, selectRule(rules, deviceId, supply));
+    if (condition !== null) conditions.push(condition);
+  }
+
+  return conditions;
 }
 
 export interface AlertTransitions {
@@ -97,7 +170,7 @@ export function decideTransitions(
 
 /** Builds the notification body for everything that crossed this cycle. */
 export function buildAlertMail(
-  printer: { displayName: string; host: string },
+  device: { displayName: string; host: string },
   conditions: SupplyCondition[],
   hubTitle: string = DEFAULT_HUB_TITLE,
 ): { subject: string; text: string } {
@@ -108,7 +181,7 @@ export function buildAlertMail(
       : `[${hubTitle}] ${conditions.length} supplies need attention`;
 
   const text = [
-    `${printer.displayName} (${printer.host}) has supplies past their alert threshold:`,
+    `${device.displayName} (${device.host}) has supplies past their alert threshold:`,
     '',
     ...conditions.map((condition) => `  - ${condition.description}`),
     '',

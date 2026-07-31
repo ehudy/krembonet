@@ -3,9 +3,9 @@
  *
  * Runs in the same long-lived process as the HTTP server, which is the whole
  * reason this project uses Fastify rather than a request-driven framework:
- * low-ink alerts have to fire at 3am with no browser open anywhere.
+ * supply alerts have to fire at 3am with no browser open anywhere.
  *
- * This loop only reads supplies and paper. The print queue is refreshed on
+ * This loop only reads supplies and media. The print queue is refreshed on
  * demand by the status route, because nobody needs a queue snapshot taken at
  * 4am and it would be an hour stale by the time anyone looked.
  */
@@ -15,28 +15,28 @@ import { schedule, type ScheduledTask } from 'node-cron';
 import { evaluateAlerts } from '../alerts/engine.js';
 import { IppError } from '../devices/ipp/ipptool.js';
 import { getSettings } from '../settings/settings.js';
-import { hydrateCacheFromDb, listEnabledPrinters, pollSupplies } from './pollPrinter.js';
+import { hydrateCacheFromDb, listEnabledDevices, pollSupplies } from './pollDevice.js';
 
 let task: ScheduledTask | undefined;
 let currentExpression: string | undefined;
 
 async function runBackgroundPoll(log: FastifyBaseLogger): Promise<void> {
-  for (const printer of listEnabledPrinters()) {
+  for (const device of listEnabledDevices()) {
     const started = Date.now();
     try {
-      const view = await pollSupplies(printer);
+      const view = await pollSupplies(device);
       log.info(
-        { printer: printer.slug, ms: Date.now() - started, state: view.state },
+        { device: device.slug, ms: Date.now() - started, state: view.state },
         'background poll ok',
       );
 
-      await evaluateAlerts(printer, view, log);
+      await evaluateAlerts(device, view, log);
     } catch (error) {
       const code = error instanceof IppError ? error.code : 'UNKNOWN';
-      // Warn, not error: a plotter switched off overnight is expected, and
+      // Warn, not error: a device switched off overnight is expected, and
       // paging on it would train everyone to ignore the logs.
       log.warn(
-        { printer: printer.slug, code, ms: Date.now() - started },
+        { device: device.slug, code, ms: Date.now() - started },
         `background poll failed: ${(error as Error).message}`,
       );
     }

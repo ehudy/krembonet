@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 import { api } from '../api.js';
 import { Link, matchPath, useRouter } from '../router.js';
+import type { DeviceSummary } from '../types.js';
 
 const DEFAULT_HUB_TITLE = 'KremboNet';
 
@@ -19,16 +20,29 @@ interface NavItem {
   match?: string[];
 }
 
-const NAV: NavItem[] = [
-  { to: '/', label: 'Overview', icon: '🏠' },
-  {
-    to: '/printers/plotter',
-    label: 'Plotter',
-    icon: '🖨️',
-    match: ['/printers/:slug'],
-  },
-  { to: '/admin', label: 'Admin', icon: '⚙️', match: ['/admin/:page'] },
-];
+const OVERVIEW: NavItem = { to: '/', label: 'Overview', icon: '🏠' };
+const ADMIN: NavItem = { to: '/admin', label: 'Admin', icon: '⚙️', match: ['/admin/:page'] };
+
+/**
+ * Builds the sidebar from the devices the hub actually has.
+ *
+ * This used to be a hardcoded link to one device's slug, which is the single
+ * assumption that made the app a one-printer tool.
+ */
+function navFor(devices: DeviceSummary[]): NavItem[] {
+  return [
+    OVERVIEW,
+    ...devices.map((device) => ({
+      to: `/devices/${device.slug}`,
+      label: device.displayName,
+      icon: '🖨️',
+      // Bookmarks and older links still point at /printers/:slug, so the item
+      // has to light up for both.
+      match: [`/printers/${device.slug}`],
+    })),
+    ADMIN,
+  ];
+}
 
 function isActive(item: NavItem, path: string): boolean {
   if (item.to === '/') return path === '/';
@@ -48,6 +62,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { path } = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [title, setTitle] = useState(DEFAULT_HUB_TITLE);
+  const [devices, setDevices] = useState<DeviceSummary[]>([]);
 
   // Close the drawer whenever navigation happens, otherwise it stays over the
   // page you just navigated to on mobile.
@@ -72,6 +87,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     document.title = title;
   }, [title]);
 
+  // Reloaded on navigation so a device added in the admin portal appears in the
+  // sidebar without a full page refresh.
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .listDevices(controller.signal)
+      .then((response) => setDevices(response.devices))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [path]);
+
+  const nav = navFor(devices);
+
   return (
     <div className={`shell${isOpen ? ' is-drawer-open' : ''}`}>
       <aside className="sidebar">
@@ -86,7 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="nav" aria-label="Main">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <Link
               key={item.to}
               to={item.to}

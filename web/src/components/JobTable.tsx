@@ -1,4 +1,4 @@
-import type { Job, JobState, PrinterState } from '../types.js';
+import type { DeviceState, Job, JobState } from '../types.js';
 
 /** Colours follow the prototype's palette so the page stays familiar. */
 const STATE_STYLES: Record<JobState, { label: string; color: string }> = {
@@ -14,17 +14,17 @@ const STATE_STYLES: Record<JobState, { label: string; color: string }> = {
 
 /**
  * An empty queue means different things depending on printer state — claiming
- * "the plotter is idle" while the badge reads "Printing" is a contradiction the
+ * "the device is idle" while the badge reads "Printing" is a contradiction the
  * viewer has to resolve themselves.
  */
-function emptyMessage(printerState: PrinterState): string {
-  switch (printerState) {
+function emptyMessage(deviceState: DeviceState): string {
+  switch (deviceState) {
     case 'processing':
-      return 'No jobs in the queue, but the plotter reports it is printing — it is most likely finishing the last one.';
+      return 'No jobs in the queue, but the device reports it is printing — it is most likely finishing the last one.';
     case 'stopped':
-      return 'No jobs in the queue. The plotter is stopped and needs attention.';
+      return 'No jobs in the queue. The device is stopped and needs attention.';
     case 'idle':
-      return 'No active print jobs. The plotter is idle.';
+      return 'No active print jobs. The device is idle.';
     default:
       return 'No active print jobs.';
   }
@@ -32,13 +32,13 @@ function emptyMessage(printerState: PrinterState): string {
 
 export function JobTable({
   jobs,
-  printerState,
+  deviceState,
 }: {
   jobs: Job[];
-  printerState: PrinterState;
+  deviceState: DeviceState;
 }) {
   if (jobs.length === 0) {
-    return <div className="empty-queue">{emptyMessage(printerState)}</div>;
+    return <div className="empty-queue">{emptyMessage(deviceState)}</div>;
   }
 
   return (

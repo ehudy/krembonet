@@ -1,6 +1,6 @@
 import { AppShell } from './components/AppShell.js';
 import { Overview } from './pages/Overview.js';
-import { PrinterDetail } from './pages/PrinterDetail.js';
+import { DeviceDetail } from './pages/DeviceDetail.js';
 import { AdminPortal } from './pages/admin/AdminPortal.js';
 import { Link, matchPath, useRouter } from './router.js';
 
@@ -23,11 +23,14 @@ function Routes() {
 
   if (matchPath('/', path) !== null) return <Overview />;
 
-  const printer = matchPath('/printers/:slug', path);
-  if (printer !== null && printer['slug'] !== undefined) {
-    // Keyed so switching printers remounts rather than carrying the previous
+  // `/printers/:slug` is kept alongside `/devices/:slug` so existing bookmarks
+  // and the links in already-sent alert mail keep resolving.
+  const device =
+    matchPath('/devices/:slug', path) ?? matchPath('/printers/:slug', path);
+  if (device !== null && device['slug'] !== undefined) {
+    // Keyed so switching devices remounts rather than carrying the previous
     // device's data and refresh timer across.
-    return <PrinterDetail key={printer['slug']} slug={printer['slug']} />;
+    return <DeviceDetail key={device['slug']} slug={device['slug']} />;
   }
 
   if (path === '/admin' || path.startsWith('/admin/')) return <AdminPortal />;

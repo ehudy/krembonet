@@ -1,9 +1,12 @@
 /**
- * Printer detail: ink, paper, and the live print queue.
+ * Device detail: supplies, media, and the live print queue.
  *
- * Ink and paper come from the server's hourly background reading; the queue is
+ * Supplies and media come from the server's background reading; the queue is
  * refreshed every 60s while this tab is open. The header shows both ages so it
  * is never ambiguous which number is live and which is up to an hour old.
+ *
+ * Panels render only for capabilities the device actually has, so a device that
+ * cannot report a queue shows no queue rather than an empty one.
  */
 import { InkPanel } from '../components/InkPanel.js';
 import { JobTable } from '../components/JobTable.js';
@@ -12,16 +15,16 @@ import { PageHeader } from '../components/PageHeader.js';
 import { SyncPausedScreen } from '../components/SyncPausedScreen.js';
 import { useLiveSync } from '../hooks/useLiveSync.js';
 import { formatDuration, formatTime, relativeTime } from '../lib/format.js';
-import type { PrinterState } from '../types.js';
+import type { DeviceState } from '../types.js';
 
-const PRINTER_STATE_LABELS: Record<PrinterState, string> = {
+const DEVICE_STATE_LABELS: Record<DeviceState, string> = {
   idle: 'Ready',
   processing: 'Printing',
   stopped: 'Stopped',
   unknown: 'Unknown',
 };
 
-export function PrinterDetail({ slug }: { slug: string }) {
+export function DeviceDetail({ slug }: { slug: string }) {
   const {
     data,
     error,
@@ -37,8 +40,8 @@ export function PrinterDetail({ slug }: { slug: string }) {
   if (isLoading && data === null) {
     return (
       <>
-        <PageHeader title="Plotter" />
-        <p className="muted">Loading plotter status…</p>
+        <PageHeader title="Device" />
+        <p className="muted">Loading device status…</p>
       </>
     );
   }
@@ -46,7 +49,7 @@ export function PrinterDetail({ slug }: { slug: string }) {
   if (data === null) {
     return (
       <>
-        <PageHeader title="Plotter" />
+        <PageHeader title="Device" />
         <div className="banner is-error">
           Could not reach the hub server{error !== null && `: ${error}`}
         </div>
@@ -64,16 +67,16 @@ export function PrinterDetail({ slug }: { slug: string }) {
         subtitle={`${data.model ?? 'Unknown model'} · ${data.host}`}
         actions={
           <span className={`pill ${data.isOnline ? 'is-good' : 'is-bad'}`}>
-            {data.isOnline ? PRINTER_STATE_LABELS[data.state] : 'Unreachable'}
+            {data.isOnline ? DEVICE_STATE_LABELS[data.state] : 'Unreachable'}
           </span>
         }
       />
 
-      {/* An unreachable printer does not blank the page — the last good
+      {/* An unreachable device does not blank the page — the last good
           reading stays visible, clearly marked as stale. */}
       {!data.isOnline && (
         <div className="banner is-warning">
-          <strong>Showing last known data.</strong> The plotter has not responded
+          <strong>Showing last known data.</strong> The device has not responded
           for {data.consecutiveFailures}{' '}
           {data.consecutiveFailures === 1 ? 'attempt' : 'attempts'}. Last
           successful reading: {formatTime(data.lastSuccessAt)}.
@@ -83,7 +86,7 @@ export function PrinterDetail({ slug }: { slug: string }) {
 
       {data.isOnline && data.stateReasons.length > 0 && (
         <div className="banner is-warning">
-          Printer reports: {data.stateReasons.join(', ')}
+          Device reports: {data.stateReasons.join(', ')}
         </div>
       )}
 
@@ -99,8 +102,8 @@ export function PrinterDetail({ slug }: { slug: string }) {
             <strong>Queue updated:</strong> {formatTime(lastFetchedAt?.toISOString())}
             <br />
             <small>
-              Queue refreshes every 60s · pausing in {formatDuration(remainingMs)} · ink
-              and paper read {relativeTime(data.suppliesUpdatedAt)}
+              Queue refreshes every 60s · pausing in {formatDuration(remainingMs)} ·
+              supplies read {relativeTime(data.suppliesUpdatedAt)}
             </small>
           </div>
           <button
@@ -115,17 +118,18 @@ export function PrinterDetail({ slug }: { slug: string }) {
       )}
 
       <div className="panel-grid">
-        <InkPanel supplies={data.supplies} />
-        <PaperPanel rolls={data.rolls} />
+        {data.capabilities.includes('supplies') && <InkPanel supplies={data.supplies} />}
+        {data.capabilities.includes('media') && <PaperPanel media={data.media} />}
       </div>
 
-      <h2 className="section-title">Print Queue</h2>
-      {/* While unreachable the cached state is stale — don't let the queue
-          assert what the plotter "is doing" right now. */}
-      <JobTable
-        jobs={data.jobs}
-        printerState={data.isOnline ? data.state : 'unknown'}
-      />
+      {data.capabilities.includes('jobs') && (
+        <>
+          <h2 className="section-title">Print Queue</h2>
+          {/* While unreachable the cached state is stale — don't let the queue
+              assert what the device "is doing" right now. */}
+          <JobTable jobs={data.jobs} deviceState={data.isOnline ? data.state : 'unknown'} />
+        </>
+      )}
     </>
   );
 }

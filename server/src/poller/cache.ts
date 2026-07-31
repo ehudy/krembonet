@@ -1,30 +1,43 @@
 /**
- * In-memory store of the most recent readings per printer.
+ * In-memory store of the most recent reading per device.
  *
  * Supplies and jobs are tracked with separate timestamps because they are
- * refreshed on very different cadences: ink and paper move slowly and are
- * polled hourly in the background, while the print queue is only interesting
- * live and is refreshed on demand. Every HTTP request reads from here, so
- * printer load stays flat no matter how many dashboards are open.
+ * refreshed on very different cadences: supplies and media move slowly and are
+ * polled in the background, while the queue is only interesting live and is
+ * refreshed on demand. Every HTTP request reads from here, so device load stays
+ * flat no matter how many dashboards are open.
  */
-import type { MediaRoll, PrintJob, PrinterState, Supply } from '../devices/types.js';
+import type {
+  DeviceState,
+  MediaSource,
+  PrintJob,
+  Supply,
+} from '../devices/types.js';
 
-/** A roll with its vendor media code resolved for display. */
-export interface ResolvedRoll extends MediaRoll {
+/** A media source with its vendor media code resolved for display. */
+export interface ResolvedMediaSource extends MediaSource {
   /** Friendly name, or null when the code is not in the lookup table. */
   mediaTypeName: string | null;
 }
 
-export interface PrinterView {
+export interface DeviceView {
   slug: string;
   displayName: string;
+  location: string | null;
   model: string | null;
   host: string;
-  state: PrinterState;
+  adapter: string;
+  state: DeviceState;
   stateReasons: string[];
   supplies: Supply[];
-  rolls: ResolvedRoll[];
+  media: ResolvedMediaSource[];
   jobs: PrintJob[];
+
+  /**
+   * What this device is known to report. Drives conditional rendering, so a
+   * device with no queue shows no queue panel rather than an empty one.
+   */
+  capabilities: string[];
 
   /** False when the last attempt failed; the payload is then the last good data. */
   isOnline: boolean;
@@ -32,23 +45,23 @@ export interface PrinterView {
   lastError: string | null;
   consecutiveFailures: number;
 
-  /** When ink and paper were last read from the device. */
+  /** When supplies and media were last read from the device. */
   suppliesUpdatedAt: string | null;
   /** When the queue was last read from the device. */
   jobsUpdatedAt: string | null;
 }
 
-const cache = new Map<string, PrinterView>();
+const cache = new Map<string, DeviceView>();
 
-export function setPrinterView(view: PrinterView): void {
+export function setDeviceView(view: DeviceView): void {
   cache.set(view.slug, view);
 }
 
 /** Merges a partial update, leaving other fields as they were. */
-export function patchPrinterView(
+export function patchDeviceView(
   slug: string,
-  patch: Partial<PrinterView>,
-): PrinterView | undefined {
+  patch: Partial<DeviceView>,
+): DeviceView | undefined {
   const existing = cache.get(slug);
   if (existing === undefined) return undefined;
 
@@ -57,11 +70,11 @@ export function patchPrinterView(
   return merged;
 }
 
-export function getPrinterView(slug: string): PrinterView | undefined {
+export function getDeviceView(slug: string): DeviceView | undefined {
   return cache.get(slug);
 }
 
-export function listPrinterViews(): PrinterView[] {
+export function listDeviceViews(): DeviceView[] {
   return [...cache.values()];
 }
 

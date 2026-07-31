@@ -25,13 +25,22 @@ export interface MediaPackEntry {
   vendor?: string;
 }
 
-function fail(message: string): never {
-  throw new Error(`Media pack at ${config.mediaPackPath}: ${message}`);
-}
+/**
+ * Returns an empty list when `MEDIA_PACK_PATH` is unset.
+ *
+ * The path is a parameter so this can be tested against fixtures without
+ * reaching through the environment; production always uses the default.
+ */
+export function loadMediaPack(
+  path: string | null = config.mediaPackPath,
+): MediaPackEntry[] {
+  // Explicitly typed rather than inferred: TypeScript only treats a call as
+  // terminating — and so only narrows the code after it — when the annotation
+  // says `never`.
+  const fail: (message: string) => never = (message) => {
+    throw new Error(`Media pack at ${path}: ${message}`);
+  };
 
-/** Returns an empty list when `MEDIA_PACK_PATH` is unset. */
-export function loadMediaPack(): MediaPackEntry[] {
-  const path = config.mediaPackPath;
   if (path === null) return [];
 
   let raw: string;

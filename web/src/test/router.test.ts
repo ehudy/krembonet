@@ -14,14 +14,23 @@ describe('matchPath', () => {
   });
 
   it('extracts a param segment', () => {
-    assert.deepEqual(matchPath('/printers/:slug', '/printers/plotter'), {
+    assert.deepEqual(matchPath('/devices/:slug', '/devices/plotter'), {
       slug: 'plotter',
     });
   });
 
+  it('still matches the legacy device path', () => {
+    // Alert mail already sent, and any bookmark made before M1, points at
+    // /printers/:slug. Both patterns have to resolve.
+    assert.deepEqual(matchPath('/printers/:slug', '/printers/plotter'), {
+      slug: 'plotter',
+    });
+    assert.equal(matchPath('/devices/:slug', '/printers/plotter'), null);
+  });
+
   it('rejects a different length', () => {
-    assert.equal(matchPath('/printers/:slug', '/printers'), null);
-    assert.equal(matchPath('/printers/:slug', '/printers/a/b'), null);
+    assert.equal(matchPath('/devices/:slug', '/devices'), null);
+    assert.equal(matchPath('/devices/:slug', '/devices/a/b'), null);
   });
 
   it('rejects a different static segment', () => {

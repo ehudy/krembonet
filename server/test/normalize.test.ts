@@ -16,9 +16,12 @@ import { describe, it } from 'node:test';
 import { parseIpptoolOutput } from '../src/devices/ipp/ipptool.js';
 import {
   normalizeJobs,
+  normalizeMedia,
   normalizePrinterAttributes,
-  sortRollsBySlot,
+  readMarkerLevel,
+  sortMediaBySlot,
 } from '../src/devices/ipp/normalize.js';
+import { levelToPercent } from '../src/devices/types.js';
 import { asArray, asDict, parsePlist } from '../src/devices/ipp/plist.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
@@ -81,29 +84,43 @@ describe('printer attributes', () => {
     );
   });
 
-  it('classifies the maintenance cartridge as waste, not ink', () => {
-    const inks = snapshot.supplies.filter((s) => s.kind === 'ink');
-    const waste = snapshot.supplies.filter((s) => s.kind === 'waste');
+  it('classifies the maintenance cartridge as a receptacle, not a consumable', () => {
+    const consumables = snapshot.supplies.filter((s) => s.kind === 'consumable');
+    const receptacles = snapshot.supplies.filter((s) => s.kind === 'receptacle');
 
-    assert.equal(inks.length, 5);
-    assert.equal(waste.length, 1);
-    assert.equal(waste[0]?.name, 'MC');
-    assert.equal(waste[0]?.label, 'Maintenance Cartridge');
+    assert.equal(consumables.length, 5);
+    assert.equal(receptacles.length, 1);
+    assert.equal(receptacles[0]?.name, 'MC');
+    assert.equal(receptacles[0]?.label, 'Maintenance Cartridge');
+    // Derived from the marker-type keyword, not a substring search for "waste".
+    assert.equal(receptacles[0]?.type, 'waste-ink');
+    assert.equal(consumables[0]?.type, 'ink');
   });
 
   it('reads levels, including matte black running low', () => {
-    const byName = new Map(snapshot.supplies.map((s) => [s.name, s.percent]));
+    const byName = new Map(
+      snapshot.supplies.map((s) => [s.name, levelToPercent(s.level)]),
+    );
 
     assert.equal(byName.get('MBK'), 10);
     assert.equal(byName.get('BK'), 100);
     assert.equal(byName.get('Y'), 80);
     assert.equal(byName.get('M'), 80);
     assert.equal(byName.get('C'), 80);
-    // For a waste receptacle this is percent *filled*.
+    // For a receptacle this is percent *filled*.
     assert.equal(byName.get('MC'), 20);
   });
 
-  it('uses printer-supplied colours but separates the two blacks', () => {
+  it('records levels as trustworthy percentages, not raw values', () => {
+    // This device omits marker-high-levels, which means the conventional 0-100
+    // scale — so every reading should be a `percent`, never an `absolute`.
+    assert.deepEqual(
+      [...new Set(snapshot.supplies.map((s) => s.level.kind))],
+      ['percent'],
+    );
+  });
+
+  it('uses device-supplied colours but separates the two blacks', () => {
     const byName = new Map(snapshot.supplies.map((s) => [s.name, s.colorHex]));
 
     assert.equal(byName.get('Y'), '#FFDA00');
@@ -114,13 +131,11 @@ describe('printer attributes', () => {
   });
 
   it('reads both loaded rolls at 24 inches', () => {
-    const rolls = snapshot.rolls;
-    assert.equal(rolls.length, 3, 'always renders Roll 1, Roll 2, Manual Tray');
-
-    const roll1 = rolls.find((r) => r.source === 'main-roll');
-    const roll2 = rolls.find((r) => r.source === 'alternate-roll');
+    const roll1 = snapshot.media.find((m) => m.key === 'main-roll');
+    const roll2 = snapshot.media.find((m) => m.key === 'alternate-roll');
 
     assert.equal(roll1?.isLoaded, true);
+    assert.equal(roll1?.type, 'roll');
     assert.equal(roll1?.mediaTypeCode, 'com.canon-012f');
     assert.equal(roll1?.widthMm, 609.6);
     assert.equal(roll1?.widthInches, 24);
@@ -130,43 +145,110 @@ describe('printer attributes', () => {
     assert.equal(roll2?.widthInches, 24);
   });
 
-  it('marks the manual tray empty when the printer omits it', () => {
-    const manual = snapshot.rolls.find((r) => r.source === 'main');
-
-    assert.equal(manual?.isLoaded, false);
-    assert.equal(manual?.mediaTypeCode, null);
-    assert.equal(manual?.widthMm, null);
+  it('reports only the slots this capture actually evidences', () => {
+    // This fixture predates requesting media-source-supported, so the only
+    // slots knowable from it are the loaded ones. Inventing a third would be
+    // asserting something the device never said.
+    assert.deepEqual(
+      snapshot.media.map((m) => m.key),
+      ['main-roll', 'alternate-roll'],
+    );
   });
 
-  it('emits slots in display order', () => {
+  it('never claims a remaining roll length', () => {
+    // No IPP attribute reports it, so a number here would be fabricated.
     assert.deepEqual(
-      snapshot.rolls.map((r) => r.source),
-      ['main-roll', 'alternate-roll', 'main'],
+      [...new Set(snapshot.media.map((m) => m.lengthRemainingMm))],
+      [null],
     );
   });
 });
 
-describe('roll ordering', () => {
+describe('media source enumeration', () => {
+  // Synthetic input, not a capture: it exercises media-source-supported, which
+  // the checked-in fixture predates.
+  it('emits an unloaded slot for a supported source with nothing in it', () => {
+    const media = normalizeMedia({
+      'media-source-supported': ['main-roll', 'alternate-roll', 'manual'],
+      'media-col-ready': [
+        { 'media-source': 'main-roll', 'media-type': 'com.example-01', 'media-size': { 'x-dimension': 60960 } },
+      ],
+    } as never);
+
+    assert.deepEqual(
+      media.map((m) => [m.key, m.isLoaded]),
+      [
+        ['main-roll', true],
+        ['alternate-roll', false],
+        ['manual', false],
+      ],
+    );
+    // An empty roll is real information — it is an empty roll, not an absent one.
+    assert.equal(media[1]?.type, 'roll');
+    assert.equal(media[2]?.type, 'manual');
+  });
+
+  it('still reports media the device loaded but did not list as supported', () => {
+    const media = normalizeMedia({
+      'media-source-supported': ['main-roll'],
+      'media-col-ready': [{ 'media-source': 'tray-2' }],
+    } as never);
+
+    assert.deepEqual(media.map((m) => m.key), ['main-roll', 'tray-2']);
+  });
+
+  it('labels unfamiliar keywords rather than dropping them', () => {
+    const media = normalizeMedia({ 'media-source-supported': ['side-cassette'] } as never);
+    assert.equal(media[0]?.label, 'Side Cassette');
+  });
+});
+
+describe('marker level scaling', () => {
+  it('treats an absent high level as the conventional 0-100 scale', () => {
+    assert.deepEqual(readMarkerLevel(42, undefined), { kind: 'percent', percent: 42 });
+  });
+
+  it('maps the negative sentinels to unknown, never to zero', () => {
+    // -1 and -2 mean "unknown" in RFC 8011. Rendering them as 0% would show a
+    // full cartridge as empty and mail about it every poll.
+    assert.deepEqual(readMarkerLevel(-1, 100), { kind: 'unknown' });
+    assert.deepEqual(readMarkerLevel(-2, 100), { kind: 'unknown' });
+    assert.deepEqual(readMarkerLevel(undefined, 100), { kind: 'unknown' });
+  });
+
+  it('keeps a non-percentage scale as an absolute reading', () => {
+    assert.deepEqual(readMarkerLevel(1500, 3000), {
+      kind: 'absolute',
+      value: 1500,
+      max: 3000,
+      unit: 'other',
+    });
+    assert.equal(levelToPercent(readMarkerLevel(1500, 3000)), 50);
+  });
+
+  it('refuses to divide by an unusable capacity', () => {
+    assert.deepEqual(readMarkerLevel(10, 0), { kind: 'unknown' });
+    assert.deepEqual(readMarkerLevel(10, -2), { kind: 'unknown' });
+  });
+});
+
+describe('media ordering', () => {
   // Rows read back from SQLite arrive in query-planner order, which put Roll 2
   // ahead of Roll 1 on the hydrated-after-restart path.
   it('restores display order from arbitrary input order', () => {
-    const shuffled = [
-      { source: 'alternate-roll' },
-      { source: 'main' },
-      { source: 'main-roll' },
-    ];
+    const shuffled = [{ key: 'alternate-roll' }, { key: 'main' }, { key: 'main-roll' }];
 
     assert.deepEqual(
-      sortRollsBySlot(shuffled).map((r) => r.source),
+      sortMediaBySlot(shuffled).map((m) => m.key),
       ['main-roll', 'alternate-roll', 'main'],
     );
   });
 
   it('keeps unrecognized sources at the end rather than dropping them', () => {
-    const rolls = [{ source: 'mystery-tray' }, { source: 'main-roll' }];
+    const sources = [{ key: 'mystery-tray' }, { key: 'main-roll' }];
 
     assert.deepEqual(
-      sortRollsBySlot(rolls).map((r) => r.source),
+      sortMediaBySlot(sources).map((m) => m.key),
       ['main-roll', 'mystery-tray'],
     );
   });

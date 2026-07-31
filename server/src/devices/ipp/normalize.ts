@@ -1,21 +1,27 @@
 /**
  * Turns raw IPP attribute groups into the device-neutral shapes in `../types`.
  *
- * Most of this file exists because of specific things the Canon TZ-32000 does;
- * see `docs/canon-tz32000-field-notes.md` for the captured evidence behind each decision.
+ * Several decisions here exist because of specific things one Canon TZ-32000
+ * does; see `docs/canon-tz32000-field-notes.md` for the captured evidence
+ * behind each. Read it before "simplifying" anything in this file.
  */
 import { asArray, asDict, asNumber, asString, type PlistValue } from './plist.js';
-import type {
-  JobState,
-  MediaRoll,
-  PrinterSnapshot,
-  PrinterState,
-  PrintJob,
-  Supply,
+import {
+  percentLevel,
+  type DeviceSnapshot,
+  type DeviceState,
+  type JobState,
+  type MediaSource,
+  type MediaSourceType,
+  type PrintJob,
+  type Supply,
+  type SupplyKind,
+  type SupplyLevel,
+  type SupplyType,
 } from '../types.js';
 
 /** RFC 8011 §5.4.11 printer-state. */
-const PRINTER_STATES: Record<number, PrinterState> = {
+const PRINTER_STATES: Record<number, DeviceState> = {
   3: 'idle',
   4: 'processing',
   5: 'stopped',
@@ -38,7 +44,38 @@ const JOB_STATES: Record<number, JobState> = {
   9: 'completed',
 };
 
-/** Expands the printer's terse marker codes. Confirmed against SNMP. */
+/**
+ * IPP `marker-types` to our classification.
+ *
+ * This replaces an older substring test for "waste". The keywords mirror RFC
+ * 3805's `prtMarkerSuppliesType` enum, so the same table serves an SNMP adapter
+ * once one exists — which is the point of not sniffing strings.
+ */
+const SUPPLY_TYPES: Record<string, SupplyType> = {
+  toner: 'toner',
+  'toner-cartridge': 'toner',
+  ink: 'ink',
+  'ink-cartridge': 'ink',
+  'ink-ribbon': 'ink',
+  'waste-toner': 'waste-toner',
+  'toner-waste': 'waste-toner',
+  'waste-ink': 'waste-ink',
+  'ink-waste': 'waste-ink',
+  opc: 'drum',
+  'photo-conductor': 'drum',
+  developer: 'developer',
+  fuser: 'fuser',
+  'fuser-oil': 'fuser',
+  'fuser-oiler': 'fuser',
+  'cleaner-unit': 'cleaner',
+  'fuser-cleaning-pad': 'cleaner',
+  staples: 'staples',
+};
+
+/** Types that fill up rather than drain. */
+const RECEPTACLE_TYPES = new Set<SupplyType>(['waste-toner', 'waste-ink']);
+
+/** Expands terse marker codes the Canon reports. Confirmed against SNMP. */
 const SUPPLY_LABELS: Record<string, string> = {
   MBK: 'Matte Black',
   BK: 'Black',
@@ -57,36 +94,102 @@ const COLOR_OVERRIDES: Record<string, string> = {
   MBK: '#4b5563',
 };
 
-const FALLBACK_COLOR = '#3b82f6';
+/** Friendly names for the IPP media-source keywords we expect to meet. */
+const MEDIA_LABELS: Record<string, string> = {
+  'main-roll': 'Roll 1',
+  'alternate-roll': 'Roll 2',
+  'top-roll': 'Top Roll',
+  'bottom-roll': 'Bottom Roll',
+  main: 'Main Tray',
+  manual: 'Manual Feed',
+  'by-pass-tray': 'Bypass Tray',
+  auto: 'Automatic',
+};
 
-/** Slots we always render, whether or not media is currently loaded. */
-const MEDIA_SLOTS: ReadonlyArray<{ source: string; label: string }> = [
-  { source: 'main-roll', label: 'Roll 1' },
-  { source: 'alternate-roll', label: 'Roll 2' },
-  { source: 'main', label: 'Manual Tray' },
+/** Canonical display order; anything unrecognised sorts after these. */
+const MEDIA_ORDER = [
+  'main-roll',
+  'alternate-roll',
+  'top-roll',
+  'bottom-roll',
+  'main',
+  'by-pass-tray',
+  'manual',
 ];
 
-const MEDIA_SLOT_ORDER = new Map(MEDIA_SLOTS.map((slot, i) => [slot.source, i]));
+const MEDIA_ORDER_INDEX = new Map(MEDIA_ORDER.map((key, i) => [key, i]));
 
 /**
  * Restores canonical slot order.
  *
- * `normalizeRolls` emits slots in order, but rows read back from SQLite come
- * out in whatever order the query planner chooses — which put Roll 2 first
- * after a restart. Anything unrecognized sorts to the end rather than being
- * dropped.
+ * Normalisation emits slots in order, but rows read back from SQLite come out
+ * in whatever order the query planner chooses — which put Roll 2 first after a
+ * restart. Anything unrecognised sorts to the end rather than being dropped.
  */
-export function sortRollsBySlot<T extends { source: string }>(rolls: T[]): T[] {
-  return [...rolls].sort((a, b) => {
-    const ai = MEDIA_SLOT_ORDER.get(a.source) ?? Number.MAX_SAFE_INTEGER;
-    const bi = MEDIA_SLOT_ORDER.get(b.source) ?? Number.MAX_SAFE_INTEGER;
-    return ai === bi ? a.source.localeCompare(b.source) : ai - bi;
+export function sortMediaBySlot<T extends { key: string }>(sources: T[]): T[] {
+  return [...sources].sort((a, b) => {
+    const ai = MEDIA_ORDER_INDEX.get(a.key) ?? Number.MAX_SAFE_INTEGER;
+    const bi = MEDIA_ORDER_INDEX.get(b.key) ?? Number.MAX_SAFE_INTEGER;
+    return ai === bi ? a.key.localeCompare(b.key) : ai - bi;
   });
 }
 
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(100, Math.round(value)));
+/** `alternate-roll` → `Alternate Roll`, for keywords not in the label table. */
+function humanizeKey(key: string): string {
+  return key
+    .split(/[-_]/)
+    .filter((part) => part !== '')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function mediaTypeFor(key: string): MediaSourceType {
+  if (key.includes('roll')) return 'roll';
+  if (key === 'manual' || key.includes('by-pass') || key.includes('bypass')) return 'manual';
+  if (key.includes('tray') || key === 'main' || key === 'top' || key === 'bottom') {
+    return 'sheet-tray';
+  }
+  return 'unknown';
+}
+
+function classifySupply(markerType: string): { kind: SupplyKind; type: SupplyType } {
+  const keyword = markerType.trim().toLowerCase();
+  const type = SUPPLY_TYPES[keyword];
+
+  if (type !== undefined) {
+    return { kind: RECEPTACLE_TYPES.has(type) ? 'receptacle' : 'consumable', type };
+  }
+
+  // Unknown keyword. "waste" or "receptacle" anywhere in it still tells us
+  // which way the number runs, which is the part alerting cannot get wrong.
+  const isReceptacle = keyword.includes('waste') || keyword.includes('receptacle');
+  return { kind: isReceptacle ? 'receptacle' : 'consumable', type: 'other' };
+}
+
+/**
+ * Reads one marker level against its high level.
+ *
+ * `marker-levels` is a percentage only when the matching `marker-high-levels`
+ * entry is 100; RFC 8011 allows any scale. Negative values are the spec's
+ * "unknown" sentinels (-1 and -2), and must not become 0 — a cartridge shown at
+ * 0% gets reordered.
+ */
+export function readMarkerLevel(
+  level: number | undefined,
+  highLevel: number | undefined,
+): SupplyLevel {
+  if (level === undefined || !Number.isFinite(level) || level < 0) {
+    return { kind: 'unknown' };
+  }
+
+  // Absent high levels mean the conventional 0-100 scale, which is what CUPS
+  // and every device we have seen actually use.
+  const high = highLevel === undefined || !Number.isFinite(highLevel) ? 100 : highLevel;
+
+  if (high <= 0) return { kind: 'unknown' };
+  if (high === 100) return percentLevel(level);
+
+  return { kind: 'absolute', value: level, max: high, unit: 'other' };
 }
 
 /**
@@ -100,31 +203,29 @@ function mergeGroups(groups: Record<string, PlistValue>[]): Record<string, Plist
   return Object.assign({}, ...groups) as Record<string, PlistValue>;
 }
 
-export function normalizeSupplies(
-  attrs: Record<string, PlistValue>,
-): Supply[] {
+export function normalizeSupplies(attrs: Record<string, PlistValue>): Supply[] {
   const names = asArray(attrs['marker-names']).map((v) => asString(v) ?? '');
-  const levels = asArray(attrs['marker-levels']).map((v) => asNumber(v) ?? 0);
+  const levels = asArray(attrs['marker-levels']).map((v) => asNumber(v));
+  const highLevels = asArray(attrs['marker-high-levels']).map((v) => asNumber(v));
   const colors = asArray(attrs['marker-colors']).map((v) => asString(v) ?? '');
   const types = asArray(attrs['marker-types']).map((v) => asString(v) ?? '');
 
   return names.map((name, index) => {
-    const markerType = types[index] ?? '';
-    // Anything the printer flags as a waste receptacle counts up toward full.
-    const isWaste = markerType.includes('waste') || markerType === 'toner-waste';
-
+    const { kind, type } = classifySupply(types[index] ?? '');
     const reportedColor = colors[index] ?? '';
-    const colorHex =
-      COLOR_OVERRIDES[name] ??
-      (/^#[0-9a-f]{6}$/i.test(reportedColor) ? reportedColor : FALLBACK_COLOR);
 
     return {
       index,
       name,
       label: SUPPLY_LABELS[name] ?? name,
-      kind: isWaste ? 'waste' : 'ink',
-      percent: clampPercent(levels[index] ?? 0),
-      colorHex,
+      kind,
+      type,
+      level: readMarkerLevel(levels[index], highLevels[index]),
+      // Null rather than a made-up colour: the UI owns the fallback, and a
+      // device that reports no colour should not look like it reported blue.
+      colorHex:
+        COLOR_OVERRIDES[name] ??
+        (/^#[0-9a-f]{6}$/i.test(reportedColor) ? reportedColor : null),
     };
   });
 }
@@ -135,7 +236,7 @@ function toMillimetres(dimension: number | undefined): number | null {
   return dimension / 100;
 }
 
-export function normalizeRolls(attrs: Record<string, PlistValue>): MediaRoll[] {
+export function normalizeMedia(attrs: Record<string, PlistValue>): MediaSource[] {
   const loaded = new Map<string, { code: string | null; widthMm: number | null }>();
 
   for (const entry of asArray(attrs['media-col-ready'])) {
@@ -146,32 +247,47 @@ export function normalizeRolls(attrs: Record<string, PlistValue>): MediaRoll[] {
     const size = asDict(col['media-size']);
     // x-dimension is a plain integer; y-dimension is a range on roll media,
     // since the usable length depends on how much is left on the roll.
-    const widthMm = toMillimetres(asNumber(size['x-dimension']));
-
     loaded.set(source, {
       code: asString(col['media-type']) ?? null,
-      widthMm,
+      widthMm: toMillimetres(asNumber(size['x-dimension'])),
     });
   }
 
-  return MEDIA_SLOTS.map(({ source, label }) => {
-    const entry = loaded.get(source);
-    const widthMm = entry?.widthMm ?? null;
+  // Every slot the device says it has, plus anything loaded that it somehow
+  // did not list. A slot the device supports but has not loaded is real
+  // information — it is an empty roll, not an absent one.
+  const supported = asArray(attrs['media-source-supported'])
+    .map((v) => asString(v) ?? '')
+    .filter((key) => key !== '' && key !== 'auto');
 
-    return {
-      source,
-      label,
-      isLoaded: entry !== undefined,
-      mediaTypeCode: entry?.code ?? null,
-      widthMm,
-      widthInches: widthMm === null ? null : Math.round((widthMm / 25.4) * 10) / 10,
-    };
-  });
+  const keys = [...new Set([...supported, ...loaded.keys()])];
+
+  return sortMediaBySlot(
+    keys.map((key) => {
+      const entry = loaded.get(key);
+      const widthMm = entry?.widthMm ?? null;
+
+      return {
+        key,
+        label: MEDIA_LABELS[key] ?? humanizeKey(key),
+        type: mediaTypeFor(key),
+        isLoaded: entry !== undefined,
+        mediaTypeCode: entry?.code ?? null,
+        widthMm,
+        widthInches: widthMm === null ? null : Math.round((widthMm / 25.4) * 10) / 10,
+        // No IPP attribute reports remaining roll length, and no vendor-neutral
+        // SNMP OID does either. Only a vendor-aware adapter could fill this in.
+        lengthRemainingMm: null,
+        level: { kind: 'unknown' } as SupplyLevel,
+      };
+    }),
+  );
 }
 
-export function normalizePrinterState(
-  attrs: Record<string, PlistValue>,
-): { state: PrinterState; stateReasons: string[] } {
+export function normalizeDeviceState(attrs: Record<string, PlistValue>): {
+  state: DeviceState;
+  stateReasons: string[];
+} {
   const raw = asNumber(attrs['printer-state']);
   const state = raw === undefined ? 'unknown' : (PRINTER_STATES[raw] ?? 'unknown');
 
@@ -217,15 +333,15 @@ export function normalizeJobs(groups: Record<string, PlistValue>[]): PrintJob[] 
 
 export function normalizePrinterAttributes(
   groups: Record<string, PlistValue>[],
-): Omit<PrinterSnapshot, 'jobs'> {
+): Omit<DeviceSnapshot, 'jobs'> {
   const attrs = mergeGroups(groups);
-  const { state, stateReasons } = normalizePrinterState(attrs);
+  const { state, stateReasons } = normalizeDeviceState(attrs);
 
   return {
     makeAndModel: asString(attrs['printer-make-and-model']) ?? null,
     state,
     stateReasons,
     supplies: normalizeSupplies(attrs),
-    rolls: normalizeRolls(attrs),
+    media: normalizeMedia(attrs),
   };
 }

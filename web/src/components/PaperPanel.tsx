@@ -1,26 +1,25 @@
-import type { Roll } from '../types.js';
+import type { MediaSource } from '../types.js';
 
-function widthLabel(roll: Roll): string | null {
-  if (roll.widthInches === null) return null;
-  return `${roll.widthInches}in roll`;
+function widthLabel(source: MediaSource): string | null {
+  if (source.widthInches === null) return null;
+  return source.type === 'roll' ? `${source.widthInches}in roll` : `${source.widthInches}in`;
 }
 
 /**
- * The printer reports vendor codes, not names. When a code is not in the
- * lookup table we show the code itself rather than inventing a description —
- * a wrong paper name is worse than an unfamiliar one, because someone will
- * plot on it.
+ * Devices report vendor codes, not names. When a code is not in the lookup
+ * table we show the code itself rather than inventing a description — a wrong
+ * paper name is worse than an unfamiliar one, because someone will plot on it.
  */
-function RollRow({ roll }: { roll: Roll }) {
-  const width = widthLabel(roll);
+function MediaRow({ source }: { source: MediaSource }) {
+  const width = widthLabel(source);
 
-  if (!roll.isLoaded) {
+  if (!source.isLoaded) {
     return (
       <div className="paper-row">
         <div className="paper-icon is-empty" aria-hidden="true" />
         <div className="paper-details">
-          <strong>{roll.label}</strong>
-          <span className="muted">No paper loaded</span>
+          <strong>{source.label}</strong>
+          <span className="muted">No media loaded</span>
         </div>
       </div>
     );
@@ -30,13 +29,15 @@ function RollRow({ roll }: { roll: Roll }) {
     <div className="paper-row">
       <div className="paper-icon" aria-hidden="true" />
       <div className="paper-details">
-        <strong>{roll.label}</strong>
-        {roll.mediaTypeName !== null ? (
-          <span>{roll.mediaTypeName}</span>
-        ) : (
+        <strong>{source.label}</strong>
+        {source.mediaTypeName !== null ? (
+          <span>{source.mediaTypeName}</span>
+        ) : source.mediaTypeCode !== null ? (
           <span className="paper-unknown" title="No friendly name for this media code yet">
-            <code>{roll.mediaTypeCode}</code>
+            <code>{source.mediaTypeCode}</code>
           </span>
+        ) : (
+          <span className="muted">Loaded</span>
         )}
         {width !== null && <span className="paper-width">{width}</span>}
       </div>
@@ -44,13 +45,15 @@ function RollRow({ roll }: { roll: Roll }) {
   );
 }
 
-export function PaperPanel({ rolls }: { rolls: Roll[] }) {
+export function PaperPanel({ media }: { media: MediaSource[] }) {
   return (
     <section className="card">
-      <h2 className="card-title">Loaded Paper</h2>
-      {rolls.map((roll) => (
-        <RollRow key={roll.source} roll={roll} />
-      ))}
+      <h2 className="card-title">Loaded Media</h2>
+      {media.length === 0 ? (
+        <p className="muted">This device did not report any media sources.</p>
+      ) : (
+        media.map((source) => <MediaRow key={source.key} source={source} />)
+      )}
     </section>
   );
 }

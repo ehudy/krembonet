@@ -29,6 +29,18 @@ import {
   type AppSettings,
 } from '../settings/settings.js';
 import { DEFAULT_HUB_TITLE } from '../settings/types.js';
+import {
+  getGlobalThresholds,
+  updateGlobalThresholds,
+  type GlobalThresholds,
+} from '../alerts/store.js';
+
+/** Edited on the settings form, but stored as `alert_rules` rows. */
+const THRESHOLD_KEYS = [
+  'inkThresholdPercent',
+  'wasteThresholdPercent',
+  'hysteresisPercent',
+] as const satisfies readonly (keyof GlobalThresholds)[];
 
 /** Only these are writable from the browser. */
 const EDITABLE_KEYS: (keyof AppSettings)[] = [
@@ -40,9 +52,6 @@ const EDITABLE_KEYS: (keyof AppSettings)[] = [
   'smtpPassword',
   'smtpFrom',
   'alertRecipients',
-  'inkThresholdPercent',
-  'wasteThresholdPercent',
-  'hysteresisPercent',
   'backgroundPollMinutes',
   'alertsEnabled',
 ];
@@ -112,11 +121,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   // --- settings --------------------------------------------------------
 
-  app.get(
-    '/api/admin/settings',
-    { preHandler: requireAdmin },
-    async () => getPublicSettings(),
-  );
+  // Thresholds are rows in `alert_rules`, not settings, but the portal edits
+  // them on the same form — so they are merged in and out here rather than
+  // making the UI juggle two endpoints.
+  app.get('/api/admin/settings', { preHandler: requireAdmin }, async () => ({
+    ...getPublicSettings(),
+    ...getGlobalThresholds(),
+  }));
 
   app.put<{ Body: Record<string, unknown> }>(
     '/api/admin/settings',
@@ -124,7 +135,15 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const body = request.body ?? {};
       const patch: Partial<AppSettings> = {};
+      const thresholds: Partial<GlobalThresholds> = {};
       const errors: string[] = [];
+
+      for (const key of THRESHOLD_KEYS) {
+        if (!(key in body)) continue;
+        const percent = clampNumber(body[key], 0, 100);
+        if (percent === undefined) errors.push(`${key} must be 0-100.`);
+        else thresholds[key] = percent;
+      }
 
       for (const key of EDITABLE_KEYS) {
         if (!(key in body)) continue;
@@ -135,14 +154,6 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
             const port = clampNumber(value, 1, 65535);
             if (port === undefined) errors.push('SMTP port must be a number.');
             else patch.smtpPort = port;
-            break;
-          }
-          case 'inkThresholdPercent':
-          case 'wasteThresholdPercent':
-          case 'hysteresisPercent': {
-            const percent = clampNumber(value, 0, 100);
-            if (percent === undefined) errors.push(`${key} must be 0-100.`);
-            else patch[key] = percent;
             break;
           }
           case 'backgroundPollMinutes': {
@@ -200,13 +211,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       }
 
       updateSettings(patch);
+      if (Object.keys(thresholds).length > 0) updateGlobalThresholds(thresholds);
 
       // Applies a new cadence without waiting for a container restart.
       if (patch.backgroundPollMinutes !== undefined) {
         reschedulePoller(app.log);
       }
 
-      return getPublicSettings();
+      return { ...getPublicSettings(), ...getGlobalThresholds() };
     },
   );
 

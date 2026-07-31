@@ -15,13 +15,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '../api.js';
-import type { PrinterStatus } from '../types.js';
+import type { DeviceStatus } from '../types.js';
 
 const SESSION_LIMIT_MS = 10 * 60 * 1000;
 const REFRESH_MS = 60 * 1000;
 
 export interface LiveSync {
-  data: PrinterStatus | null;
+  data: DeviceStatus | null;
   error: string | null;
   isPaused: boolean;
   isLoading: boolean;
@@ -34,7 +34,7 @@ export interface LiveSync {
 }
 
 export function useLiveSync(slug: string): LiveSync {
-  const [data, setData] = useState<PrinterStatus | null>(null);
+  const [data, setData] = useState<DeviceStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,7 +63,7 @@ export function useLiveSync(slug: string): LiveSync {
       setIsRefreshing(true);
 
       try {
-        const next = await api.printerStatus(slug, {
+        const next = await api.deviceStatus(slug, {
           ...(mode === 'jobs' ? { refresh: 'jobs' as const } : {}),
           signal: controller.signal,
         });

@@ -22,21 +22,13 @@ export interface AppSettings {
   /** Comma-separated in storage; always exposed as a trimmed array. */
   alertRecipients: string[];
 
-  /** Ink cartridges alert at or below this. */
-  inkThresholdPercent: number;
   /**
-   * Waste receptacles alert at or above this. Separate from the ink threshold
-   * because the number counts the other way — see
-   * docs/canon-tz32000-field-notes.md §4.
+   * Background poll cadence, which is also the alert evaluation cadence.
+   *
+   * Alert *thresholds* deliberately do not live here. They are rows in
+   * `alert_rules`, so a per-device override is possible and so the number the
+   * portal shows cannot drift from the number alerting uses.
    */
-  wasteThresholdPercent: number;
-  /**
-   * How far a supply must recover past its threshold before the alert clears.
-   * Without it, a level hovering on the boundary re-sends on every poll.
-   */
-  hysteresisPercent: number;
-
-  /** Background poll cadence, which is also the alert evaluation cadence. */
   backgroundPollMinutes: number;
   alertsEnabled: boolean;
 }
@@ -53,10 +45,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   smtpPassword: '',
   smtpFrom: '',
   alertRecipients: [],
-
-  inkThresholdPercent: 15,
-  wasteThresholdPercent: 85,
-  hysteresisPercent: 5,
 
   backgroundPollMinutes: 60,
   alertsEnabled: true,

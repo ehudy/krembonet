@@ -8,16 +8,17 @@ import type { FastifyBaseLogger } from 'fastify';
 
 import { db } from '../db/client.js';
 import { alertLogs, alertState } from '../db/schema.js';
-import type { PrinterView } from '../poller/cache.js';
-import type { PrinterRow } from '../poller/pollPrinter.js';
+import type { DeviceView } from '../poller/cache.js';
+import type { DeviceRow } from '../poller/pollDevice.js';
 import { getSettings, isSmtpConfigured } from '../settings/settings.js';
 import { sendMail } from './mailer.js';
 import {
   buildAlertMail,
   decideTransitions,
-  evaluateSupply,
+  evaluateSupplies,
   type SupplyCondition,
 } from './rules.js';
+import { listAlertRules } from './store.js';
 
 function readActiveRuleKeys(): Set<string> {
   const rows = db
@@ -68,7 +69,7 @@ function markCleared(ruleKey: string): void {
 
 function logAlert(
   ruleKey: string,
-  printerId: number,
+  deviceId: number,
   subject: string,
   recipients: string[],
   status: 'sent' | 'failed' | 'skipped',
@@ -77,7 +78,7 @@ function logAlert(
   db.insert(alertLogs)
     .values({
       ruleKey,
-      printerId,
+      deviceId,
       subject,
       recipients: recipients.join(', '),
       status,
@@ -89,20 +90,30 @@ function logAlert(
 /**
  * Evaluates a fresh reading and sends at most one mail per poll, covering
  * every supply that crossed its threshold this cycle. Batching matters: a
- * printer with four low tanks should produce one mail, not four.
+ * device with four low tanks should produce one mail, not four.
+ *
+ * Supplies whose level cannot be compared — unknown readings, or supplies no
+ * rule covers — are dropped by `evaluateSupplies` rather than defaulted, so a
+ * device that declines to report a level stays quiet instead of alerting as if
+ * it were empty.
  */
 export async function evaluateAlerts(
-  printer: PrinterRow,
-  view: PrinterView,
+  device: DeviceRow,
+  view: DeviceView,
   log: FastifyBaseLogger,
 ): Promise<void> {
   const settings = getSettings();
   if (!settings.alertsEnabled) return;
   if (view.supplies.length === 0) return;
 
-  const conditions = view.supplies.map((supply) =>
-    evaluateSupply(printer.slug, supply, settings),
+  const conditions = evaluateSupplies(
+    device.slug,
+    device.id,
+    view.supplies,
+    listAlertRules(),
   );
+  if (conditions.length === 0) return;
+
   const { toNotify, toClear } = decideTransitions(conditions, readActiveRuleKeys());
 
   for (const condition of toClear) {
@@ -112,7 +123,7 @@ export async function evaluateAlerts(
 
   if (toNotify.length === 0) return;
 
-  const { subject, text } = buildAlertMail(printer, toNotify, settings.hubTitle);
+  const { subject, text } = buildAlertMail(device, toNotify, settings.hubTitle);
 
   // Record the breach even when mail cannot go out, otherwise a misconfigured
   // SMTP server would turn every poll into a fresh notification attempt.
@@ -121,7 +132,7 @@ export async function evaluateAlerts(
       markActive(condition, false);
       logAlert(
         condition.ruleKey,
-        printer.id,
+        device.id,
         subject,
         [],
         'skipped',
@@ -141,7 +152,7 @@ export async function evaluateAlerts(
     markActive(condition, result.ok);
     logAlert(
       condition.ruleKey,
-      printer.id,
+      device.id,
       subject,
       result.recipients,
       result.ok ? 'sent' : 'failed',

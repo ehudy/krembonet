@@ -20,7 +20,7 @@ the device, nothing leaves your network.
 | Route | What it is |
 | --- | --- |
 | `/` | Overview — status cards for every monitored device, plus hub health |
-| `/printers/:slug` | Device detail — supplies, media, live print queue |
+| `/devices/:slug` | Device detail — supplies, media, live print queue |
 | `/admin` | Settings: hub name, SMTP, alert thresholds, poll cadence |
 | `/admin/paper-types` | Media code → friendly name mapping |
 | `/admin/alerts` | Alert history and what is currently alerting |
@@ -60,7 +60,27 @@ past its TTL and then serves cache, so a page load shows live data while a burst
 simultaneous loads collapses into one query — measured at 30 concurrent requests
 producing exactly one.
 
+### Supply levels
+
+Levels are not stored as a single percentage, because devices routinely decline
+to give one. A reading is one of four things: a trustworthy percentage, a raw
+value against a capacity (SNMP reports impressions, sheets or millilitres as
+often as percent), a bare "ok"/"needs attention", or an explicit unknown.
+
+This matters more than it sounds. RFC 3805 reserves negative sentinels for
+"unknown" and "some remaining, no number", and IPP's `marker-levels` is only a
+percentage when the matching `marker-high-levels` is 100. Flattening all of that
+into an integer means inventing numbers, and an invented toner level gets acted
+on — someone reorders against it. Anything that cannot be compared is skipped by
+alerting rather than defaulted to zero.
+
 ### Alerting
+
+Thresholds live in the `alert_rules` table, not in settings. A row with no
+device is the default for everything; a row naming a device overrides it, and a
+row naming a supply overrides that. The API and the UI both read the evaluated
+result, so the number shown on a bar and the number that sends mail cannot
+drift apart.
 
 Alerts are **edge-triggered**: mail goes out when a supply crosses its threshold, not on
 every poll where it happens to be past it. Otherwise a cartridge sitting at 10% would
@@ -122,10 +142,11 @@ In production Fastify serves the built SPA itself, so there is no CORS surface.
 | --- | --- |
 | `GET /api/health` | Liveness, used by the Docker healthcheck |
 | `GET /api/hub` | The operator-configured hub name |
-| `GET /api/printers` | Registered devices and their online state |
-| `GET /api/printers/:slug/status` | Full cached snapshot — supplies, rolls, jobs |
+| `GET /api/devices` | Registered devices, their online state and capabilities |
+| `GET /api/printers/:slug/status` | Full cached snapshot — supplies, media, jobs |
 
-A device seeded from the environment gets the slug `plotter`.
+A device seeded from the environment gets the slug `plotter`. `GET /api/printers`
+and `/printers/:slug` are kept as aliases so older links keep resolving.
 
 These endpoints read the poller's cache and never contact the device, so response time is
 independent of device health and the device's load does not grow with the number of
@@ -264,11 +285,12 @@ docker compose --profile monitoring up -d
 
 ## Roadmap
 
-- **Now** — single printer over IPP: queue, ink, paper, email alerts, admin portal.
-- **Next** — a device-adapter interface and a generic SNMP adapter (RFC 3805 Printer MIB)
-  so HP, Xerox, Brother, Sharp, Kyocera and Lexmark work without vendor-specific code.
-  The honest caveat: standard-MIB supply levels are not percentages and carry
-  "unknown"/"low" sentinels, so this needs a level model richer than a single integer.
+- **Now** — printers over IPP: queue, supplies, media, email alerts, admin portal.
+  The data model is device-generic and the UI is driven by the device list, so
+  nothing above the transport assumes a printer any more.
+- **Next** — a device-adapter interface and a generic SNMP adapter (RFC 3805 Printer
+  MIB) so HP, Xerox, Brother, Sharp, Kyocera and Lexmark work without vendor-specific
+  code. The level model this needs is already in place.
 - **Later** — a first-run setup wizard, adding devices from the UI with an on-demand
   probe, hashed admin credentials, and non-printer adapters (ping, HTTP, UPS).
 
