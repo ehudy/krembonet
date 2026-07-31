@@ -205,7 +205,9 @@ export const jobs = sqliteTable(
     state: text('state').notNull(),
     stateReasons: text('state_reasons'),
     impressions: integer('impressions'),
-    firstSeenAt: integer('first_seen_at', { mode: 'timestamp_ms' }).notNull().default(now),
+    firstSeenAt: integer('first_seen_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(now),
     lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }).notNull().default(now),
     finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
   },
@@ -275,7 +277,37 @@ export const alertState = sqliteTable('alert_state', {
   notifyCount: integer('notify_count').notNull().default(0),
 });
 
-/** Sent-mail audit trail. */
+/**
+ * Where an alert goes besides email.
+ *
+ * `format` is what the payload is shaped as, not what the destination is:
+ * Discord, Slack, and ntfy all take a plain HTTPS POST and differ only in the
+ * body they expect. Keeping the format as a column rather than sniffing it from
+ * the URL means a self-hosted Mattermost on an unrecognisable hostname can
+ * still be told to speak Slack.
+ */
+export const webhooks = sqliteTable('webhooks', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  /** Operator label, shown in the portal and in the alert log. */
+  name: text('name').notNull(),
+  /** `discord` | `slack` | `ntfy` | `generic`. */
+  format: text('format').notNull().default('generic'),
+  url: text('url').notNull(),
+  /**
+   * Optional extra request headers as a JSON object, e.g. an auth token for a
+   * private ntfy topic. Secret in practice, so it never leaves the server.
+   */
+  headers: text('headers'),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  /** Result of the last delivery, so the portal can show it without a test. */
+  lastStatus: text('last_status'),
+  lastError: text('last_error'),
+  lastAttemptAt: integer('last_attempt_at', { mode: 'timestamp_ms' }),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now),
+});
+
+/** Sent-notification audit trail, across every channel. */
 export const alertLogs = sqliteTable(
   'alert_logs',
   {
@@ -285,10 +317,23 @@ export const alertLogs = sqliteTable(
       onDelete: 'set null',
     }),
     subject: text('subject').notNull(),
+    /** Addresses for email; the webhook's name for a webhook. */
     recipients: text('recipients').notNull(),
     status: text('status').notNull(),
     error: text('error'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
+    /**
+     * Which channel carried it: `email`, or `webhook`.
+     *
+     * Defaulted to `email` so every row written before webhooks existed reads
+     * correctly rather than as an unlabelled unknown.
+     *
+     * Declared last, out of the logical order it would otherwise sit in, because
+     * it arrives via `ALTER TABLE ... ADD COLUMN`, which appends physically. The
+     * migration test compares the real column order against this snapshot, so
+     * the declaration has to match the table SQLite actually builds.
+     */
+    channel: text('channel').notNull().default('email'),
   },
   (table) => [index('alert_logs_created_idx').on(table.createdAt)],
 );

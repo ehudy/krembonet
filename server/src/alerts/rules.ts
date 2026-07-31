@@ -9,7 +9,12 @@
  * level flickering across the boundary cannot produce a stream of
  * breach/clear/breach mail.
  */
-import { describeLevel, levelToPercent, type Supply, type SupplyKind } from '../devices/types.js';
+import {
+  describeLevel,
+  levelToPercent,
+  type Supply,
+  type SupplyKind,
+} from '../devices/types.js';
 import { DEFAULT_HUB_TITLE } from '../settings/types.js';
 
 /** A row of `alert_rules`, narrowed to the fields the logic uses. */
@@ -130,7 +135,11 @@ export function evaluateSupplies(
   const conditions: SupplyCondition[] = [];
 
   for (const supply of supplies) {
-    const condition = evaluateSupply(deviceSlug, supply, selectRule(rules, deviceId, supply));
+    const condition = evaluateSupply(
+      deviceSlug,
+      supply,
+      selectRule(rules, deviceId, supply),
+    );
     if (condition !== null) conditions.push(condition);
   }
 
@@ -168,22 +177,37 @@ export function decideTransitions(
   return { toNotify, toClear };
 }
 
+export interface AlertMessage {
+  subject: string;
+  /** The full plain-text body, as the email carries it. */
+  text: string;
+  /**
+   * One line per supply that crossed, unformatted.
+   *
+   * Kept alongside `text` so a webhook can render the same facts as a Discord
+   * embed or a Slack block list without parsing the prose back apart.
+   */
+  lines: string[];
+}
+
 /** Builds the notification body for everything that crossed this cycle. */
 export function buildAlertMail(
   device: { displayName: string; host: string },
   conditions: SupplyCondition[],
   hubTitle: string = DEFAULT_HUB_TITLE,
-): { subject: string; text: string } {
+): AlertMessage {
   const first = conditions[0];
   const subject =
     conditions.length === 1 && first !== undefined
       ? `[${hubTitle}] ${first.supply.label} needs attention`
       : `[${hubTitle}] ${conditions.length} supplies need attention`;
 
+  const lines = conditions.map((condition) => condition.description);
+
   const text = [
     `${device.displayName} (${device.host}) has supplies past their alert threshold:`,
     '',
-    ...conditions.map((condition) => `  - ${condition.description}`),
+    ...lines.map((line) => `  - ${line}`),
     '',
     'This is sent once per threshold crossing. You will not get another message',
     'for the same supply until it is replaced and recovers.',
@@ -191,5 +215,5 @@ export function buildAlertMail(
     `Checked ${new Date().toLocaleString()}`,
   ].join('\n');
 
-  return { subject, text };
+  return { subject, text, lines };
 }

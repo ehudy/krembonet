@@ -15,12 +15,19 @@ import { AdminDevices } from './AdminDevices.js';
 import { AdminLogin } from './AdminLogin.js';
 import { AdminPaperTypes } from './AdminPaperTypes.js';
 import { AdminSettings } from './AdminSettings.js';
+import { AdminWebhooks } from './AdminWebhooks.js';
 
 const TABS = [
   { to: '/admin', label: 'Settings' },
   { to: '/admin/devices', label: 'Devices' },
   { to: '/admin/paper-types', label: 'Paper types' },
-  { to: '/admin/alerts', label: 'Alert history' },
+  { to: '/admin/alerts', label: 'Alerts' },
+];
+
+/** Sections under the Alerts tab. */
+const ALERT_TABS = [
+  { to: '/admin/alerts', label: 'History' },
+  { to: '/admin/alerts/webhooks', label: 'Webhooks' },
 ];
 
 export function AdminPortal() {
@@ -83,14 +90,15 @@ export function AdminPortal() {
 
   const isDevices = matchPath('/admin/devices', path) !== null;
   const isPaperTypes = matchPath('/admin/paper-types', path) !== null;
-  const isAlerts = matchPath('/admin/alerts', path) !== null;
+  const isWebhooks = matchPath('/admin/alerts/webhooks', path) !== null;
+  const isAlerts = matchPath('/admin/alerts', path) !== null || isWebhooks;
   const isSettings = !isDevices && !isPaperTypes && !isAlerts;
 
   return (
     <>
       <PageHeader
         title="Admin"
-        subtitle="Devices, SMTP, alert thresholds, and paper code mapping"
+        subtitle="Devices, access, alerts, appearance, and paper code mapping"
         actions={
           <button type="button" className="btn-secondary" onClick={() => void logout()}>
             Sign out
@@ -105,7 +113,10 @@ export function AdminPortal() {
             to={tab.to}
             className={`tab${
               (tab.to === '/admin' && isSettings) ||
-              (tab.to !== '/admin' && matchPath(tab.to, path) !== null)
+              (tab.to === '/admin/alerts' && isAlerts) ||
+              (tab.to !== '/admin' &&
+                tab.to !== '/admin/alerts' &&
+                matchPath(tab.to, path) !== null)
                 ? ' is-active'
                 : ''
             }`}
@@ -115,10 +126,28 @@ export function AdminPortal() {
         ))}
       </nav>
 
+      {isAlerts && (
+        <nav className="tabs is-sub" aria-label="Alert sections">
+          {ALERT_TABS.map((tab) => (
+            <Link
+              key={tab.to}
+              to={tab.to}
+              className={`tab${
+                (tab.to === '/admin/alerts/webhooks') === isWebhooks ? ' is-active' : ''
+              }`}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </nav>
+      )}
+
       {isDevices ? (
         <AdminDevices />
       ) : isPaperTypes ? (
         <AdminPaperTypes />
+      ) : isWebhooks ? (
+        <AdminWebhooks />
       ) : isAlerts ? (
         <AdminAlerts />
       ) : (

@@ -9,8 +9,14 @@ import type { FastifyInstance } from 'fastify';
 
 import { listAlertRules } from '../alerts/store.js';
 import { evaluateSupplies } from '../alerts/rules.js';
+import { requireViewer } from '../auth/session.js';
 import { levelToPercent } from '../devices/types.js';
-import { ageMs, getDeviceView, listDeviceViews, type DeviceView } from '../poller/cache.js';
+import {
+  ageMs,
+  getDeviceView,
+  listDeviceViews,
+  type DeviceView,
+} from '../poller/cache.js';
 import {
   ensureFresh,
   findDeviceBySlug,
@@ -79,6 +85,12 @@ function summarize(view: DeviceView, deviceId: number) {
 }
 
 export async function statusRoutes(app: FastifyInstance): Promise<void> {
+  // Every route in this file reports what a device is doing, which is exactly
+  // what the access modes exist to gate. Applied at the scope rather than per
+  // route so a route added later is covered by default — an unguarded status
+  // endpoint would silently reopen the whole dashboard.
+  app.addHook('preHandler', requireViewer);
+
   /**
    * The device list the shell navigates from. Reads the registry rather than
    * the cache so a configured device appears before its first poll lands.
@@ -115,11 +127,15 @@ export async function statusRoutes(app: FastifyInstance): Promise<void> {
   /** Retained under the old path so existing links and bookmarks keep working. */
   app.get('/api/printers', async () => {
     const { backgroundPollMinutes } = getSettings();
-    const byslug = new Map(listEnabledDevices().map((device) => [device.slug, device.id]));
+    const byslug = new Map(
+      listEnabledDevices().map((device) => [device.slug, device.id]),
+    );
 
     return {
       backgroundPollMinutes,
-      printers: listDeviceViews().map((view) => summarize(view, byslug.get(view.slug) ?? -1)),
+      printers: listDeviceViews().map((view) =>
+        summarize(view, byslug.get(view.slug) ?? -1),
+      ),
     };
   });
 

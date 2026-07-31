@@ -5,17 +5,21 @@
  * there is no CORS or token handling to get wrong.
  */
 import type {
+  AccessStatus,
   AdapterInfo,
   AdminDevice,
   AdminSettings,
   AlertLogRow,
   AlertStateRow,
+  HubBranding,
   MediaType,
   DeviceListResponse,
   DeviceStatus,
   ProbeResponse,
   SessionInfo,
   SetupStatus,
+  Webhook,
+  WebhookFormat,
 } from './types.js';
 
 export class ApiError extends Error {
@@ -49,8 +53,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  /** Operator-configured hub name. Unauthenticated — the shell needs it first. */
-  getHub: (signal?: AbortSignal) => request<{ title: string }>('/api/hub', { signal }),
+  /**
+   * Hub name, theme, and custom CSS. Unauthenticated — the shell renders itself
+   * before anyone has signed in or entered a passcode.
+   */
+  getHub: (signal?: AbortSignal) => request<HubBranding>('/api/hub', { signal }),
+
+  /** Whether this browser may read the dashboard. Unauthenticated by necessity. */
+  access: (signal?: AbortSignal) => request<AccessStatus>('/api/access', { signal }),
+
+  unlock: (passcode: string) =>
+    request<{ ok: true }>('/api/access/unlock', {
+      method: 'POST',
+      body: JSON.stringify({ passcode }),
+    }),
+
+  lock: () => request<{ ok: true }>('/api/access/lock', { method: 'POST' }),
 
   listDevices: (signal?: AbortSignal) =>
     request<DeviceListResponse>('/api/devices', { signal }),
@@ -70,10 +88,15 @@ export const api = {
 
   setupStatus: (signal?: AbortSignal) => request<SetupStatus>('/api/setup', { signal }),
 
-  completeSetup: (body: { password: string; confirmPassword: string; hubTitle: string }) =>
+  completeSetup: (body: {
+    password: string;
+    confirmPassword: string;
+    hubTitle: string;
+  }) =>
     request<{ ok: true }>('/api/setup', { method: 'POST', body: JSON.stringify(body) }),
 
-  session: (signal?: AbortSignal) => request<SessionInfo>('/api/admin/session', { signal }),
+  session: (signal?: AbortSignal) =>
+    request<SessionInfo>('/api/admin/session', { signal }),
 
   login: (password: string) =>
     request<{ ok: true }>('/api/admin/login', {
@@ -117,14 +140,21 @@ export const api = {
   listAdminDevices: (signal?: AbortSignal) =>
     request<{ devices: AdminDevice[] }>('/api/admin/devices', { signal }),
 
-  probeDevice: (body: { host: string; adapter?: string; config?: Record<string, unknown> }) =>
+  probeDevice: (body: {
+    host: string;
+    adapter?: string;
+    config?: Record<string, unknown>;
+  }) =>
     request<ProbeResponse>('/api/admin/devices/probe', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
 
   createDevice: (body: Record<string, unknown>) =>
-    request<AdminDevice>('/api/admin/devices', { method: 'POST', body: JSON.stringify(body) }),
+    request<AdminDevice>('/api/admin/devices', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   updateDevice: (id: number, body: Record<string, unknown>) =>
     request<AdminDevice>(`/api/admin/devices/${id}`, {
@@ -138,5 +168,31 @@ export const api = {
   alerts: (signal?: AbortSignal) =>
     request<{ active: AlertStateRow[]; recent: AlertLogRow[] }>('/api/admin/alerts', {
       signal,
+    }),
+
+  listWebhooks: (signal?: AbortSignal) =>
+    request<{
+      formats: { id: WebhookFormat; label: string }[];
+      webhooks: Webhook[];
+    }>('/api/admin/webhooks', { signal }),
+
+  createWebhook: (body: Record<string, unknown>) =>
+    request<Webhook>('/api/admin/webhooks', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateWebhook: (id: number, body: Record<string, unknown>) =>
+    request<Webhook>(`/api/admin/webhooks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  deleteWebhook: (id: number) =>
+    request<{ ok: true }>(`/api/admin/webhooks/${id}`, { method: 'DELETE' }),
+
+  testWebhook: (id: number) =>
+    request<{ ok: boolean; status?: number | null }>(`/api/admin/webhooks/${id}/test`, {
+      method: 'POST',
     }),
 };

@@ -53,8 +53,8 @@ export function AdminAlerts() {
 
         {active.length === 0 ? (
           <p className="muted">
-            Nothing is past its threshold. Alerts fire once on crossing, so quiet is
-            the normal state.
+            Nothing is past its threshold. Alerts fire once on crossing, so quiet is the
+            normal state.
           </p>
         ) : (
           <ul className="plain-list">
@@ -71,7 +71,7 @@ export function AdminAlerts() {
       </section>
 
       <section className="card">
-        <h2 className="card-title">Recent alert mail</h2>
+        <h2 className="card-title">Recent notifications</h2>
 
         {recent.length === 0 ? (
           <p className="muted">No alerts have been generated yet.</p>
@@ -82,7 +82,8 @@ export function AdminAlerts() {
                 <tr>
                   <th scope="col">When</th>
                   <th scope="col">Subject</th>
-                  <th scope="col">Recipients</th>
+                  <th scope="col">Via</th>
+                  <th scope="col">Sent to</th>
                   <th scope="col">Status</th>
                 </tr>
               </thead>
@@ -91,6 +92,11 @@ export function AdminAlerts() {
                   <tr key={row.id}>
                     <td>{relativeTime(row.createdAt)}</td>
                     <td>{row.subject}</td>
+                    {/* Rows written before webhooks existed default to email
+                        server-side, so this is never blank. */}
+                    <td className="muted">
+                      {row.channel === 'webhook' ? 'Webhook' : 'Email'}
+                    </td>
                     <td className="muted">{row.recipients || '—'}</td>
                     <td>
                       <span className={`pill ${STATUS_CLASS[row.status] ?? ''}`}>

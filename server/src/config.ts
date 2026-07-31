@@ -75,6 +75,16 @@ export const config = {
   mediaPackPath: optional('MEDIA_PACK_PATH'),
 
   /**
+   * How this hub is reached from a browser, e.g. `http://hub.lan:3000`.
+   *
+   * Only used to put a working link in a webhook notification. The server
+   * cannot infer it: it binds to 0.0.0.0 and sits behind whatever hostname or
+   * reverse proxy the operator chose. Left null, notifications simply carry no
+   * link, which is better than one that 404s in a Discord channel.
+   */
+  publicBaseUrl: (optional('PUBLIC_BASE_URL') ?? '').replace(/\/+$/, '') || null,
+
+  /**
    * Background poll cadence used only on the very first boot, before any
    * settings row exists. After that it is owned by the admin portal and stored
    * in SQLite, so changing it does not need a redeploy.
@@ -116,6 +126,19 @@ export const config = {
     sessionSecret: str('SESSION_SECRET', randomBytes(32).toString('hex')),
     sessionHours: int('SESSION_HOURS', 12),
   },
+
+  viewer: {
+    /**
+     * How long a dashboard unlocked with the viewer passcode stays unlocked.
+     *
+     * Thirty days by default, against twelve hours for an admin session. The
+     * two protect very different things: an admin session can change settings
+     * and reach a device, while a viewer session shows read-only supply levels
+     * on a LAN. A wall display that demands a PIN every morning gets the PIN
+     * taped next to it, which is strictly worse than a long cookie.
+     */
+    sessionHours: int('VIEWER_SESSION_HOURS', 24 * 30),
+  },
 } as const;
 
 if (config.isProduction && config.admin.password !== '') {
@@ -123,7 +146,7 @@ if (config.isProduction && config.admin.password !== '') {
     throw new Error(
       'SESSION_SECRET must be set in production — without a stable secret every ' +
         'restart invalidates admin sessions. Generate one with: ' +
-        'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+        "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
     );
   }
   if (config.admin.password.length < 8) {

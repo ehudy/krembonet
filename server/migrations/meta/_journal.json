@@ -15,6 +15,13 @@
       "when": 1785511076974,
       "tag": "0001_generic_device_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785529721521,
+      "tag": "0002_access_branding_webhooks",
+      "breakpoints": true
     }
   ]
 }

@@ -9,8 +9,19 @@ import type { FastifyInstance } from 'fastify';
 
 import { activeAlerts, recentAlertLogs } from '../alerts/engine.js';
 import { sendTestEmail } from '../alerts/mailer.js';
+import {
+  dispatchWebhooks,
+  getWebhook,
+  listWebhooks,
+  toTarget,
+} from '../alerts/webhooks.js';
+import {
+  isWebhookFormat,
+  WEBHOOK_FORMAT_LABELS,
+  WEBHOOK_FORMATS,
+} from '../alerts/webhook-format.js';
 import { db } from '../db/client.js';
-import { mediaTypes } from '../db/schema.js';
+import { mediaTypes, webhooks } from '../db/schema.js';
 import {
   clearLoginFailures,
   clearSession,
@@ -22,13 +33,28 @@ import {
   requireAdmin,
   verifyPassword,
 } from '../auth/session.js';
+import {
+  clearViewerPasscode,
+  hasViewerPasscode,
+  isAcceptablePasscode,
+  setViewerPasscode,
+  MIN_PASSCODE_LENGTH,
+} from '../auth/viewer.js';
 import { reschedulePoller } from '../poller/scheduler.js';
+import { sanitizeCustomCss } from '../settings/branding.js';
 import {
   getPublicSettings,
+  getSettings,
   updateSettings,
   type AppSettings,
 } from '../settings/settings.js';
-import { DEFAULT_HUB_TITLE } from '../settings/types.js';
+import {
+  ACCESS_MODES,
+  DEFAULT_HUB_TITLE,
+  isAccessMode,
+  isThemeName,
+  THEMES,
+} from '../settings/types.js';
 import {
   getGlobalThresholds,
   updateGlobalThresholds,
@@ -45,6 +71,9 @@ const THRESHOLD_KEYS = [
 /** Only these are writable from the browser. */
 const EDITABLE_KEYS: (keyof AppSettings)[] = [
   'hubTitle',
+  'accessMode',
+  'theme',
+  'customCss',
   'smtpHost',
   'smtpPort',
   'smtpSecure',
@@ -73,6 +102,176 @@ function parseRecipients(value: unknown): string[] {
 /** Deliberately permissive — enough to catch typos, not to police RFC 5322. */
 function looksLikeEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+// --- webhooks ----------------------------------------------------------
+
+interface WebhookBody {
+  name?: string;
+  format?: string;
+  url?: string;
+  headers?: Record<string, unknown> | string | null;
+  enabled?: boolean;
+}
+
+/**
+ * Custom headers never go back to the browser.
+ *
+ * They routinely hold a bearer token for a private ntfy topic, and the portal
+ * only needs to know that some exist — the same treatment the SMTP password
+ * and device secrets already get.
+ */
+function presentWebhook(row: typeof webhooks.$inferSelect) {
+  const { headers, ...rest } = row;
+  const parsed =
+    headers === null || headers.trim() === '' ? {} : safeParseHeaders(headers);
+
+  return {
+    ...rest,
+    headerKeys: Object.keys(parsed),
+    headersSet: Object.keys(parsed).length > 0,
+  };
+}
+
+function safeParseHeaders(raw: string): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(([, value]) => typeof value === 'string')
+        .map(([key, value]) => [key, value as string]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Validates a webhook URL.
+ *
+ * http is allowed alongside https because a self-hosted ntfy or Mattermost on
+ * the same LAN commonly has no certificate, and refusing it would push
+ * operators toward disabling verification somewhere worse. Everything else —
+ * `file:`, `ftp:`, a bare hostname — is refused, since the only thing this URL
+ * is ever used for is an outbound POST.
+ */
+function parseWebhookUrl(raw: unknown): { url: string } | { error: string } {
+  const value = String(raw ?? '').trim();
+  if (value === '') return { error: 'A webhook URL is required.' };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return { error: 'Webhook URL is not a valid URL.' };
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return { error: 'Webhook URL must start with http:// or https://.' };
+  }
+  return { url: parsed.toString() };
+}
+
+function parseWebhookHeaders(
+  raw: unknown,
+): { headers: string | null } | { error: string } {
+  if (raw === undefined || raw === null || raw === '') return { headers: null };
+
+  const source: unknown =
+    typeof raw === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(raw);
+          } catch {
+            return undefined;
+          }
+        })()
+      : raw;
+
+  if (source === undefined) return { error: 'Custom headers must be valid JSON.' };
+  if (source === null || typeof source !== 'object' || Array.isArray(source)) {
+    return { error: 'Custom headers must be a JSON object of name/value pairs.' };
+  }
+
+  const entries = Object.entries(source as Record<string, unknown>);
+  for (const [key, value] of entries) {
+    if (typeof value !== 'string') {
+      return { error: `Header "${key}" must be a string.` };
+    }
+    // A newline in a header value is request splitting, and no legitimate
+    // header needs one.
+    if (/[\r\n]/.test(key) || /[\r\n]/.test(value)) {
+      return { error: `Header "${key}" may not contain line breaks.` };
+    }
+  }
+
+  if (entries.length === 0) return { headers: null };
+  return { headers: JSON.stringify(Object.fromEntries(entries)) };
+}
+
+type WebhookValues = {
+  name: string;
+  format: string;
+  url: string;
+  headers: string | null;
+  enabled: boolean;
+};
+
+/**
+ * Validates a create or update body.
+ *
+ * On update every field is optional, so a partial patch cannot blank a URL by
+ * omission — but anything present is validated exactly as it is on create. The
+ * overloads carry that distinction into the types: a create always yields every
+ * required column, so the insert does not need a cast to prove it.
+ */
+function parseWebhookBody(
+  body: WebhookBody,
+  options: { isCreate: true },
+): { values: WebhookValues } | { error: string };
+function parseWebhookBody(
+  body: WebhookBody,
+  options: { isCreate: false },
+): { values: Partial<WebhookValues> } | { error: string };
+function parseWebhookBody(
+  body: WebhookBody,
+  options: { isCreate: boolean },
+): { values: Partial<WebhookValues> } | { error: string } {
+  const values: Partial<WebhookValues> = {};
+
+  if (options.isCreate || body.name !== undefined) {
+    const name = String(body.name ?? '').trim();
+    if (name === '') return { error: 'A name is required.' };
+    if (name.length > 60) return { error: 'Name must be 60 characters or fewer.' };
+    values.name = name;
+  }
+
+  if (options.isCreate || body.format !== undefined) {
+    const format = body.format ?? 'generic';
+    if (!isWebhookFormat(format)) {
+      return { error: `Format must be one of: ${WEBHOOK_FORMATS.join(', ')}.` };
+    }
+    values.format = format;
+  }
+
+  if (options.isCreate || body.url !== undefined) {
+    const parsed = parseWebhookUrl(body.url);
+    if ('error' in parsed) return parsed;
+    values.url = parsed.url;
+  }
+
+  if (body.headers !== undefined) {
+    const parsed = parseWebhookHeaders(body.headers);
+    if ('error' in parsed) return parsed;
+    values.headers = parsed.headers;
+  }
+
+  if (options.isCreate || body.enabled !== undefined) {
+    values.enabled = body.enabled !== false;
+  }
+
+  return { values };
 }
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
@@ -137,6 +336,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       const patch: Partial<AppSettings> = {};
       const thresholds: Partial<GlobalThresholds> = {};
       const errors: string[] = [];
+      /** Non-fatal: the CSS still saves, but the operator is told what changed. */
+      const cssWarnings: string[] = [];
 
       for (const key of THRESHOLD_KEYS) {
         if (!(key in body)) continue;
@@ -196,8 +397,33 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
             // Blank would leave the shell and every alert subject unlabelled,
             // so an empty submission restores the default rather than clearing.
             if (title === '') patch.hubTitle = DEFAULT_HUB_TITLE;
-            else if (title.length > 60) errors.push('Hub name must be 60 characters or fewer.');
+            else if (title.length > 60)
+              errors.push('Hub name must be 60 characters or fewer.');
             else patch.hubTitle = title;
+            break;
+          }
+          case 'accessMode': {
+            if (!isAccessMode(value)) {
+              errors.push(`Access mode must be one of: ${ACCESS_MODES.join(', ')}.`);
+            } else {
+              patch.accessMode = value;
+            }
+            break;
+          }
+          case 'theme': {
+            if (!isThemeName(value)) {
+              errors.push(`Theme must be one of: ${THEMES.join(', ')}.`);
+            } else {
+              patch.theme = value;
+            }
+            break;
+          }
+          case 'customCss': {
+            const result = sanitizeCustomCss(String(value ?? ''));
+            patch.customCss = result.css;
+            // Reported back rather than silently applied: an operator whose
+            // @import vanished should be told why their font never loads.
+            cssWarnings.push(...result.warnings);
             break;
           }
           default: {
@@ -206,9 +432,39 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      // --- viewer passcode ---
+      // Not an `AppSettings` key: it is stored hashed, under the same rules as
+      // the admin password, so it cannot ride the generic patch path.
+      const wantsClear = body['clearViewerPasscode'] === true;
+      const rawPasscode = String(body['viewerPasscode'] ?? '');
+      // Blank means "leave it alone", matching how the SMTP password field
+      // behaves — the form never receives the stored value to echo back.
+      const wantsSet = !wantsClear && rawPasscode !== '';
+
+      if (wantsSet && !isAcceptablePasscode(rawPasscode)) {
+        errors.push(
+          `Viewer passcode must be at least ${MIN_PASSCODE_LENGTH} characters.`,
+        );
+      }
+
+      // Turning on passcode mode without a passcode would lock every viewer out
+      // with no way in, so it is refused here rather than discovered by whoever
+      // walks up to the wall display. `decideAccess` fails closed if the state
+      // arises anyway; this stops it arising from the form.
+      const effectiveMode = patch.accessMode ?? getSettings().accessMode;
+      const willHavePasscode = wantsSet || (hasViewerPasscode() && !wantsClear);
+      if (effectiveMode === 'passcode' && !willHavePasscode) {
+        errors.push(
+          'Passcode access needs a viewer passcode. Set one in the same save, or pick another mode.',
+        );
+      }
+
       if (errors.length > 0) {
         return reply.code(400).send({ error: errors.join(' ') });
       }
+
+      if (wantsClear) clearViewerPasscode();
+      else if (wantsSet) await setViewerPasscode(rawPasscode);
 
       updateSettings(patch);
       if (Object.keys(thresholds).length > 0) updateGlobalThresholds(thresholds);
@@ -218,7 +474,11 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         reschedulePoller(app.log);
       }
 
-      return { ...getPublicSettings(), ...getGlobalThresholds() };
+      return {
+        ...getPublicSettings(),
+        ...getGlobalThresholds(),
+        ...(cssWarnings.length > 0 ? { warnings: cssWarnings } : {}),
+      };
     },
   );
 
@@ -244,11 +504,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // --- paper type mapping ----------------------------------------------
 
   app.get('/api/admin/media-types', { preHandler: requireAdmin }, async () => {
-    const rows = db
-      .select()
-      .from(mediaTypes)
-      .orderBy(mediaTypes.code)
-      .all();
+    const rows = db.select().from(mediaTypes).orderBy(mediaTypes.code).all();
 
     return { mediaTypes: rows };
   });
@@ -306,4 +562,100 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .groupBy(sql`status`)
       .all(),
   }));
+
+  // --- webhook destinations --------------------------------------------
+
+  app.get('/api/admin/webhooks', { preHandler: requireAdmin }, async () => ({
+    formats: WEBHOOK_FORMATS.map((id) => ({ id, label: WEBHOOK_FORMAT_LABELS[id] })),
+    webhooks: listWebhooks().map(presentWebhook),
+  }));
+
+  app.post<{ Body: WebhookBody }>(
+    '/api/admin/webhooks',
+    { preHandler: requireAdmin },
+    async (request, reply) => {
+      const parsed = parseWebhookBody(request.body ?? {}, { isCreate: true });
+      if ('error' in parsed) return reply.code(400).send({ error: parsed.error });
+
+      const now = new Date();
+      const created = db
+        .insert(webhooks)
+        .values({ ...parsed.values, createdAt: now, updatedAt: now })
+        .returning()
+        .all()[0];
+
+      return reply
+        .code(201)
+        .send(presentWebhook(created as typeof webhooks.$inferSelect));
+    },
+  );
+
+  app.put<{ Params: { id: string }; Body: WebhookBody }>(
+    '/api/admin/webhooks/:id',
+    { preHandler: requireAdmin },
+    async (request, reply) => {
+      const id = Number.parseInt(request.params.id, 10);
+      if (getWebhook(id) === undefined) {
+        return reply.code(404).send({ error: 'No such webhook.' });
+      }
+
+      const parsed = parseWebhookBody(request.body ?? {}, { isCreate: false });
+      if ('error' in parsed) return reply.code(400).send({ error: parsed.error });
+
+      db.update(webhooks)
+        .set({ ...parsed.values, updatedAt: new Date() })
+        .where(eq(webhooks.id, id))
+        .run();
+
+      return presentWebhook(getWebhook(id) as typeof webhooks.$inferSelect);
+    },
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    '/api/admin/webhooks/:id',
+    { preHandler: requireAdmin },
+    async (request) => {
+      db.delete(webhooks)
+        .where(eq(webhooks.id, Number.parseInt(request.params.id, 10)))
+        .run();
+      return { ok: true };
+    },
+  );
+
+  /**
+   * Posts a sample notification to one destination.
+   *
+   * Deliberately sends against the *stored* row rather than whatever is in the
+   * form, so a green test means the thing that will actually fire at 2am works
+   * — not an unsaved URL that has never been persisted.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/api/admin/webhooks/:id/test',
+    { preHandler: requireAdmin },
+    async (request, reply) => {
+      const row = getWebhook(Number.parseInt(request.params.id, 10));
+      if (row === undefined) return reply.code(404).send({ error: 'No such webhook.' });
+
+      const { hubTitle } = getSettings();
+      const [result] = await dispatchWebhooks(
+        {
+          event: 'test',
+          hubTitle,
+          subject: `${hubTitle} — webhook test`,
+          text: `This is a test notification from ${hubTitle}. If you can read it, supply alerts will arrive here.`,
+          deviceName: 'Test',
+          deviceHost: 'n/a',
+          lines: [],
+        },
+        [toTarget(row)],
+      );
+
+      if (result === undefined || !result.ok) {
+        return reply
+          .code(502)
+          .send({ ok: false, error: result?.error ?? 'Delivery failed.' });
+      }
+      return { ok: true, status: result.status };
+    },
+  );
 }

@@ -6,12 +6,14 @@ import { sql } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 
+import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { alertLogs, alertState } from '../db/schema.js';
 import type { DeviceView } from '../poller/cache.js';
 import type { DeviceRow } from '../poller/pollDevice.js';
 import { getSettings, isSmtpConfigured } from '../settings/settings.js';
 import { sendMail } from './mailer.js';
+import { dispatchWebhooks, listEnabledTargets } from './webhooks.js';
 import {
   buildAlertMail,
   decideTransitions,
@@ -19,6 +21,19 @@ import {
   type SupplyCondition,
 } from './rules.js';
 import { listAlertRules } from './store.js';
+
+/**
+ * A clickable link back to the device, when the hub knows its own address.
+ *
+ * Null unless `PUBLIC_BASE_URL` is set. A relative path is worse than no link
+ * at all in a Discord embed or an ntfy push, where there is no page for it to
+ * be relative to.
+ */
+function deviceUrl(slug: string): string | null {
+  const base = config.publicBaseUrl;
+  if (base === null) return null;
+  return `${base}/devices/${encodeURIComponent(slug)}`;
+}
 
 function readActiveRuleKeys(): Set<string> {
   const rows = db
@@ -73,6 +88,7 @@ function logAlert(
   subject: string,
   recipients: string[],
   status: 'sent' | 'failed' | 'skipped',
+  channel: 'email' | 'webhook',
   error?: string,
 ): void {
   db.insert(alertLogs)
@@ -80,6 +96,7 @@ function logAlert(
       ruleKey,
       deviceId,
       subject,
+      channel,
       recipients: recipients.join(', '),
       status,
       error: error ?? null,
@@ -123,11 +140,15 @@ export async function evaluateAlerts(
 
   if (toNotify.length === 0) return;
 
-  const { subject, text } = buildAlertMail(device, toNotify, settings.hubTitle);
+  const { subject, text, lines } = buildAlertMail(device, toNotify, settings.hubTitle);
 
-  // Record the breach even when mail cannot go out, otherwise a misconfigured
-  // SMTP server would turn every poll into a fresh notification attempt.
-  if (!isSmtpConfigured(settings)) {
+  const smtpReady = isSmtpConfigured(settings);
+  const targets = listEnabledTargets();
+  const names = toNotify.map((condition) => condition.supply.name);
+
+  // Record the breach even when nothing can carry it, otherwise a hub with no
+  // destination configured would retry — and re-log — on every single poll.
+  if (!smtpReady && targets.length === 0) {
     for (const condition of toNotify) {
       markActive(condition, false);
       logAlert(
@@ -136,40 +157,90 @@ export async function evaluateAlerts(
         subject,
         [],
         'skipped',
-        'SMTP not configured',
+        'email',
+        'No destination configured (no SMTP, no webhooks)',
       );
     }
     log.warn(
-      { supplies: toNotify.map((condition) => condition.supply.name) },
-      'supply threshold crossed but SMTP is not configured',
+      { supplies: names },
+      'supply threshold crossed but no destination is configured',
     );
     return;
   }
 
-  const result = await sendMail({ subject, text }, settings);
+  // Both channels go out together. Mail waiting on a webhook to a receiver that
+  // has gone away — or the reverse — would make one broken destination delay
+  // every other one.
+  const [mail, deliveries] = await Promise.all([
+    smtpReady ? sendMail({ subject, text }, settings) : null,
+    targets.length > 0
+      ? dispatchWebhooks(
+          {
+            event: 'alert',
+            hubTitle: settings.hubTitle,
+            subject,
+            text,
+            deviceName: device.displayName,
+            deviceHost: device.host,
+            lines,
+            url: deviceUrl(device.slug),
+          },
+          targets,
+        )
+      : Promise.resolve([]),
+  ]);
+
+  // "Notified" means at least one channel took it. Requiring all of them would
+  // let a single dead webhook re-arm the alert and mail about it every hour.
+  const delivered = (mail?.ok ?? false) || deliveries.some((result) => result.ok);
 
   for (const condition of toNotify) {
-    markActive(condition, result.ok);
-    logAlert(
-      condition.ruleKey,
-      device.id,
-      subject,
-      result.recipients,
-      result.ok ? 'sent' : 'failed',
-      result.error,
-    );
+    markActive(condition, delivered);
+
+    if (mail !== null) {
+      logAlert(
+        condition.ruleKey,
+        device.id,
+        subject,
+        mail.recipients,
+        mail.ok ? 'sent' : 'failed',
+        'email',
+        mail.error,
+      );
+    }
+
+    for (const result of deliveries) {
+      logAlert(
+        condition.ruleKey,
+        device.id,
+        subject,
+        [result.target.name],
+        result.ok ? 'sent' : 'failed',
+        'webhook',
+        result.error,
+      );
+    }
   }
 
-  if (result.ok) {
+  const failures = [
+    ...(mail !== null && !mail.ok ? [`email: ${mail.error ?? 'unknown error'}`] : []),
+    ...deliveries
+      .filter((result) => !result.ok)
+      .map((result) => `${result.target.name}: ${result.error ?? 'unknown error'}`),
+  ];
+
+  if (delivered) {
     log.info(
       {
-        supplies: toNotify.map((condition) => condition.supply.name),
-        recipients: result.recipients.length,
+        supplies: names,
+        recipients: mail?.ok === true ? mail.recipients.length : 0,
+        webhooks: deliveries.filter((result) => result.ok).length,
+        ...(failures.length > 0 ? { failures } : {}),
       },
       'supply alert sent',
     );
   } else {
-    log.error({ error: result.error }, 'supply alert failed to send');
+    log.error({ supplies: names, failures }, 'supply alert failed on every destination');
   }
 }
 

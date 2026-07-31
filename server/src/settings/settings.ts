@@ -8,10 +8,12 @@ import { eq, inArray } from 'drizzle-orm';
 
 import { db } from '../db/client.js';
 import { settings } from '../db/schema.js';
+import { hasViewerPasscode } from '../auth/viewer.js';
 import {
   DEFAULT_SETTINGS,
   SECRET_KEYS,
   SETTING_KEYS,
+  UNION_GUARDS,
   type AppSettings,
   type PublicSettings,
 } from './types.js';
@@ -38,6 +40,12 @@ function parseValue<K extends keyof AppSettings>(
       .map((entry) => entry.trim())
       .filter((entry) => entry !== '') as AppSettings[K];
   }
+
+  // Union-typed keys carry no shape to coerce against, so they are checked
+  // against their allowed values instead of trusted.
+  const guard = UNION_GUARDS[key];
+  if (guard !== undefined && !guard(raw)) return fallback;
+
   return raw as AppSettings[K];
 }
 
@@ -101,7 +109,11 @@ export function updateSettings(patch: Partial<AppSettings>): void {
 
 export function getPublicSettings(): PublicSettings {
   const { smtpPassword, ...rest } = getSettings();
-  return { ...rest, smtpPasswordSet: smtpPassword !== '' };
+  return {
+    ...rest,
+    smtpPasswordSet: smtpPassword !== '',
+    viewerPasscodeSet: hasViewerPasscode(),
+  };
 }
 
 export function isSmtpConfigured(current: AppSettings = getSettings()): boolean {

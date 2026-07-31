@@ -6,19 +6,36 @@
  * way the form can be saved repeatedly without anyone having to retype a
  * credential they may not have.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { api } from '../../api.js';
 import type { AdminSettings as Settings } from '../../types.js';
 
-type Draft = Omit<Settings, 'smtpPasswordSet' | 'alertRecipients'> & {
+type Draft = Omit<
+  Settings,
+  'smtpPasswordSet' | 'viewerPasscodeSet' | 'alertRecipients' | 'warnings'
+> & {
   alertRecipients: string;
   smtpPassword: string;
+  /** Blank means "leave the stored passcode alone", as with the SMTP password. */
+  viewerPasscode: string;
 };
 
 function toDraft(settings: Settings): Draft {
-  const { smtpPasswordSet: _ignored, alertRecipients, ...rest } = settings;
-  return { ...rest, alertRecipients: alertRecipients.join(', '), smtpPassword: '' };
+  const {
+    smtpPasswordSet: _password,
+    viewerPasscodeSet: _passcode,
+    warnings: _warnings,
+    alertRecipients,
+    ...rest
+  } = settings;
+
+  return {
+    ...rest,
+    alertRecipients: alertRecipients.join(', '),
+    smtpPassword: '',
+    viewerPasscode: '',
+  };
 }
 
 interface Feedback {
@@ -26,24 +43,67 @@ interface Feedback {
   message: string;
 }
 
+const ACCESS_MODES: { value: Settings['accessMode']; label: string; hint: string }[] = [
+  {
+    value: 'public',
+    label: 'Public',
+    hint: 'Anyone who can reach the hub on the network sees device status.',
+  },
+  {
+    value: 'passcode',
+    label: 'Passcode',
+    hint: 'Viewers enter a shared passcode once per browser.',
+  },
+  {
+    value: 'admin_only',
+    label: 'Admins only',
+    hint: 'Only a signed-in administrator sees anything.',
+  },
+];
+
+const THEMES: { value: Settings['theme']; label: string; hint: string }[] = [
+  { value: 'system', label: 'System', hint: 'Follows the browser’s light/dark setting.' },
+  { value: 'light', label: 'Light', hint: 'Always light.' },
+  { value: 'dark', label: 'Dark', hint: 'Always dark.' },
+  {
+    value: 'kiosk',
+    label: 'Kiosk',
+    hint: 'Dark, larger text, no sidebar — for a wall display.',
+  },
+];
+
 export function AdminSettings() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [passwordSet, setPasswordSet] = useState(false);
+  const [passcodeSet, setPasscodeSet] = useState(false);
+  /** Ticked to clear the stored passcode; blank alone means "unchanged". */
+  const [clearPasscode, setClearPasscode] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveFeedback, setSaveFeedback] = useState<Feedback | null>(null);
+  const [cssWarnings, setCssWarnings] = useState<string[]>([]);
   const [testFeedback, setTestFeedback] = useState<Feedback | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+
+  /** Theme and CSS as the page is currently wearing them; see `save`. */
+  const appliedBranding = useRef<{ theme: Settings['theme']; customCss: string } | null>(
+    null,
+  );
+
+  function absorb(settings: Settings): void {
+    appliedBranding.current ??= { theme: settings.theme, customCss: settings.customCss };
+    setDraft(toDraft(settings));
+    setPasswordSet(settings.smtpPasswordSet);
+    setPasscodeSet(settings.viewerPasscodeSet);
+    setClearPasscode(false);
+  }
 
   useEffect(() => {
     const controller = new AbortController();
 
     api
       .getSettings(controller.signal)
-      .then((settings) => {
-        setDraft(toDraft(settings));
-        setPasswordSet(settings.smtpPasswordSet);
-      })
+      .then(absorb)
       .catch((cause: unknown) => {
         if (cause instanceof DOMException && cause.name === 'AbortError') return;
         setLoadError(cause instanceof Error ? cause.message : String(cause));
@@ -62,12 +122,29 @@ export function AdminSettings() {
 
     setIsSaving(true);
     setSaveFeedback(null);
+    setCssWarnings([]);
 
     try {
-      const saved = await api.saveSettings({ ...draft });
-      setDraft(toDraft(saved));
-      setPasswordSet(saved.smtpPasswordSet);
+      const saved = await api.saveSettings({
+        ...draft,
+        clearViewerPasscode: clearPasscode,
+      });
+      absorb(saved);
+      setCssWarnings(saved.warnings ?? []);
       setSaveFeedback({ kind: 'ok', message: 'Settings saved.' });
+
+      // Branding is applied from /api/hub, which the shell fetches once on
+      // load, so the page is still wearing whatever was in effect when it
+      // opened. Compared against that — not against the draft, which by
+      // definition already matches what was just saved.
+      const applied = appliedBranding.current;
+      if (applied !== null) {
+        if (applied.theme !== saved.theme || applied.customCss !== saved.customCss) {
+          // A change made a handful of times in a hub's lifetime does not
+          // justify an invalidation path through the shell.
+          window.location.reload();
+        }
+      }
     } catch (cause) {
       setSaveFeedback({
         kind: 'error',
@@ -119,6 +196,115 @@ export function AdminSettings() {
             </small>
           </label>
         </div>
+      </section>
+
+      <section className="card">
+        <h2 className="card-title">Dashboard access</h2>
+
+        <div className="radio-set">
+          {ACCESS_MODES.map((mode) => (
+            <label key={mode.value} className="field-check">
+              <input
+                type="radio"
+                name="accessMode"
+                checked={draft.accessMode === mode.value}
+                onChange={() => update('accessMode', mode.value)}
+              />
+              <span>
+                {mode.label}
+                <small>{mode.hint}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <div className="field-grid">
+          <label className="field">
+            <span>Viewer passcode</span>
+            <input
+              type="password"
+              value={draft.viewerPasscode}
+              autoComplete="new-password"
+              disabled={clearPasscode}
+              placeholder={passcodeSet ? '•••••••• (unchanged)' : 'Not set'}
+              onChange={(event) => update('viewerPasscode', event.target.value)}
+            />
+            <small className="field-hint">
+              {passcodeSet
+                ? 'Leave blank to keep the stored passcode.'
+                : 'Shared with viewers. Not the admin password — it grants read access only.'}
+            </small>
+          </label>
+
+          {passcodeSet && (
+            <label className="field field-check">
+              <input
+                type="checkbox"
+                checked={clearPasscode}
+                onChange={(event) => setClearPasscode(event.target.checked)}
+              />
+              <span>
+                Remove the stored passcode
+                <small>Only available while access is public or admins-only.</small>
+              </span>
+            </label>
+          )}
+        </div>
+
+        <p className="field-hint">
+          The admin portal is always reachable at <code>/admin</code>, whatever this is
+          set to — otherwise an admins-only hub could lock out the person who set it.
+        </p>
+      </section>
+
+      <section className="card">
+        <h2 className="card-title">Appearance</h2>
+
+        <div className="radio-set">
+          {THEMES.map((theme) => (
+            <label key={theme.value} className="field-check">
+              <input
+                type="radio"
+                name="theme"
+                checked={draft.theme === theme.value}
+                onChange={() => update('theme', theme.value)}
+              />
+              <span>
+                {theme.label}
+                <small>{theme.hint}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <label className="field field-wide">
+          <span>Custom CSS</span>
+          <textarea
+            className="code-area"
+            rows={10}
+            spellCheck={false}
+            value={draft.customCss}
+            placeholder={':root { --accent: #7c3aed; }'}
+            onChange={(event) => update('customCss', event.target.value)}
+          />
+          <small className="field-hint">
+            Appended after the built-in stylesheet, so these rules win. The palette is
+            driven by custom properties on <code>:root</code> — override those rather than
+            restyling each component. <code>@import</code> and remote <code>url()</code>{' '}
+            are stripped: this hub does not fetch anything off the local network.
+          </small>
+        </label>
+
+        {cssWarnings.length > 0 && (
+          <div className="banner is-warning">
+            <strong>Your CSS was adjusted on save.</strong>
+            <ul className="plain-list">
+              {cssWarnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <section className="card">
@@ -219,7 +405,9 @@ export function AdminSettings() {
           </button>
           {testFeedback !== null && (
             <span
-              className={testFeedback.kind === 'ok' ? 'feedback is-ok' : 'feedback is-error'}
+              className={
+                testFeedback.kind === 'ok' ? 'feedback is-ok' : 'feedback is-error'
+              }
             >
               {testFeedback.message}
             </span>
@@ -271,7 +459,9 @@ export function AdminSettings() {
               min={0}
               max={50}
               value={draft.hysteresisPercent}
-              onChange={(event) => update('hysteresisPercent', Number(event.target.value))}
+              onChange={(event) =>
+                update('hysteresisPercent', Number(event.target.value))
+              }
             />
             <small className="field-hint">
               How far past the threshold a supply must recover before the alert clears
@@ -314,7 +504,9 @@ export function AdminSettings() {
         </button>
         {saveFeedback !== null && (
           <span
-            className={saveFeedback.kind === 'ok' ? 'feedback is-ok' : 'feedback is-error'}
+            className={
+              saveFeedback.kind === 'ok' ? 'feedback is-ok' : 'feedback is-error'
+            }
           >
             {saveFeedback.message}
           </span>

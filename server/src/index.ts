@@ -10,6 +10,7 @@ import { seedCredentialFromEnv } from './auth/credentials.js';
 import { registerBuiltinAdapters } from './devices/adapters/index.js';
 import { loggerOptions } from './lib/logger.js';
 import { startPoller, stopPoller } from './poller/scheduler.js';
+import { accessRoutes } from './routes/access.js';
 import { adminRoutes } from './routes/admin.js';
 import { deviceAdminRoutes } from './routes/devices.js';
 import { setupRoutes } from './routes/setup.js';
@@ -42,6 +43,7 @@ if (credential.action === 'seeded') {
 
 await registerAuth(app);
 await app.register(healthRoutes);
+await app.register(accessRoutes);
 await app.register(statusRoutes);
 await app.register(adminRoutes);
 await app.register(deviceAdminRoutes);

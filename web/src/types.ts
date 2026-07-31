@@ -19,12 +19,7 @@ export type JobState =
   | 'unknown';
 
 export type SupplyUnit =
-  | 'percent'
-  | 'impressions'
-  | 'sheets'
-  | 'millilitres'
-  | 'hours'
-  | 'other';
+  'percent' | 'impressions' | 'sheets' | 'millilitres' | 'hours' | 'other';
 
 /**
  * How much of a supply is left.
@@ -138,8 +133,34 @@ export interface DeviceListResponse {
   devices: DeviceSummary[];
 }
 
+export type AccessMode = 'public' | 'passcode' | 'admin_only';
+
+export type ThemeName = 'system' | 'dark' | 'light' | 'kiosk';
+
+/** Chrome the shell needs before anything else, from the open `/api/hub`. */
+export interface HubBranding {
+  title: string;
+  theme: ThemeName;
+  customCss: string;
+}
+
+/** Whether this browser may read the dashboard, and what to do if not. */
+export interface AccessStatus {
+  mode: AccessMode;
+  allowed: boolean;
+  reason: 'passcode-required' | 'admin-required' | null;
+  passcodeSet: boolean;
+  isAdmin: boolean;
+  isViewer: boolean;
+}
+
 export interface AdminSettings {
   hubTitle: string;
+  accessMode: AccessMode;
+  /** The passcode itself is never sent to the browser. */
+  viewerPasscodeSet: boolean;
+  theme: ThemeName;
+  customCss: string;
   smtpHost: string;
   smtpPort: number;
   smtpSecure: boolean;
@@ -153,6 +174,26 @@ export interface AdminSettings {
   hysteresisPercent: number;
   backgroundPollMinutes: number;
   alertsEnabled: boolean;
+  /** Present when saving changed the submitted CSS, e.g. an @import was stripped. */
+  warnings?: string[];
+}
+
+export type WebhookFormat = 'discord' | 'slack' | 'ntfy' | 'generic';
+
+export interface Webhook {
+  id: number;
+  name: string;
+  format: WebhookFormat;
+  url: string;
+  enabled: boolean;
+  /** Header names only — values may be tokens and never leave the server. */
+  headerKeys: string[];
+  headersSet: boolean;
+  lastStatus: string | null;
+  lastError: string | null;
+  lastAttemptAt: string | number | null;
+  createdAt: string | number;
+  updatedAt: string | number;
 }
 
 export interface MediaType {
@@ -176,6 +217,9 @@ export interface AlertLogRow {
   id: number;
   ruleKey: string;
   subject: string;
+  /** `email` or `webhook`. */
+  channel: string;
+  /** Addresses for email; the destination's name for a webhook. */
   recipients: string;
   status: string;
   error: string | null;

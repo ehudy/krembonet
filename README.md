@@ -6,10 +6,10 @@ a cloud service can't reach, and serves their telemetry over plain HTTP.
 Today that means **printers** — supply levels, loaded media, and (over IPP) the live
 print queue — with email alerts when a supply crosses a threshold. Two adapters ship:
 
-| Adapter | Speaks | Reports | Good for |
-| --- | --- | --- | --- |
-| `ipp` | IPP via `ipptool` | supplies, media, **print queue** | Anything IPP, including large-format plotters |
-| `snmp` | SNMP v1/v2c/v3, RFC 3805 Printer MIB | supplies, media | HP, Xerox, Brother, Lexmark, Ricoh, Kyocera, Sharp |
+| Adapter | Speaks                               | Reports                          | Good for                                           |
+| ------- | ------------------------------------ | -------------------------------- | -------------------------------------------------- |
+| `ipp`   | IPP via `ipptool`                    | supplies, media, **print queue** | Anything IPP, including large-format plotters      |
+| `snmp`  | SNMP v1/v2c/v3, RFC 3805 Printer MIB | supplies, media                  | HP, Xerox, Brother, Lexmark, Ricoh, Kyocera, Sharp |
 
 Runs as a single container with a SQLite file next to it. No cloud account, no agent on
 the device, nothing leaves your network.
@@ -21,15 +21,16 @@ the device, nothing leaves your network.
 
 ## Pages
 
-| Route | What it is |
-| --- | --- |
-| `/setup` | First-run wizard — shown only until an admin password exists |
-| `/` | Overview — status cards for every monitored device, plus hub health |
-| `/devices/:slug` | Device detail — supplies, media, live print queue |
-| `/admin` | Settings: hub name, SMTP, alert thresholds, poll cadence |
-| `/admin/devices` | Add, edit and remove devices; test a connection before saving |
-| `/admin/paper-types` | Media code → friendly name mapping |
-| `/admin/alerts` | Alert history and what is currently alerting |
+| Route                    | What it is                                                                  |
+| ------------------------ | --------------------------------------------------------------------------- |
+| `/setup`                 | First-run wizard — shown only until an admin password exists                |
+| `/`                      | Overview — status cards for every monitored device, plus hub health         |
+| `/devices/:slug`         | Device detail — supplies, media, live print queue                           |
+| `/admin`                 | Settings: hub name, dashboard access, appearance, SMTP, thresholds, cadence |
+| `/admin/devices`         | Add, edit and remove devices; test a connection before saving               |
+| `/admin/paper-types`     | Media code → friendly name mapping                                          |
+| `/admin/alerts`          | Alert history and what is currently alerting                                |
+| `/admin/alerts/webhooks` | Webhook destinations — Discord, Slack, ntfy, generic JSON                   |
 
 ## Architecture
 
@@ -52,7 +53,7 @@ node-cron ──> adapter registry ──> ipp  ──> ipptool -X ──> norma
 
 An adapter owns one way of talking to hardware. Everything above it — the poller, the
 API, the UI — is written against a protocol-free interface and knows only what a device
-*reports*, never how.
+_reports_, never how.
 
 Capabilities are **declared, not discovered**. An adapter states what it can report and a
 probe narrows that to what a particular device actually does, so the UI can tell an empty
@@ -90,10 +91,10 @@ browser being open; and the last snapshot survives a restart.
 Supplies and the print queue change at completely different rates, so they are polled
 separately:
 
-| Data | Cadence | Why |
-| --- | --- | --- |
+| Data                      | Cadence                               | Why                                                                                    |
+| ------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------- |
 | Ink, paper, printer state | Hourly background cron (configurable) | Moves over days. This pass also evaluates alerts, so it must run with no browser open. |
-| Print queue | On demand, 15s TTL | Only useful live. An open dashboard polls it every 60s. |
+| Print queue               | On demand, 15s TTL                    | Only useful live. An open dashboard polls it every 60s.                                |
 
 Requests never hit the device directly. The status route refreshes whatever has aged
 past its TTL and then serves cache, so a page load shows live data while a burst of
@@ -134,6 +135,24 @@ shouting when it was fresh. See `docs/canon-tz32000-field-notes.md` §4.
 
 Everything that crosses in the same cycle is batched into one message.
 
+#### Destinations
+
+Alerts go to email and to any configured **webhooks**, together. Four payload
+formats ship: Discord, Slack (which Mattermost also accepts), ntfy.sh, and a
+generic JSON POST. The format is a per-destination setting rather than something
+sniffed from the URL, so a self-hosted receiver on an unrecognisable hostname can
+still be told to speak Slack.
+
+Destinations are independent. A revoked Discord webhook does not stop the mail,
+does not stop the other webhooks, and does not stop the poll — every failure is
+recorded against its own row and shown in the portal. An alert counts as
+delivered if _any_ destination took it, so one dead receiver cannot re-arm the
+alert and make it fire every hour.
+
+Configure them under **Admin → Alerts → Webhooks**, where each has a Test button.
+The test posts to the _saved_ row, not to the form, so a green result means the
+destination that will actually fire at 2am works.
+
 ## Requirements
 
 - Node 22+
@@ -170,23 +189,29 @@ npm run dev
 Vite serves the UI on `http://localhost:5173` and proxies `/api` to Fastify on `:3000`.
 In production Fastify serves the built SPA itself, so there is no CORS surface.
 
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Both servers with hot reload |
-| `npm run build` | Build SPA into `server/public/`, then compile the server |
-| `npm test` | Unit tests (run offline against captured fixtures) |
-| `npm run typecheck` | Typecheck both workspaces |
-| `npm run lint` | ESLint |
-| `npm run probe --workspace=@krembonet/server -- <ipp-uri>` | Query a live printer through the real IPP stack |
+| Command                                                    | Purpose                                                  |
+| ---------------------------------------------------------- | -------------------------------------------------------- |
+| `npm run dev`                                              | Both servers with hot reload                             |
+| `npm run build`                                            | Build SPA into `server/public/`, then compile the server |
+| `npm test`                                                 | Unit tests (run offline against captured fixtures)       |
+| `npm run typecheck`                                        | Typecheck both workspaces                                |
+| `npm run lint`                                             | ESLint                                                   |
+| `npm run probe --workspace=@krembonet/server -- <ipp-uri>` | Query a live printer through the real IPP stack          |
 
 ## API
 
-| Route | Returns |
-| --- | --- |
-| `GET /api/health` | Liveness, used by the Docker healthcheck |
-| `GET /api/hub` | The operator-configured hub name |
-| `GET /api/devices` | Registered devices, their online state and capabilities |
-| `GET /api/printers/:slug/status` | Full cached snapshot — supplies, media, jobs |
+| Route                            | Returns                                                          |
+| -------------------------------- | ---------------------------------------------------------------- |
+| `GET /api/health`                | Liveness, used by the Docker healthcheck                         |
+| `GET /api/hub`                   | Hub name, theme, and custom CSS — the chrome the SPA needs first |
+| `GET /api/access`                | Whether this browser may read the dashboard, and why not         |
+| `POST /api/access/unlock`        | Exchanges the viewer passcode for a viewer cookie                |
+| `GET /api/devices`               | Registered devices, their online state and capabilities          |
+| `GET /api/printers/:slug/status` | Full cached snapshot — supplies, media, jobs                     |
+
+The device endpoints are subject to the access mode below; `/api/health`,
+`/api/hub`, and `/api/access` stay open, since the shell has to render its own
+name and theme behind a passcode prompt.
 
 A device seeded from the environment gets the slug `plotter`. `GET /api/printers`
 and `/printers/:slug` are kept as aliases so older links keep resolving.
@@ -221,6 +246,46 @@ a random one would log every admin out on each restart:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
+
+### Dashboard access
+
+Who may see device status is a setting, not a deployment concern:
+
+| Mode         | Who gets in                                                                               |
+| ------------ | ----------------------------------------------------------------------------------------- |
+| `public`     | Anyone who can reach the hub. The default, and how every hub behaved before this existed. |
+| `passcode`   | Viewers enter a shared passcode once per browser.                                         |
+| `admin_only` | Only a signed-in admin.                                                                   |
+
+The viewer passcode is **not** the admin password. It is stored as its own
+scrypt hash, throttled on its own per-IP counter, and grants read access and
+nothing else — a viewer who knows it cannot reach `/api/admin/*`, probe a
+device, or change a setting.
+
+Two deliberate refusals:
+
+- Switching to `passcode` without setting a passcode is rejected at the form.
+  If that state arises anyway, the server falls back to admin-only rather than
+  to open — a half-configured gate must not publish the dashboard at the moment
+  you meant to restrict it.
+- `/admin` stays reachable in every mode. Gating it would make `admin_only`
+  unrecoverable, since the only way back in is the sign-in page the gate would
+  be covering.
+
+### Appearance
+
+`system`, `light`, `dark`, or `kiosk` — the last being dark with larger text and
+no navigation chrome, for a display bolted to a wall. Custom CSS is appended
+after the built-in stylesheet, so operator rules win without `!important`. The
+palette is driven by custom properties on `:root`; override those rather than
+restyling each component.
+
+Saved CSS is sanitised, and the portal reports what it changed. A literal
+`</style>` is escaped (it would end the element and turn the rest into markup —
+an injection reachable by viewers who are explicitly not trusted with the
+portal), and `@import` and remote `url()` are stripped, since this hub does not
+fetch anything off the local network. `data:` URIs are kept, which is how an
+inlined logo arrives.
 
 ### Adding devices
 
@@ -359,8 +424,10 @@ docker compose --profile monitoring up -d
 
 - **Now** — first-run setup, device management in the browser with an on-demand probe,
   and two adapters: IPP (supplies, media, queue) and generic SNMP over RFC 3805 (supplies,
-  media). Device-generic data model, capability-driven UI, email alerts, hashed admin
-  credentials. Nothing needs to be configured by hand to get running.
+  media). Device-generic data model, capability-driven UI, hashed admin credentials.
+  Alerts to email and to Discord/Slack/ntfy/generic webhooks. Dashboard access modes
+  (public, shared passcode, admins only), themes including a kiosk mode, and custom CSS.
+  Nothing needs to be configured by hand to get running.
 - **Next** — non-printer adapters (ping, HTTP, UPS), per-device alert rules in the UI
   (the schema already supports them), and encrypting device credentials at rest.
 - **Later** — dropping the `ipptool` binary dependency in favour of a pure-JS IPP client

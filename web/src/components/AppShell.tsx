@@ -7,10 +7,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { api } from '../api.js';
+import { DEFAULT_HUB_TITLE } from '../hooks/useBranding.js';
 import { Link, matchPath, useRouter } from '../router.js';
 import type { DeviceSummary } from '../types.js';
-
-const DEFAULT_HUB_TITLE = 'KremboNet';
 
 interface NavItem {
   to: string;
@@ -21,7 +20,12 @@ interface NavItem {
 }
 
 const OVERVIEW: NavItem = { to: '/', label: 'Overview', icon: '🏠' };
-const ADMIN: NavItem = { to: '/admin', label: 'Admin', icon: '⚙️', match: ['/admin/:page'] };
+const ADMIN: NavItem = {
+  to: '/admin',
+  label: 'Admin',
+  icon: '⚙️',
+  match: ['/admin/:page'],
+};
 
 /**
  * Builds the sidebar from the devices the hub actually has.
@@ -63,34 +67,24 @@ function initials(title: string): string {
   return title.slice(0, 2).toUpperCase();
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+interface AppShellProps {
+  children: ReactNode;
+  /**
+   * The operator-owned hub name. Passed in rather than fetched here: App
+   * already loads it as part of branding, and a second `/api/hub` request would
+   * let the sidebar and the document title disagree for a frame.
+   */
+  title?: string;
+}
+
+export function AppShell({ children, title = DEFAULT_HUB_TITLE }: AppShellProps) {
   const { path } = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-  const [title, setTitle] = useState(DEFAULT_HUB_TITLE);
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
 
   // Close the drawer whenever navigation happens, otherwise it stays over the
   // page you just navigated to on mobile.
   useEffect(() => setIsOpen(false), [path]);
-
-  // The operator owns the hub name, so it is fetched rather than compiled in.
-  // A failed fetch keeps the default — a missing name should not blank the shell.
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .getHub()
-      .then((hub) => {
-        if (!cancelled && hub.title !== '') setTitle(hub.title);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    document.title = title;
-  }, [title]);
 
   // Reloaded on navigation so a device added in the admin portal appears in the
   // sidebar without a full page refresh.
