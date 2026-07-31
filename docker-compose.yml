@@ -1,0 +1,55 @@
+services:
+  hub:
+    build: .
+    image: krembonet:latest
+    container_name: krembonet
+    restart: unless-stopped
+    ports:
+      - '8080:3000'
+    volumes:
+      # SQLite lives here so settings and history survive a rebuild.
+      - ./data:/app/data
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Set this to your own zone. Left at UTC the poller's cron runs in UTC,
+      # which matters as soon as alerts are tied to a time of day.
+      TZ: ${TZ:-UTC}
+      DATABASE_PATH: /app/data/krembonet.db
+      # No default: an unset device means an empty dashboard, not a poll against
+      # somebody else's address. Set both or neither.
+      PLOTTER_HOST: ${PLOTTER_HOST:-}
+      PLOTTER_IPP_URI: ${PLOTTER_IPP_URI:-}
+      PLOTTER_NAME: ${PLOTTER_NAME:-}
+      MEDIA_PACK_PATH: ${MEDIA_PACK_PATH:-}
+      BACKGROUND_POLL_MINUTES: ${BACKGROUND_POLL_MINUTES:-60}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Optional uptime monitoring alongside the hub. Opt in with:
+  #   docker compose --profile monitoring up -d
+  # Kept behind a profile so the default deployment stays a single service.
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: krembonet-uptime-kuma
+    restart: unless-stopped
+    profiles: ['monitoring']
+    ports:
+      - '3001:3001'
+    volumes:
+      - uptime-kuma-data:/app/data
+
+volumes:
+  uptime-kuma-data:
