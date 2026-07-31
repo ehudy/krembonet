@@ -186,3 +186,82 @@ export interface SessionInfo {
   enabled: boolean;
   authenticated: boolean;
 }
+
+// --- setup and device administration --------------------------------------
+
+export interface SetupStatus {
+  required: boolean;
+}
+
+export interface ConfigField {
+  key: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean' | 'select';
+  required?: boolean;
+  /** Never sent to the browser; the form shows a "stored" hint instead. */
+  secret?: boolean;
+  default?: string | number | boolean;
+  options?: { value: string; label: string }[];
+  help?: string;
+  /** Shown only when another field holds one of these values. */
+  visibleWhen?: { key: string; values: string[] };
+}
+
+export interface AdapterInfo {
+  id: string;
+  label: string;
+  capabilities: string[];
+  configSchema: ConfigField[];
+}
+
+export interface AdminDevice {
+  id: number;
+  slug: string;
+  displayName: string;
+  location: string | null;
+  adapter: string;
+  /** False when the stored adapter id is no longer registered. */
+  adapterKnown: boolean;
+  host: string;
+  enabled: boolean;
+  vendor: string | null;
+  model: string | null;
+  serial: string | null;
+  capabilities: string[] | null;
+  config: Record<string, unknown>;
+  /** Secret config keys that currently hold a value. */
+  secretsSet: string[];
+}
+
+export interface DeviceIdentity {
+  vendor: string | null;
+  makeAndModel: string | null;
+  serial: string | null;
+  firmware: string | null;
+}
+
+export interface ProbeReading {
+  identity: DeviceIdentity;
+  state: DeviceState;
+  stateReasons: string[];
+  supplies?: Supply[];
+  media?: MediaSource[];
+  jobs?: Job[];
+}
+
+export interface ProbeOutcome {
+  reachable: boolean;
+  confidence: number;
+  identity: DeviceIdentity;
+  capabilities: string[];
+  sample?: ProbeReading;
+  /** Human-readable caveats: what responded, and what it declined to say. */
+  notes: string[];
+}
+
+export interface ProbeResponse {
+  host: string;
+  results: { adapter: string; label: string; result: ProbeOutcome }[];
+  /** Highest-confidence adapter, or null when nothing answered. */
+  suggested: string | null;
+}

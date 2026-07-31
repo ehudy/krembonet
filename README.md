@@ -23,9 +23,11 @@ the device, nothing leaves your network.
 
 | Route | What it is |
 | --- | --- |
+| `/setup` | First-run wizard — shown only until an admin password exists |
 | `/` | Overview — status cards for every monitored device, plus hub health |
 | `/devices/:slug` | Device detail — supplies, media, live print queue |
 | `/admin` | Settings: hub name, SMTP, alert thresholds, poll cadence |
+| `/admin/devices` | Add, edit and remove devices; test a connection before saving |
 | `/admin/paper-types` | Media code → friendly name mapping |
 | `/admin/alerts` | Alert history and what is currently alerting |
 
@@ -148,11 +150,14 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-The dashboard is then on `http://localhost:8080`. Point `PLOTTER_HOST` and
-`PLOTTER_IPP_URI` in `.env` at your printer; leave them empty and the hub starts with an
-empty device list rather than probing an address.
+Open `http://localhost:8080`. A fresh install shows a short setup screen: pick an admin
+password and a name for the hub, and you are in. Then add devices from **Admin →
+Devices** — enter an address, press **Test connection**, and it will tell you what
+answered and what it can actually report before you save anything.
 
-Set `ADMIN_PASSWORD` and `SESSION_SECRET` to enable the admin portal.
+Nothing needs to go in `.env` for this. `PLOTTER_HOST` / `PLOTTER_IPP_URI` still work for
+seeding a device from the environment, and `ADMIN_PASSWORD` still works for automated
+deployments that cannot run a wizard.
 
 ## Local development
 
@@ -196,26 +201,55 @@ rather than going blank.
 
 ## Admin portal
 
-Set `ADMIN_PASSWORD` and `SESSION_SECRET` in `.env`. A blank `ADMIN_PASSWORD` **disables**
-the portal rather than leaving it open, and production refuses to boot without a stable
-`SESSION_SECRET` — a random one would log every admin out on each restart.
+Login is a single shared password exchanged for a signed, expiring cookie. Failed
+attempts are throttled per IP. There are no user accounts: one admin role and a handful
+of people who use it, so accounts would be ceremony without benefit.
+
+The password is stored as a **scrypt hash** in the database, never in plaintext and never
+compared in plaintext. There are two ways to set it:
+
+- **The setup wizard**, on first run. This is the normal path.
+- **`ADMIN_PASSWORD` in `.env`**, for deployments provisioned by a script. It is hashed
+  into the database at boot rather than checked on each login, and changing it re-seeds
+  the hash on the next restart. A password set through the wizard takes precedence and is
+  never overwritten by a lingering environment variable — the hub logs that it ignored it.
+
+A blank `ADMIN_PASSWORD` on a hub with no stored password **disables** the portal rather
+than leaving it open. Production refuses to boot without a stable `SESSION_SECRET`, since
+a random one would log every admin out on each restart:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Login is a single shared password exchanged for a signed, expiring cookie. Failed
-attempts are throttled per IP.
+### Adding devices
+
+**Admin → Devices** takes an address and an adapter. The connection form is generated
+from whatever the adapter declares it needs, so it shows an IPP URI for IPP and SNMP
+version, community and v3 credentials for SNMP.
+
+**Test connection** probes every adapter, ranks them by how confident each is, and shows
+what it found: identity, which capabilities that device actually supports, a live sample
+of its supplies, and the caveats. That last part is the useful bit — "responded" and
+"reports anything you can alert on" are different claims, and this is where you find out
+that a printer's trays only report low/OK.
+
+Credentials you enter are stored per device and never sent back to the browser. Leaving a
+password field blank when editing keeps the stored value.
 
 ### Security posture — read this before exposing it
 
 This is built for a trusted LAN and the defaults say so:
 
-- **The session cookie is not `Secure`**, because the intended deployment is plain HTTP
-  on a local network. If you put this behind TLS or on any untrusted network, that needs
-  to change.
-- **The admin password is a single shared secret read from the environment** and compared
-  in plaintext. There are no user accounts and no password hashing at rest.
+- **The session cookie is not `Secure` by default**, because the intended deployment is
+  plain HTTP on a local network, where a Secure cookie is never sent and nobody can log
+  in. Set `COOKIE_SECURE=true` when serving over HTTPS.
+- **The admin password is a single shared secret.** It is hashed with scrypt at rest and
+  never compared in plaintext, but there are no user accounts, no roles and no audit of
+  who did what.
+- **Device credentials — SNMP community strings and v3 keys — are stored in plaintext**
+  in the SQLite file, like the SMTP password below. They are never returned to the
+  browser, but anyone with filesystem access to `data/` can read them.
 - **SMTP credentials are stored in plaintext** in the SQLite file. Anyone with filesystem
   access to `data/` can read them. Use a dedicated sending account — for Google Workspace,
   an App Password rather than the account password. The value is never sent back to the
@@ -323,16 +357,15 @@ docker compose --profile monitoring up -d
 
 ## Roadmap
 
-- **Now** — an adapter system with two adapters: IPP (supplies, media, queue) and generic
-  SNMP over RFC 3805 (supplies, media). Device-generic data model, capability-driven UI,
-  email alerts, admin portal.
-- **Next** — a first-run setup wizard, and adding devices from the UI: enter an address,
-  run an on-demand probe, let it rank the adapters and show what it found before saving.
-  The probe already returns confidence, per-device capabilities and human-readable caveats;
-  what is missing is the screen. Admin credentials move to a hash in SQLite at the same time.
-- **Later** — non-printer adapters (ping, HTTP, UPS), and dropping the `ipptool` binary
-  dependency in favour of a pure-JS IPP client so `npm install && npm start` works
-  anywhere. The adapter boundary makes that a swap rather than a rewrite.
+- **Now** — first-run setup, device management in the browser with an on-demand probe,
+  and two adapters: IPP (supplies, media, queue) and generic SNMP over RFC 3805 (supplies,
+  media). Device-generic data model, capability-driven UI, email alerts, hashed admin
+  credentials. Nothing needs to be configured by hand to get running.
+- **Next** — non-printer adapters (ping, HTTP, UPS), per-device alert rules in the UI
+  (the schema already supports them), and encrypting device credentials at rest.
+- **Later** — dropping the `ipptool` binary dependency in favour of a pure-JS IPP client
+  so `npm install && npm start` works anywhere. The adapter boundary makes that a swap
+  rather than a rewrite.
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). A parser for another
 vendor's PPD, or a captured SNMP walk from a non-Canon printer, are both genuinely useful.

@@ -5,13 +5,17 @@
  * there is no CORS or token handling to get wrong.
  */
 import type {
+  AdapterInfo,
+  AdminDevice,
   AdminSettings,
   AlertLogRow,
   AlertStateRow,
   MediaType,
   DeviceListResponse,
   DeviceStatus,
+  ProbeResponse,
   SessionInfo,
+  SetupStatus,
 } from './types.js';
 
 export class ApiError extends Error {
@@ -64,6 +68,11 @@ export const api = {
       { signal: options?.signal },
     ),
 
+  setupStatus: (signal?: AbortSignal) => request<SetupStatus>('/api/setup', { signal }),
+
+  completeSetup: (body: { password: string; confirmPassword: string; hubTitle: string }) =>
+    request<{ ok: true }>('/api/setup', { method: 'POST', body: JSON.stringify(body) }),
+
   session: (signal?: AbortSignal) => request<SessionInfo>('/api/admin/session', { signal }),
 
   login: (password: string) =>
@@ -101,6 +110,30 @@ export const api = {
     request<{ ok: true }>(`/api/admin/media-types/${encodeURIComponent(code)}`, {
       method: 'DELETE',
     }),
+
+  listAdapters: (signal?: AbortSignal) =>
+    request<{ adapters: AdapterInfo[] }>('/api/admin/adapters', { signal }),
+
+  listAdminDevices: (signal?: AbortSignal) =>
+    request<{ devices: AdminDevice[] }>('/api/admin/devices', { signal }),
+
+  probeDevice: (body: { host: string; adapter?: string; config?: Record<string, unknown> }) =>
+    request<ProbeResponse>('/api/admin/devices/probe', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  createDevice: (body: Record<string, unknown>) =>
+    request<AdminDevice>('/api/admin/devices', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateDevice: (id: number, body: Record<string, unknown>) =>
+    request<AdminDevice>(`/api/admin/devices/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  deleteDevice: (id: number) =>
+    request<{ ok: true }>(`/api/admin/devices/${id}`, { method: 'DELETE' }),
 
   alerts: (signal?: AbortSignal) =>
     request<{ active: AlertStateRow[]; recent: AlertLogRow[] }>('/api/admin/alerts', {

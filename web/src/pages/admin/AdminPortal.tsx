@@ -11,12 +11,14 @@ import { ApiError, api } from '../../api.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { Link, matchPath, useRouter } from '../../router.js';
 import { AdminAlerts } from './AdminAlerts.js';
+import { AdminDevices } from './AdminDevices.js';
 import { AdminLogin } from './AdminLogin.js';
 import { AdminPaperTypes } from './AdminPaperTypes.js';
 import { AdminSettings } from './AdminSettings.js';
 
 const TABS = [
   { to: '/admin', label: 'Settings' },
+  { to: '/admin/devices', label: 'Devices' },
   { to: '/admin/paper-types', label: 'Paper types' },
   { to: '/admin/alerts', label: 'Alert history' },
 ];
@@ -66,8 +68,9 @@ export function AdminPortal() {
       <>
         <PageHeader title="Admin" />
         <div className="banner is-warning">
-          <strong>The admin portal is disabled.</strong> Set <code>ADMIN_PASSWORD</code>{' '}
-          in <code>.env</code> and restart the container to enable it. A blank password
+          <strong>The admin portal is disabled.</strong> No admin password is set. Either
+          complete first-run setup at <code>/setup</code>, or set{' '}
+          <code>ADMIN_PASSWORD</code> in <code>.env</code> and restart. A blank password
           disables the portal rather than leaving it open.
         </div>
       </>
@@ -78,14 +81,16 @@ export function AdminPortal() {
     return <AdminLogin onSuccess={() => void check()} />;
   }
 
+  const isDevices = matchPath('/admin/devices', path) !== null;
   const isPaperTypes = matchPath('/admin/paper-types', path) !== null;
   const isAlerts = matchPath('/admin/alerts', path) !== null;
+  const isSettings = !isDevices && !isPaperTypes && !isAlerts;
 
   return (
     <>
       <PageHeader
         title="Admin"
-        subtitle="SMTP, alert thresholds, and paper code mapping"
+        subtitle="Devices, SMTP, alert thresholds, and paper code mapping"
         actions={
           <button type="button" className="btn-secondary" onClick={() => void logout()}>
             Sign out
@@ -99,7 +104,7 @@ export function AdminPortal() {
             key={tab.to}
             to={tab.to}
             className={`tab${
-              (tab.to === '/admin' && !isPaperTypes && !isAlerts) ||
+              (tab.to === '/admin' && isSettings) ||
               (tab.to !== '/admin' && matchPath(tab.to, path) !== null)
                 ? ' is-active'
                 : ''
@@ -110,7 +115,15 @@ export function AdminPortal() {
         ))}
       </nav>
 
-      {isPaperTypes ? <AdminPaperTypes /> : isAlerts ? <AdminAlerts /> : <AdminSettings />}
+      {isDevices ? (
+        <AdminDevices />
+      ) : isPaperTypes ? (
+        <AdminPaperTypes />
+      ) : isAlerts ? (
+        <AdminAlerts />
+      ) : (
+        <AdminSettings />
+      )}
     </>
   );
 }

@@ -6,10 +6,13 @@ import { closeDatabase } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
 import { ensureGlobalRules } from './alerts/store.js';
+import { seedCredentialFromEnv } from './auth/credentials.js';
 import { registerBuiltinAdapters } from './devices/adapters/index.js';
 import { loggerOptions } from './lib/logger.js';
 import { startPoller, stopPoller } from './poller/scheduler.js';
 import { adminRoutes } from './routes/admin.js';
+import { deviceAdminRoutes } from './routes/devices.js';
+import { setupRoutes } from './routes/setup.js';
 import { healthRoutes } from './routes/health.js';
 import { statusRoutes } from './routes/status.js';
 
@@ -26,10 +29,23 @@ seedDatabase();
 // catch-all rules before the first poll can evaluate anything.
 ensureGlobalRules();
 
+// Reconciles ADMIN_PASSWORD with the stored hash. Logged rather than silent:
+// a password that quietly stops working, or quietly changes, is a support call.
+const credential = await seedCredentialFromEnv(config.admin.password);
+if (credential.action === 'seeded') {
+  app.log.info('hashed ADMIN_PASSWORD into the database; first-run setup is not needed');
+} else if (credential.action === 'updated') {
+  app.log.info('ADMIN_PASSWORD changed; the stored admin password hash was updated');
+} else if (credential.action === 'ignored') {
+  app.log.warn(`ADMIN_PASSWORD is set but ignored: ${credential.reason}`);
+}
+
 await registerAuth(app);
 await app.register(healthRoutes);
 await app.register(statusRoutes);
 await app.register(adminRoutes);
+await app.register(deviceAdminRoutes);
+await app.register(setupRoutes);
 
 /**
  * In production the SPA is served from the same origin as the API, so there is

@@ -132,10 +132,12 @@ export function Overview() {
       </div>
 
       {data !== null && devices.length === 0 && (
-        <p className="muted">
-          No devices are configured yet. Set PLOTTER_HOST and PLOTTER_IPP_URI in your
-          environment to add one.
-        </p>
+        <div className="empty-state">
+          <p>No devices are being monitored yet.</p>
+          <Link to="/admin/devices" className="btn-primary">
+            Add your first device
+          </Link>
+        </div>
       )}
     </>
   );

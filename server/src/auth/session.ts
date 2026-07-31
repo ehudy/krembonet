@@ -1,43 +1,38 @@
 /**
  * Admin authentication.
  *
- * A single shared password from the environment, exchanged for a signed
- * session cookie. There is one admin role and a handful of IT staff, so user
- * accounts would be ceremony without benefit — but the cookie is signed and
- * expiring, not a bare "loggedIn=true" flag a browser console could set.
+ * A single shared password, exchanged for a signed session cookie. There is one
+ * admin role and a handful of IT staff, so user accounts would be ceremony
+ * without benefit — but the cookie is signed and expiring, not a bare
+ * "loggedIn=true" flag a browser console could set.
+ *
+ * The password itself is a scrypt hash in the settings table; see
+ * `credentials.ts` for how it gets there. Nothing here ever sees a stored
+ * plaintext password.
  */
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { config } from '../config.js';
+import { checkAdminPassword, hasAdminCredential } from './credentials.js';
 
 export const SESSION_COOKIE = 'krembonet_admin';
 
-/** True when an admin password is configured at all. */
+/** True when an admin credential exists at all. */
 export function isAdminEnabled(): boolean {
-  return config.admin.password !== '';
+  return hasAdminCredential();
 }
 
 /**
- * Constant-time comparison.
+ * Verifies a login attempt.
  *
- * `timingSafeEqual` throws on length mismatch, which would itself leak the
- * password length, so both sides are hashed to a fixed width first.
+ * Async because scrypt is deliberately slow — that cost is the point, and it
+ * also flattens the timing difference between a wrong password and a missing
+ * one down to whether a credential exists at all.
  */
-export function verifyPassword(candidate: string): boolean {
-  if (!isAdminEnabled()) return false;
-
-  const expected = Buffer.from(config.admin.password, 'utf8');
-  const actual = Buffer.from(candidate, 'utf8');
-
-  const width = Math.max(expected.length, actual.length);
-  const a = Buffer.alloc(width);
-  const b = Buffer.alloc(width);
-  expected.copy(a);
-  actual.copy(b);
-
-  return timingSafeEqual(a, b) && expected.length === actual.length;
+export async function verifyPassword(candidate: string): Promise<boolean> {
+  return checkAdminPassword(candidate);
 }
 
 interface FailureRecord {
@@ -99,9 +94,10 @@ export function issueSession(reply: FastifyReply): void {
     path: '/',
     httpOnly: true,
     sameSite: 'lax',
-    // Not `secure`: this is served over plain HTTP on the office LAN, and a
-    // secure cookie would simply never be sent, locking admins out.
-    secure: false,
+    // Sent only over HTTPS when the hub is actually served over HTTPS. A
+    // hardcoded `secure: true` on a plain-HTTP LAN deployment would mean the
+    // cookie is never sent at all, locking admins out of their own hub.
+    secure: config.cookieSecure,
     signed: true,
     maxAge: config.admin.sessionHours * 60 * 60,
   });
@@ -133,7 +129,8 @@ export async function requireAdmin(
 ): Promise<void> {
   if (!isAdminEnabled()) {
     return reply.code(503).send({
-      error: 'Admin portal is disabled because ADMIN_PASSWORD is not set.',
+      error:
+        'Admin portal is disabled because no admin password has been set. Complete first-run setup, or set ADMIN_PASSWORD.',
     });
   }
   if (!isAuthenticated(request)) {

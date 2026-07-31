@@ -89,6 +89,15 @@ export const config = {
    */
   deviceTimeoutMs: int('DEVICE_TIMEOUT_MS', int('IPPTOOL_TIMEOUT_MS', 5000)),
 
+  /**
+   * Marks the session cookie `Secure`.
+   *
+   * Off by default because the intended deployment is plain HTTP on a local
+   * network, where a Secure cookie is simply never sent and nobody can log in.
+   * Turn it on whenever the hub is reached over HTTPS.
+   */
+  cookieSecure: (process.env['COOKIE_SECURE'] ?? '') === 'true',
+
   admin: {
     /**
      * Empty disables the admin portal entirely rather than leaving it open —

@@ -40,6 +40,11 @@ function navFor(devices: DeviceSummary[]): NavItem[] {
       // has to light up for both.
       match: [`/printers/${device.slug}`],
     })),
+    // With no devices the sidebar would be Overview and Admin only, which
+    // reads as a broken install rather than an empty one.
+    ...(devices.length === 0
+      ? [{ to: '/admin/devices', label: 'Add a device', icon: '➕' }]
+      : []),
     ADMIN,
   ];
 }

@@ -953,6 +953,196 @@ td code {
   margin-bottom: 18px;
 }
 
+
+/* Select, matching the text inputs ---------------------------------------- */
+
+.field select {
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+  width: 100%;
+}
+
+.field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+
+.field-required {
+  color: var(--danger);
+  font-style: normal;
+}
+
+.field-hint.is-error {
+  color: var(--danger);
+}
+
+/* Setup wizard ------------------------------------------------------------ */
+
+.setup-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 48px 16px;
+  background: var(--bg);
+}
+
+.setup-card {
+  width: 100%;
+  max-width: 460px;
+}
+
+.setup-card .field {
+  margin-bottom: 18px;
+}
+
+.setup-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.setup-card .btn-primary {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.setup-footnote {
+  margin: 18px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Device administration ---------------------------------------------------- */
+
+.card-subtitle {
+  margin: 22px 0 12px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.data-table {
+  margin-top: 8px;
+}
+
+.data-table tr.is-muted td {
+  opacity: 0.55;
+}
+
+.btn-danger {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--danger);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: var(--error-bg);
+  border-color: var(--danger);
+}
+
+.btn-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 28px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+/* Probe results ------------------------------------------------------------ */
+
+.probe-report {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.probe-row {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-sunken);
+}
+
+.probe-row.is-good {
+  border-color: var(--ok-text);
+  background: var(--surface);
+}
+
+.probe-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.probe-identity {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.probe-caps {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.probe-supplies {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 4px 16px;
+}
+
+.probe-supplies li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 3px 0;
+}
+
+.probe-notes {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
 /* Narrow screens --------------------------------------------------------- */
 
 @media (max-width: 900px) {

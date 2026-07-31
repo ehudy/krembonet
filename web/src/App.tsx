@@ -1,6 +1,10 @@
+import { useCallback, useEffect, useState } from 'react';
+
+import { api } from './api.js';
 import { AppShell } from './components/AppShell.js';
 import { Overview } from './pages/Overview.js';
 import { DeviceDetail } from './pages/DeviceDetail.js';
+import { Setup } from './pages/Setup.js';
 import { AdminPortal } from './pages/admin/AdminPortal.js';
 import { Link, matchPath, useRouter } from './router.js';
 
@@ -39,6 +43,43 @@ function Routes() {
 }
 
 export function App() {
+  const { navigate } = useRouter();
+  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
+
+  const check = useCallback(async (signal?: AbortSignal): Promise<void> => {
+    try {
+      const status = await api.setupStatus(signal);
+      setNeedsSetup(status.required);
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') return;
+      // If the check itself fails the server is unreachable, and showing the
+      // setup wizard would be a lie. Fall through to the normal shell, which
+      // reports the connection problem properly.
+      setNeedsSetup(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void check(controller.signal);
+    return () => controller.abort();
+  }, [check]);
+
+  // Nothing is rendered until we know, so a configured hub never flashes the
+  // setup wizard on load.
+  if (needsSetup === null) return null;
+
+  if (needsSetup) {
+    return (
+      <Setup
+        onComplete={() => {
+          setNeedsSetup(false);
+          navigate('/admin/devices');
+        }}
+      />
+    );
+  }
+
   return (
     <AppShell>
       <Routes />

@@ -100,7 +100,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      if (!verifyPassword(request.body?.password ?? '')) {
+      if (!(await verifyPassword(request.body?.password ?? ''))) {
         recordLoginFailure(ip);
         request.log.warn({ ip }, 'failed admin login');
         // Deliberately vague: no hint about whether a password was even set.
