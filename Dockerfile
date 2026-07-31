@@ -38,8 +38,10 @@ RUN npm prune --omit=dev --ignore-scripts
 
 FROM node:22-trixie-slim AS runtime
 
-# ipptool is how the poller talks to printers; snmp is here for the Phase 3
-# device checks. ca-certificates is needed for SMTP over TLS in Phase 2.
+# ipptool is how the IPP adapter talks to printers. The SNMP adapter needs no
+# binary — net-snmp is pure JavaScript — but the snmp CLI tools are kept for
+# capturing walk fixtures by hand, which is how support for a new printer gets
+# tested. ca-certificates is needed for SMTP over TLS.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     cups-ipp-utils \

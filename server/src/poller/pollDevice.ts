@@ -5,10 +5,11 @@
  *    cadence, which is also what drives alerts, and refreshed on demand only
  *    when the cached reading is more than a minute old.
  *  - The print queue is only useful live, so it is refreshed on demand behind
- *    a short TTL.
+ *    a short TTL — and only for devices whose adapter can report one.
  *
- * Both paths go through `ipptool`'s single-flight guard, so simultaneous
- * viewers collapse into one query rather than multiplying device load.
+ * Every read goes through the adapter registry and the concurrency guards, so
+ * simultaneous viewers collapse into one query and a single device is never
+ * being talked to twice at once.
  */
 import { and, eq, inArray, isNull, not } from 'drizzle-orm';
 
@@ -23,11 +24,16 @@ import {
   supplies as suppliesTable,
   supplyHistory,
 } from '../db/schema.js';
-import { IppError, ipptool } from '../devices/ipp/ipptool.js';
-import { normalizeJobs, normalizePrinterAttributes, sortMediaBySlot } from '../devices/ipp/normalize.js';
-import { getJobsQuery, getPrinterAttributesQuery } from '../devices/ipp/queries.js';
+import {
+  DeviceError,
+  isCapability,
+  type DeviceCapability,
+  type DeviceReading,
+} from '../devices/adapter.js';
+import { guarded } from '../devices/concurrency.js';
+import { getAdapter } from '../devices/registry.js';
+import { sortMediaBySlot } from '../devices/ipp/normalize.js';
 import type {
-  DeviceSnapshot,
   DeviceState,
   MediaSource,
   PrintJob,
@@ -46,14 +52,12 @@ import {
 
 export type DeviceRow = typeof devices.$inferSelect;
 
-type SuppliesSnapshot = Omit<DeviceSnapshot, 'jobs'>;
-
 /** How stale an on-demand read may be before it triggers a device query. */
 export const SUPPLIES_TTL_MS = 60_000;
 export const JOBS_TTL_MS = 15_000;
 
-/** What the IPP adapter can report. M2 replaces this with a per-adapter declaration. */
-const IPP_CAPABILITIES = ['supplies', 'media', 'jobs'];
+/** Sections refreshed together on the background cadence. */
+const SUPPLY_SECTIONS: DeviceCapability[] = ['supplies', 'media'];
 
 export function listEnabledDevices(): DeviceRow[] {
   return db.select().from(devices).where(eq(devices.enabled, true)).all();
@@ -64,39 +68,49 @@ export function findDeviceBySlug(slug: string): DeviceRow | undefined {
 }
 
 /**
- * Connection settings for a device.
+ * What a device is known to report.
  *
- * Config is adapter-owned JSON rather than a column per protocol, so a bad row
- * is a configuration error for one device and not a crash for the poller.
+ * Falls back to the adapter's full capability set when the column is null,
+ * which is the case for any device added before a probe ran. An unknown adapter
+ * yields nothing, so the poller skips the device rather than throwing on every
+ * tick.
  */
-export function deviceConfig(device: DeviceRow): { ippUri?: string } {
+export function capabilitiesOf(device: DeviceRow): DeviceCapability[] {
+  if (device.capabilities !== null) {
+    try {
+      const parsed: unknown = JSON.parse(device.capabilities);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((value): value is DeviceCapability =>
+          typeof value === 'string' && isCapability(value),
+        );
+      }
+    } catch {
+      // Fall through to the adapter's declaration.
+    }
+  }
+
   try {
-    const parsed: unknown = JSON.parse(device.config);
-    return typeof parsed === 'object' && parsed !== null ? (parsed as { ippUri?: string }) : {};
+    return [...getAdapter(device.adapter).capabilities];
   } catch {
-    return {};
+    return [];
   }
 }
 
-function requireIppUri(device: DeviceRow): string {
-  const { ippUri } = deviceConfig(device);
-  if (typeof ippUri !== 'string' || ippUri === '') {
-    throw new IppError(
-      `Device "${device.slug}" has no ippUri in its config.`,
-      'BAD_RESPONSE',
+function parseConfigFor(device: DeviceRow): { adapterId: string; config: never } {
+  const adapter = getAdapter(device.adapter);
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(device.config);
+  } catch (error) {
+    throw new DeviceError(
+      `Device "${device.slug}" has invalid config JSON.`,
+      'CONFIG',
+      { cause: error },
     );
   }
-  return ippUri;
-}
 
-function parseCapabilities(raw: string | null): string[] {
-  if (raw === null) return IPP_CAPABILITIES;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : IPP_CAPABILITIES;
-  } catch {
-    return IPP_CAPABILITIES;
-  }
+  return { adapterId: adapter.id, config: adapter.parseConfig(raw) };
 }
 
 function resolveMedia(sources: MediaSource[]): ResolvedMediaSource[] {
@@ -116,13 +130,13 @@ function resolveMedia(sources: MediaSource[]): ResolvedMediaSource[] {
 
 // --- persistence ---------------------------------------------------------
 
-function persistSupplies(device: DeviceRow, snapshot: SuppliesSnapshot): void {
+function persistReading(device: DeviceRow, reading: DeviceReading): void {
   const now = new Date();
 
   db.transaction((tx) => {
     const statusValues = {
-      state: snapshot.state,
-      stateReasons: snapshot.stateReasons.join(', ') || null,
+      state: reading.state,
+      stateReasons: reading.stateReasons.join(', ') || null,
       isOnline: true,
       lastSuccessAt: now,
       lastError: null,
@@ -136,77 +150,98 @@ function persistSupplies(device: DeviceRow, snapshot: SuppliesSnapshot): void {
       .onConflictDoUpdate({ target: deviceStatus.deviceId, set: statusValues })
       .run();
 
-    if (snapshot.makeAndModel !== null && snapshot.makeAndModel !== device.model) {
+    // Identity is written back only when the device actually reported it, so a
+    // partial read never blanks a model name an earlier poll established.
+    const identityPatch: Record<string, string> = {};
+    if (reading.identity.makeAndModel !== null && reading.identity.makeAndModel !== device.model) {
+      identityPatch['model'] = reading.identity.makeAndModel;
+    }
+    if (reading.identity.vendor !== null && reading.identity.vendor !== device.vendor) {
+      identityPatch['vendor'] = reading.identity.vendor;
+    }
+    if (reading.identity.serial !== null && reading.identity.serial !== device.serial) {
+      identityPatch['serial'] = reading.identity.serial;
+    }
+    if (reading.identity.firmware !== null && reading.identity.firmware !== device.firmware) {
+      identityPatch['firmware'] = reading.identity.firmware;
+    }
+    if (Object.keys(identityPatch).length > 0) {
       tx.update(devices)
-        .set({ model: snapshot.makeAndModel, updatedAt: now })
+        .set({ ...identityPatch, updatedAt: now })
         .where(eq(devices.id, device.id))
         .run();
     }
 
-    // Current levels are replaced every poll, but history only grows when a
-    // level actually moves. Ink shifts a few times a week; recording every
-    // poll would add hundreds of thousands of no-op rows a year.
-    const previous = tx
-      .select()
-      .from(suppliesTable)
-      .where(eq(suppliesTable.deviceId, device.id))
-      .all();
+    if (reading.supplies !== undefined) {
+      // Current levels are replaced every poll, but history only grows when a
+      // level actually moves. Supplies shift a few times a week; recording
+      // every poll would add hundreds of thousands of no-op rows a year.
+      const previous = tx
+        .select()
+        .from(suppliesTable)
+        .where(eq(suppliesTable.deviceId, device.id))
+        .all();
 
-    const previousLevels = new Map(
-      previous.map((row) => [row.supplyIndex, levelFromColumns(row)]),
-    );
+      const previousLevels = new Map(previous.map((row) => [row.name, levelFromColumns(row)]));
 
-    for (const supply of snapshot.supplies) {
-      const level = levelToColumns(supply.level);
-      const values = {
-        name: supply.name,
-        label: supply.label,
-        kind: supply.kind,
-        supplyType: supply.type,
-        colorHex: supply.colorHex,
-        ...level,
-        updatedAt: now,
-      };
+      for (const supply of reading.supplies) {
+        const level = levelToColumns(supply.level);
+        const values = {
+          name: supply.name,
+          label: supply.label,
+          kind: supply.kind,
+          supplyType: supply.type,
+          colorHex: supply.colorHex,
+          ...level,
+          updatedAt: now,
+        };
 
-      tx.insert(suppliesTable)
-        .values({ deviceId: device.id, supplyIndex: supply.index, ...values })
-        .onConflictDoUpdate({
-          target: [suppliesTable.deviceId, suppliesTable.supplyIndex],
-          set: values,
-        })
-        .run();
+        tx.insert(suppliesTable)
+          .values({ deviceId: device.id, supplyIndex: supply.index, ...values })
+          .onConflictDoUpdate({
+            target: [suppliesTable.deviceId, suppliesTable.supplyIndex],
+            set: values,
+          })
+          .run();
 
-      if (levelsDiffer(previousLevels.get(supply.index), supply.level)) {
-        tx.insert(supplyHistory)
-          .values({
-            deviceId: device.id,
-            supplyName: supply.name,
-            ...level,
-            recordedAt: now,
+        if (levelsDiffer(previousLevels.get(supply.name), supply.level)) {
+          tx.insert(supplyHistory)
+            .values({
+              deviceId: device.id,
+              supplyName: supply.name,
+              ...level,
+              recordedAt: now,
+            })
+            .run();
+        }
+      }
+    }
+
+    if (reading.media !== undefined) {
+      for (const source of reading.media) {
+        const values = {
+          label: source.label,
+          type: source.type,
+          isLoaded: source.isLoaded,
+          mediaTypeCode: source.mediaTypeCode,
+          widthMm: source.widthMm,
+          lengthRemainingMm: source.lengthRemainingMm,
+          ...levelToColumns(source.level),
+          updatedAt: now,
+        };
+
+        tx.insert(mediaSources)
+          .values({ deviceId: device.id, key: source.key, ...values })
+          .onConflictDoUpdate({
+            target: [mediaSources.deviceId, mediaSources.key],
+            set: values,
           })
           .run();
       }
     }
 
-    for (const source of snapshot.media) {
-      const values = {
-        label: source.label,
-        type: source.type,
-        isLoaded: source.isLoaded,
-        mediaTypeCode: source.mediaTypeCode,
-        widthMm: source.widthMm,
-        lengthRemainingMm: source.lengthRemainingMm,
-        ...levelToColumns(source.level),
-        updatedAt: now,
-      };
-
-      tx.insert(mediaSources)
-        .values({ deviceId: device.id, key: source.key, ...values })
-        .onConflictDoUpdate({
-          target: [mediaSources.deviceId, mediaSources.key],
-          set: values,
-        })
-        .run();
+    if (reading.jobs !== undefined) {
+      persistJobs(tx, device.id, reading.jobs, now);
     }
   });
 }
@@ -260,7 +295,7 @@ function persistJobs(tx: Tx, deviceId: number, active: PrintJob[], now: Date): v
     .run();
 }
 
-function persistFailure(device: DeviceRow, error: IppError): number {
+function persistFailure(device: DeviceRow, error: DeviceError): number {
   const now = new Date();
 
   const [existing] = db
@@ -291,92 +326,93 @@ function persistFailure(device: DeviceRow, error: IppError): number {
 
 // --- polling -------------------------------------------------------------
 
+/**
+ * Reads the requested sections through the device's adapter.
+ *
+ * Single-flighted on device *and* sections, so two viewers asking for the same
+ * thing share one query, and serialised on the device so a supplies read and a
+ * queue read never overlap on the wire.
+ */
+async function readSections(
+  device: DeviceRow,
+  sections: DeviceCapability[],
+): Promise<DeviceView> {
+  const flightKey = `${device.slug}:${[...sections].sort().join(',')}`;
+
+  return guarded(flightKey, device.slug, async () => {
+    try {
+      const adapter = getAdapter(device.adapter);
+      const { config: parsed } = parseConfigFor(device);
+
+      const reading = await adapter.read(
+        parsed,
+        { sections },
+        { timeoutMs: config.deviceTimeoutMs, host: device.host },
+      );
+
+      persistReading(device, reading);
+
+      const now = new Date().toISOString();
+      const existing = getDeviceView(device.slug) ?? emptyView(device);
+
+      const view: DeviceView = {
+        ...existing,
+        model: reading.identity.makeAndModel ?? existing.model,
+        state: reading.state,
+        stateReasons: reading.stateReasons,
+        ...(reading.supplies === undefined ? {} : { supplies: reading.supplies }),
+        ...(reading.media === undefined ? {} : { media: resolveMedia(reading.media) }),
+        ...(reading.jobs === undefined ? {} : { jobs: reading.jobs }),
+        isOnline: true,
+        lastError: null,
+        consecutiveFailures: 0,
+        lastSuccessAt: now,
+        ...(sections.includes('supplies') || sections.includes('media')
+          ? { suppliesUpdatedAt: now }
+          : {}),
+        ...(sections.includes('jobs') ? { jobsUpdatedAt: now } : {}),
+      };
+
+      setDeviceView(view);
+      return view;
+    } catch (error) {
+      throw handleFailure(device, error);
+    }
+  });
+}
+
 /** Reads supplies, media, and device state. Drives alerts. */
-export async function pollSupplies(device: DeviceRow): Promise<DeviceView> {
-  try {
-    const response = await ipptool({
-      uri: requireIppUri(device),
-      query: getPrinterAttributesQuery(),
-      timeoutMs: config.ipptoolTimeoutMs,
-    });
+export function pollSupplies(device: DeviceRow): Promise<DeviceView> {
+  const supported = capabilitiesOf(device);
+  const sections = SUPPLY_SECTIONS.filter((section) => supported.includes(section));
 
-    const snapshot = normalizePrinterAttributes(response.attributes);
-    persistSupplies(device, snapshot);
-
-    const now = new Date().toISOString();
-    const existing = getDeviceView(device.slug);
-
-    const view: DeviceView = {
-      ...(existing ?? emptyView(device)),
-      model: snapshot.makeAndModel ?? device.model,
-      state: snapshot.state,
-      stateReasons: snapshot.stateReasons,
-      supplies: snapshot.supplies,
-      media: resolveMedia(snapshot.media),
-      isOnline: true,
-      lastSuccessAt: now,
-      lastError: null,
-      consecutiveFailures: 0,
-      suppliesUpdatedAt: now,
-    };
-
-    setDeviceView(view);
-    return view;
-  } catch (error) {
-    throw handleFailure(device, error);
-  }
+  // Still worth a call for a reachability-only device: it refreshes state and
+  // clears a stale offline flag.
+  return readSections(device, sections.length > 0 ? sections : ['reachability']);
 }
 
 /** Reads the active print queue. */
-export async function pollJobs(device: DeviceRow): Promise<DeviceView> {
-  try {
-    const response = await ipptool({
-      uri: requireIppUri(device),
-      query: getJobsQuery('not-completed'),
-      timeoutMs: config.ipptoolTimeoutMs,
-    });
-
-    const jobs = normalizeJobs(response.attributes);
-    const now = new Date();
-
-    db.transaction((tx) => {
-      persistJobs(tx, device.id, jobs, now);
-    });
-
-    const existing = getDeviceView(device.slug) ?? emptyView(device);
-    const view: DeviceView = {
-      ...existing,
-      jobs,
-      isOnline: true,
-      lastError: null,
-      consecutiveFailures: 0,
-      jobsUpdatedAt: now.toISOString(),
-    };
-
-    setDeviceView(view);
-    return view;
-  } catch (error) {
-    throw handleFailure(device, error);
-  }
+export function pollJobs(device: DeviceRow): Promise<DeviceView> {
+  return readSections(device, ['jobs']);
 }
 
-function handleFailure(device: DeviceRow, error: unknown): IppError {
-  const ippError =
-    error instanceof IppError
+function handleFailure(device: DeviceRow, error: unknown): DeviceError {
+  const deviceError =
+    error instanceof DeviceError
       ? error
-      : new IppError(String(error), 'BAD_RESPONSE', { cause: error });
+      : new DeviceError(String(error), 'BAD_RESPONSE', { cause: error });
 
-  const failures = persistFailure(device, ippError);
+  const failures = persistFailure(device, deviceError);
 
   // Keep the last good reading visible but flagged, rather than blanking the
   // dashboard the moment one poll fails.
   patchDeviceView(device.slug, {
     isOnline: false,
-    lastError: ippError.message,
+    lastError: deviceError.message,
     consecutiveFailures: failures,
   });
 
-  return ippError;
+  return deviceError;
 }
 
 /**
@@ -384,37 +420,47 @@ function handleFailure(device: DeviceRow, error: unknown): IppError {
  *
  * This is what makes a page load show live data without letting twenty
  * simultaneous loads become twenty device queries: the TTL absorbs bursts and
- * the single-flight guard collapses whatever gets through.
+ * the concurrency guards collapse whatever gets through.
  */
 export async function ensureFresh(
   device: DeviceRow,
   options: { supplies?: boolean; jobs?: boolean } = { supplies: true, jobs: true },
-): Promise<{ view: DeviceView | undefined; error: IppError | undefined }> {
+): Promise<{ view: DeviceView | undefined; error: DeviceError | undefined }> {
   const view = getDeviceView(device.slug);
-  const capabilities = parseCapabilities(device.capabilities);
-  const work: Promise<unknown>[] = [];
+  const supported = capabilitiesOf(device);
 
-  if (options.supplies === true && ageMs(view?.suppliesUpdatedAt) > SUPPLIES_TTL_MS) {
-    work.push(pollSupplies(device));
-  }
-  // Never ask a device for a queue it does not have. Once adapters declare
-  // capabilities in M2 this is what keeps an SNMP-only device from being polled
-  // for jobs that protocol cannot report.
-  if (
+  const wantSupplies =
+    options.supplies === true &&
+    SUPPLY_SECTIONS.some((section) => supported.includes(section)) &&
+    ageMs(view?.suppliesUpdatedAt) > SUPPLIES_TTL_MS;
+
+  // Never ask a device for a queue it does not have. This is what keeps an
+  // SNMP-only printer from being polled for jobs that protocol cannot report.
+  const wantJobs =
     options.jobs === true &&
-    capabilities.includes('jobs') &&
-    ageMs(view?.jobsUpdatedAt) > JOBS_TTL_MS
-  ) {
-    work.push(pollJobs(device));
+    supported.includes('jobs') &&
+    ageMs(view?.jobsUpdatedAt) > JOBS_TTL_MS;
+
+  let error: DeviceError | undefined;
+
+  // Sequential rather than Promise.allSettled: the per-device queue would
+  // serialise these anyway, and awaiting in order keeps the failure handling
+  // straightforward.
+  if (wantSupplies) {
+    try {
+      await pollSupplies(device);
+    } catch (cause) {
+      if (cause instanceof DeviceError) error = cause;
+      else throw cause;
+    }
   }
 
-  let error: IppError | undefined;
-  if (work.length > 0) {
-    const results = await Promise.allSettled(work);
-    for (const result of results) {
-      if (result.status === 'rejected' && result.reason instanceof IppError) {
-        error = result.reason;
-      }
+  if (wantJobs) {
+    try {
+      await pollJobs(device);
+    } catch (cause) {
+      if (cause instanceof DeviceError) error = cause;
+      else throw cause;
     }
   }
 
@@ -436,7 +482,7 @@ function emptyView(device: DeviceRow): DeviceView {
     supplies: [],
     media: [],
     jobs: [],
-    capabilities: parseCapabilities(device.capabilities),
+    capabilities: capabilitiesOf(device),
     isOnline: false,
     lastSuccessAt: null,
     lastError: null,

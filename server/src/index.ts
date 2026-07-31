@@ -6,6 +6,7 @@ import { closeDatabase } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
 import { ensureGlobalRules } from './alerts/store.js';
+import { registerBuiltinAdapters } from './devices/adapters/index.js';
 import { loggerOptions } from './lib/logger.js';
 import { startPoller, stopPoller } from './poller/scheduler.js';
 import { adminRoutes } from './routes/admin.js';
@@ -13,6 +14,10 @@ import { healthRoutes } from './routes/health.js';
 import { statusRoutes } from './routes/status.js';
 
 const app = Fastify({ logger: loggerOptions });
+
+// Adapters must be registered before anything resolves a device row, since
+// seeding and the first poll both look one up.
+registerBuiltinAdapters();
 
 // Migrate and seed before the poller or any request can touch the database.
 runMigrations();

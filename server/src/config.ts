@@ -81,8 +81,13 @@ export const config = {
    */
   initialBackgroundPollMinutes: int('BACKGROUND_POLL_MINUTES', 60),
 
-  /** Hard ceiling on a single ipptool invocation. */
-  ipptoolTimeoutMs: int('IPPTOOL_TIMEOUT_MS', 5000),
+  /**
+   * Hard ceiling on a single device request, whatever the protocol.
+   *
+   * `IPPTOOL_TIMEOUT_MS` is still honoured so an existing .env keeps working;
+   * `DEVICE_TIMEOUT_MS` is the name to use now that SNMP shares the budget.
+   */
+  deviceTimeoutMs: int('DEVICE_TIMEOUT_MS', int('IPPTOOL_TIMEOUT_MS', 5000)),
 
   admin: {
     /**

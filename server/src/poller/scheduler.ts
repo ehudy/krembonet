@@ -13,7 +13,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { schedule, type ScheduledTask } from 'node-cron';
 
 import { evaluateAlerts } from '../alerts/engine.js';
-import { IppError } from '../devices/ipp/ipptool.js';
+import { DeviceError } from '../devices/adapter.js';
 import { getSettings } from '../settings/settings.js';
 import { hydrateCacheFromDb, listEnabledDevices, pollSupplies } from './pollDevice.js';
 
@@ -32,7 +32,7 @@ async function runBackgroundPoll(log: FastifyBaseLogger): Promise<void> {
 
       await evaluateAlerts(device, view, log);
     } catch (error) {
-      const code = error instanceof IppError ? error.code : 'UNKNOWN';
+      const code = error instanceof DeviceError ? error.code : 'UNKNOWN';
       // Warn, not error: a device switched off overnight is expected, and
       // paging on it would train everyone to ignore the logs.
       log.warn(

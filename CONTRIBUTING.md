@@ -23,10 +23,24 @@ npm test && npm run typecheck && npm run lint
 
 ## The most useful contributions
 
-**Captured device output.** The single biggest limitation is that this was developed
-against one printer. A `.plist` from `ipptool -X` or a JSON dump of an `snmpwalk` against
-a printer from any other vendor is genuinely valuable — it turns "we think this works"
-into a test. Scrub hostnames, IPs, usernames, and job names before sending; see below.
+**A captured SNMP walk from your printer.** This is the single most useful thing you can
+send. The SNMP adapter is written to RFC 3805 and tested against fixtures that encode
+documented behaviour, but "implements the standard" and "implements the standard the way
+your Sharp does" are different claims. A walk turns a guess into a test:
+
+```bash
+snmpwalk -v2c -c public -On printer.example 1.3.6.1.2.1.43 > printer.txt
+snmpwalk -v2c -c public -On printer.example 1.3.6.1.2.1.25.3.5 >> printer.txt
+snmpwalk -v2c -c public -On printer.example 1.3.6.1.2.1.1 >> printer.txt
+```
+
+Fixtures live in `server/test/fixtures/snmp/` as JSON maps of OID to value, with
+`{"$hex": "..."}` for the binary bit-field columns. Scrub the hostname and serial number
+before sending — see below. Say which printer it came from and what the front panel
+showed at the time, since that is the ground truth the fixture is asserted against.
+
+**Captured IPP output.** A `.plist` from `ipptool -X` against a non-Canon printer is
+equally welcome.
 
 **A PPD parser for another vendor.** `server/scripts/generate-media-seed.ts` currently
 understands Canon's `*CNIJMediaType` pairs. Other vendors encode media differently.
@@ -61,15 +75,28 @@ into a doc.
 
 - **Only the poller touches a device.** Routes read a cache. If you find yourself making
   a device call from a request handler, that is a sign something belongs in the poller.
-- **`server/src/devices/types.ts` is deliberately free of IPP vocabulary.** It is the
-  boundary a future SNMP adapter plugs into. Keep protocol-specific names out of it.
+- **`server/src/devices/types.ts` is deliberately free of protocol vocabulary.** It is
+  the boundary every adapter plugs into. Keep protocol-specific names out of it.
 - **Alerting logic in `alerts/rules.ts` is pure** — no database, no SMTP — so it can be
   tested directly. Keep I/O in `alerts/engine.ts`.
 
 ## Adding a device adapter
 
-The adapter interface does not exist yet; see the roadmap in the README. If you want to
-work on it, please open an issue first so we can agree on the shape before you write code
-— particularly around how supply levels are represented, since the standard SNMP Printer
-MIB reports raw values against a capacity plus "unknown" and "some remaining" sentinels
-rather than percentages.
+Implement `DeviceAdapter` from `server/src/devices/adapter.ts` and register it in
+`server/src/devices/adapters/index.ts`. Look at `snmp-printer.ts` for the shape.
+
+Four things are easy to get wrong:
+
+- **Declare capabilities honestly.** Claiming `jobs` for a protocol that cannot report a
+  queue leaves an empty panel on screen forever. Narrow further in `probe()` when a
+  particular device turns out not to support something the adapter generally can.
+- **Never invent a level.** If a device declines to report a number, return
+  `{ kind: 'unknown' }`. Alerting skips it. A fabricated 0% gets acted on — someone
+  reorders ink against it.
+- **Keep the transport separate from the normaliser.** The parsing has to be testable
+  against a captured fixture with no network, or nobody without that exact printer can
+  work on it.
+- **Mark credential fields `secret: true`** in the config schema so they are redacted in
+  API responses.
+
+For anything larger, open an issue first so we can agree on the shape.

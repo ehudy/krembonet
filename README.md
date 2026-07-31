@@ -3,17 +3,21 @@
 A small self-hosted dashboard for hardware on your local network. It polls devices that
 a cloud service can't reach, and serves their telemetry over plain HTTP.
 
-Today that means **large-format printers over IPP** — ink and maintenance-tank levels,
-loaded paper rolls, and the live print queue — with email alerts when a supply crosses a
-threshold. It was built against a Canon TZ-32000 plotter and is honest about that: the
-normalization layer is shaped by one device's quirks. Support for other vendors over
-SNMP is the next milestone, not a current feature.
+Today that means **printers** — supply levels, loaded media, and (over IPP) the live
+print queue — with email alerts when a supply crosses a threshold. Two adapters ship:
+
+| Adapter | Speaks | Reports | Good for |
+| --- | --- | --- | --- |
+| `ipp` | IPP via `ipptool` | supplies, media, **print queue** | Anything IPP, including large-format plotters |
+| `snmp` | SNMP v1/v2c/v3, RFC 3805 Printer MIB | supplies, media | HP, Xerox, Brother, Lexmark, Ricoh, Kyocera, Sharp |
 
 Runs as a single container with a SQLite file next to it. No cloud account, no agent on
 the device, nothing leaves your network.
 
-> **Status: early.** The device layer is IPP-only and assumes one printer. If you have a
-> non-Canon printer, it probably will not work yet — see [Roadmap](#roadmap).
+> **Status: early.** The SNMP adapter is written to the standard and tested against
+> fixtures encoding documented RFC 3805 behaviour, but it has been exercised against a
+> limited range of real hardware. A walk captured from your printer is the most useful
+> thing you can contribute — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Pages
 
@@ -31,15 +35,49 @@ One background poller is the only component that ever touches the device. It wri
 an in-memory cache and to SQLite; the HTTP API only reads that cache.
 
 ```
-node-cron ──> ipptool -X ──> plist parse ──> normalize
+node-cron ──> adapter registry ──> ipp  ──> ipptool -X ──> normalize
+                                   snmp ──> net-snmp   ──> normalize
                                                 │
                                   ┌─────────────┴─────────────┐
                              memory cache                  SQLite
                                   │                            │
                              Fastify API  <────────────────────┘
                                   │
-                             React SPA (polls /api, never the printer)
+                             React SPA (polls /api, never the device)
 ```
+
+### Adapters
+
+An adapter owns one way of talking to hardware. Everything above it — the poller, the
+API, the UI — is written against a protocol-free interface and knows only what a device
+*reports*, never how.
+
+Capabilities are **declared, not discovered**. An adapter states what it can report and a
+probe narrows that to what a particular device actually does, so the UI can tell an empty
+print queue from a device that has no queue at all. That distinction is why the SNMP
+adapter declares no `jobs`: the SNMP Job Monitoring MIB (RFC 2707) is effectively never
+implemented, and pretending otherwise would leave an empty panel on screen forever.
+
+Two guards bound how much traffic a device ever sees. **Single-flight** collapses
+identical concurrent reads, so twenty dashboard loads are one query. **Serialisation**
+allows only one conversation with a device at a time, whatever the protocol — concurrent
+SNMP and IPP against the same box is a known way to make a cheap printer network stack
+stop answering until it is power-cycled.
+
+### What SNMP can and cannot tell you
+
+Supplies read well across vendors. `prtMarkerSuppliesClass` distinguishes a cartridge
+that drains from a waste tank that fills, and `prtMarkerSuppliesType` classifies toner,
+ink, drums, fusers and staples — so no part of the read path inspects a vendor string.
+
+Paper is weaker, and the project says so rather than papering over it. Trays routinely
+answer with the "some remaining" sentinel instead of a number, and `prtInputMediaName` is
+frequently blank. Expect loaded/not-loaded plus a declared size. **Remaining roll length
+has no vendor-neutral OID at all** and is never reported.
+
+`sysObjectID` identifies the vendor, but only for a display label and for ranking
+adapters during a probe. It never changes how anything is parsed — the moment it did,
+this would stop being a generic adapter.
 
 This one mechanism satisfies three requirements at once: the device sees exactly one
 query per interval no matter how many dashboards are open; alerts run 24/7 without a
@@ -285,14 +323,16 @@ docker compose --profile monitoring up -d
 
 ## Roadmap
 
-- **Now** — printers over IPP: queue, supplies, media, email alerts, admin portal.
-  The data model is device-generic and the UI is driven by the device list, so
-  nothing above the transport assumes a printer any more.
-- **Next** — a device-adapter interface and a generic SNMP adapter (RFC 3805 Printer
-  MIB) so HP, Xerox, Brother, Sharp, Kyocera and Lexmark work without vendor-specific
-  code. The level model this needs is already in place.
-- **Later** — a first-run setup wizard, adding devices from the UI with an on-demand
-  probe, hashed admin credentials, and non-printer adapters (ping, HTTP, UPS).
+- **Now** — an adapter system with two adapters: IPP (supplies, media, queue) and generic
+  SNMP over RFC 3805 (supplies, media). Device-generic data model, capability-driven UI,
+  email alerts, admin portal.
+- **Next** — a first-run setup wizard, and adding devices from the UI: enter an address,
+  run an on-demand probe, let it rank the adapters and show what it found before saving.
+  The probe already returns confidence, per-device capabilities and human-readable caveats;
+  what is missing is the screen. Admin credentials move to a hash in SQLite at the same time.
+- **Later** — non-printer adapters (ping, HTTP, UPS), and dropping the `ipptool` binary
+  dependency in favour of a pure-JS IPP client so `npm install && npm start` works
+  anywhere. The adapter boundary makes that a swap rather than a rewrite.
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). A parser for another
 vendor's PPD, or a captured SNMP walk from a non-Canon printer, are both genuinely useful.
