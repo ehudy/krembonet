@@ -5,6 +5,7 @@ import { AccessGate } from './components/AccessGate.js';
 import { AppShell } from './components/AppShell.js';
 import { useBranding } from './hooks/useBranding.js';
 import { I18nProvider, useTranslation } from './i18n/i18n.js';
+import { Devices } from './pages/Devices.js';
 import { Overview } from './pages/Overview.js';
 import { DeviceDetail } from './pages/DeviceDetail.js';
 import { Setup } from './pages/Setup.js';
@@ -36,6 +37,7 @@ function Routes() {
   const { path } = useRouter();
 
   if (matchPath('/', path) !== null) return <Overview />;
+  if (matchPath('/devices', path) !== null) return <Devices />;
 
   // `/printers/:slug` is kept alongside `/devices/:slug` so existing bookmarks
   // and the links in already-sent alert mail keep resolving.

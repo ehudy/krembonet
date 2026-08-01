@@ -2046,3 +2046,138 @@ td code {
   color: var(--error-text);
   margin-top: 2px;
 }
+
+/* Sidebar structure ------------------------------------------------------- */
+
+/* Pushes the Admin item and the version footer to the bottom, so the two
+   everyday destinations sit at the top and settings are always in the same
+   place regardless of how tall the window is. */
+.sidebar-spacer {
+  flex: 1;
+  min-height: 20px;
+}
+
+.nav-secondary {
+  margin-bottom: 4px;
+}
+
+/* List controls ----------------------------------------------------------- */
+
+.list-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.list-controls .filter-input {
+  flex: 1;
+  min-width: 240px;
+}
+
+.filter-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.08s ease-out;
+}
+
+.chip:hover {
+  background: var(--hover-surface);
+  color: var(--text);
+}
+
+.chip:active {
+  transform: scale(var(--press));
+}
+
+.chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.list-count {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Device rows ------------------------------------------------------------- */
+
+.device-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+}
+
+.device-link:hover strong {
+  color: var(--accent);
+}
+
+.device-link svg {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.device-link > span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.device-link small {
+  font-size: 11px;
+}
+
+.device-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Muted indicator. Deliberately quiet — it is a fact about the device, not a
+   fault, and it must not compete with the status pill next to it. */
+.mute-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  color: var(--text-faint);
+  vertical-align: middle;
+}
+
+.device-card .mute-badge {
+  margin-left: 0;
+}
+
+.device-card-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

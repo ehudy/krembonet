@@ -65,6 +65,32 @@ export const devices = sqliteTable('devices', {
   pollIntervalSeconds: integer('poll_interval_seconds').notNull().default(60),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now),
+
+  /*
+   * Alert suppression.
+   *
+   * Suppression silences *notification*, never measurement: a muted device is
+   * still polled, still evaluated, still shown as failing in the UI, and its
+   * alerts are still written to `alert_logs` with a `muted` status. The point
+   * is a printer under maintenance not paging anyone at 3am, not a printer
+   * that quietly stops being monitored.
+   *
+   * Declared last, out of the order they would otherwise sit in, because they
+   * arrive via `ALTER TABLE ... ADD COLUMN`, which appends physically. The
+   * migration test compares the real column order against the snapshot.
+   */
+
+  /** Maintenance mode: suppresses every category at once. */
+  isMuted: integer('is_muted', { mode: 'boolean' }).notNull().default(false),
+  muteSupplyAlerts: integer('mute_supply_alerts', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  muteMediaAlerts: integer('mute_media_alerts', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  muteOfflineAlerts: integer('mute_offline_alerts', { mode: 'boolean' })
+    .notNull()
+    .default(false),
 });
 
 /**

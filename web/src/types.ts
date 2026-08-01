@@ -123,6 +123,9 @@ export interface DeviceStatus {
  */
 export type AttentionLevel = 'ok' | 'warning' | 'error';
 
+/** The three things this hub can alert about, and can be told not to. */
+export type AlertCategory = 'supply' | 'media' | 'offline';
+
 export interface DeviceSummary {
   slug: string;
   displayName: string;
@@ -143,6 +146,11 @@ export interface DeviceSummary {
   attentionSummary: string | null;
   /** Every condition, most severe first. */
   attentionReasons: string[];
+  /** True when any alert category is silenced for this device. */
+  alertsSuppressed: boolean;
+  suppressedAlerts: AlertCategory[];
+  /** Maintenance mode — every category at once. */
+  isMuted: boolean;
 }
 
 export interface DeviceListResponse {
@@ -321,6 +329,10 @@ export interface AdminDevice {
   config: Record<string, unknown>;
   /** Secret config keys that currently hold a value. */
   secretsSet: string[];
+  isMuted: boolean;
+  muteSupplyAlerts: boolean;
+  muteMediaAlerts: boolean;
+  muteOfflineAlerts: boolean;
 }
 
 export interface DeviceIdentity {

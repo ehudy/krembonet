@@ -12,7 +12,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { schedule, type ScheduledTask } from 'node-cron';
 
-import { evaluateAlerts } from '../alerts/engine.js';
+import { evaluateAlerts, evaluateReachability } from '../alerts/engine.js';
 import { DeviceError } from '../devices/adapter.js';
 import { getSettings } from '../settings/settings.js';
 import { hydrateCacheFromDb, listEnabledDevices, pollSupplies } from './pollDevice.js';
@@ -30,6 +30,9 @@ async function runBackgroundPoll(log: FastifyBaseLogger): Promise<void> {
         'background poll ok',
       );
 
+      // Reachability first: a device that just came back should announce the
+      // recovery before anything it reports about its supplies.
+      await evaluateReachability(device, true, log);
       await evaluateAlerts(device, view, log);
     } catch (error) {
       const code = error instanceof DeviceError ? error.code : 'UNKNOWN';
@@ -39,6 +42,18 @@ async function runBackgroundPoll(log: FastifyBaseLogger): Promise<void> {
         { device: device.slug, code, ms: Date.now() - started },
         `background poll failed: ${(error as Error).message}`,
       );
+
+      // A failed poll produces no reading to evaluate, and "no reading" is
+      // exactly the condition being reported. Wrapped so an alerting problem
+      // cannot stop the loop reaching the next device.
+      try {
+        await evaluateReachability(device, false, log);
+      } catch (alertError) {
+        log.error(
+          { device: device.slug, error: String(alertError) },
+          'offline alert evaluation failed',
+        );
+      }
     }
   }
 }

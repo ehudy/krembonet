@@ -27,6 +27,7 @@ be turned off. Everything else stays on your network.
 | ------------------------ | --------------------------------------------------------------------------- |
 | `/setup`                 | First-run wizard — shown only until an admin password exists                |
 | `/`                      | Overview — status cards for every monitored device, plus hub health         |
+| `/devices`               | Every device, searchable and filterable by status                           |
 | `/devices/:slug`         | Device detail — supplies, media, live print queue                           |
 | `/admin`                 | Settings: hub name, dashboard access, appearance, SMTP, thresholds, cadence |
 | `/admin/devices`         | Add, edit and remove devices; test a connection before saving               |
@@ -136,6 +137,37 @@ The maintenance tank is evaluated in the opposite direction from ink — it aler
 shouting when it was fresh. See `docs/canon-tz32000-field-notes.md` §4.
 
 Everything that crosses in the same cycle is batched into one message.
+
+#### Offline and recovery
+
+A device that stops answering is alerted on separately from its supplies, since
+"no reading" is exactly the condition being reported. It takes **two consecutive
+failed polls** before a device is called offline — one missed poll is a printer
+asleep, a lease renewing, or a switch rebooting, and alerting on it produces a
+stream of offline/recovered pairs that teaches everyone to filter the sender.
+
+Both directions are edge-triggered: one message when it goes down, one when it
+comes back, and nothing in between however long the outage lasts.
+
+#### Muting
+
+Each device carries four switches under **Admin → Devices → Alert suppression**:
+maintenance mode (everything), and one each for supply, media and offline
+alerts.
+
+Suppression silences _notification_, never monitoring. A muted device is still
+polled, still evaluated, still shown as failing on the dashboard, and its alerts
+are still written to the log with a `muted` status — only the email and the
+webhooks stop. A mute that also stopped monitoring would mean a printer put into
+maintenance in March is quietly unmonitored in September, and nobody would find
+out until they walked past it. Muted devices carry a small bell-off marker on
+their card and row.
+
+One consequence worth knowing: alert _state_ is tracked while muted, so a supply
+that crosses its threshold during a mute and is still across it when the mute
+lifts does not then fire. The condition never transitioned — the dashboard has
+been showing it the whole time — and re-announcing old news on unmute would be
+the more surprising behaviour.
 
 #### Destinations
 

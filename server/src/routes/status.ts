@@ -10,6 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import { listAlertRules } from '../alerts/store.js';
 import { evaluateSupplies } from '../alerts/rules.js';
 import { requireViewer } from '../auth/session.js';
+import { hasAnySuppression, suppressedCategories } from '../alerts/mute.js';
 import { assessAttention } from '../devices/attention.js';
 import { levelToPercent } from '../devices/types.js';
 import {
@@ -21,6 +22,7 @@ import {
 import {
   ensureFresh,
   findDeviceBySlug,
+  type DeviceRow,
   JOBS_TTL_MS,
   listEnabledDevices,
   SUPPLIES_TTL_MS,
@@ -75,7 +77,12 @@ function countBreached(view: DeviceView, deviceId: number): number {
   ).length;
 }
 
-function summarize(view: DeviceView, deviceId: number) {
+/**
+ * `device` is the registry row, not just its id: the suppression flags live
+ * there rather than on the poll result, and a card has to show that a device is
+ * muted whether or not it has ever been polled.
+ */
+function summarize(view: DeviceView, device: DeviceRow) {
   // Reachable and stocked is not the same as working: an empty tray stops a
   // printer just as completely as an unplugged one, and the dashboard used to
   // call that "Healthy".
@@ -95,8 +102,12 @@ function summarize(view: DeviceView, deviceId: number) {
     consecutiveFailures: view.consecutiveFailures,
     // Enough for Overview cards to show a health summary without a second
     // request per device.
-    lowSupplies: countBreached(view, deviceId),
+    lowSupplies: countBreached(view, device.id),
     activeJobs: view.jobs.length,
+    /** True when any alert category is silenced; drives the card indicator. */
+    alertsSuppressed: hasAnySuppression(device),
+    suppressedAlerts: suppressedCategories(device),
+    isMuted: device.isMuted,
     attention: attention.level,
     /** One phrase for the card, e.g. "Paper out" or "Paper jam +1". */
     attentionSummary: attention.summary,
@@ -143,8 +154,11 @@ export async function statusRoutes(app: FastifyInstance): Promise<void> {
               attention: 'ok' as const,
               attentionSummary: null,
               attentionReasons: [],
+              alertsSuppressed: hasAnySuppression(device),
+              suppressedAlerts: suppressedCategories(device),
+              isMuted: device.isMuted,
             }
-          : summarize(view, device.id);
+          : summarize(view, device);
       }),
     };
   });
@@ -152,15 +166,16 @@ export async function statusRoutes(app: FastifyInstance): Promise<void> {
   /** Retained under the old path so existing links and bookmarks keep working. */
   app.get('/api/printers', async () => {
     const { backgroundPollMinutes } = getSettings();
-    const byslug = new Map(
-      listEnabledDevices().map((device) => [device.slug, device.id]),
-    );
+    const bySlug = new Map(listEnabledDevices().map((device) => [device.slug, device]));
 
     return {
       backgroundPollMinutes,
-      printers: listDeviceViews().map((view) =>
-        summarize(view, byslug.get(view.slug) ?? -1),
-      ),
+      printers: listDeviceViews().flatMap((view) => {
+        const device = bySlug.get(view.slug);
+        // A cached view with no registry row is a device deleted mid-flight;
+        // dropping it beats inventing suppression flags for it.
+        return device === undefined ? [] : [summarize(view, device)];
+      }),
     };
   });
 

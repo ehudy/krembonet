@@ -1,25 +1,35 @@
 /**
  * Alerting I/O shell: reads stored alert state, applies the pure rules in
- * `rules.ts`, sends mail, and records what happened.
+ * `rules.ts`, `reachability.ts` and `mute.ts`, sends mail, and records what
+ * happened.
+ *
+ * Three categories share one dispatch path — supplies crossing a threshold,
+ * media faults the device reports, and the device going unreachable. They
+ * differ only in how the condition is detected; once something needs saying,
+ * the edge-triggering, muting, delivery and logging are identical, and having
+ * three copies of that is how they drift.
  */
 import { sql } from 'drizzle-orm';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 
 import { config } from '../config.js';
 import { db } from '../db/client.js';
-import { alertLogs, alertState } from '../db/schema.js';
+import { alertLogs, alertState, deviceStatus } from '../db/schema.js';
+import { assessAttention } from '../devices/attention.js';
 import type { DeviceView } from '../poller/cache.js';
 import type { DeviceRow } from '../poller/pollDevice.js';
 import { getSettings, isSmtpConfigured } from '../settings/settings.js';
 import { sendMail } from './mailer.js';
-import { dispatchWebhooks, listEnabledTargets } from './webhooks.js';
+import { suppressionReason, type AlertCategory, type MuteFlags } from './mute.js';
 import {
-  buildAlertMail,
-  decideTransitions,
-  evaluateSupplies,
-  type SupplyCondition,
-} from './rules.js';
+  buildOfflineMail,
+  buildRecoveryMail,
+  decideReachability,
+  offlineRuleKey,
+} from './reachability.js';
+import { dispatchWebhooks, listEnabledTargets } from './webhooks.js';
+import { buildAlertMail, decideTransitions, evaluateSupplies } from './rules.js';
 import { listAlertRules } from './store.js';
 
 /**
@@ -44,12 +54,22 @@ function readActiveRuleKeys(): Set<string> {
   return new Set(rows.filter((row) => row.isActive).map((row) => row.ruleKey));
 }
 
-function markActive(condition: SupplyCondition, notified: boolean): void {
+function isActive(ruleKey: string): boolean {
+  const row = db
+    .select({ isActive: alertState.isActive })
+    .from(alertState)
+    .where(eq(alertState.ruleKey, ruleKey))
+    .all()[0];
+
+  return row?.isActive === true;
+}
+
+function markActive(ruleKey: string, notified: boolean): void {
   const now = new Date();
 
   db.insert(alertState)
     .values({
-      ruleKey: condition.ruleKey,
+      ruleKey,
       isActive: true,
       triggeredAt: now,
       clearedAt: null,
@@ -82,13 +102,26 @@ function markCleared(ruleKey: string): void {
     .run();
 }
 
+/** When an offline alert was raised, for the recovery message. */
+function triggeredAt(ruleKey: string): string | null {
+  const row = db
+    .select({ triggeredAt: alertState.triggeredAt })
+    .from(alertState)
+    .where(eq(alertState.ruleKey, ruleKey))
+    .all()[0];
+
+  return row?.triggeredAt?.toISOString() ?? null;
+}
+
+type LogStatus = 'sent' | 'failed' | 'skipped' | 'muted';
+
 function logAlert(
   ruleKey: string,
   deviceId: number,
   subject: string,
   recipients: string[],
-  status: 'sent' | 'failed' | 'skipped',
-  channel: 'email' | 'webhook',
+  status: LogStatus,
+  channel: 'email' | 'webhook' | 'none',
   error?: string,
 ): void {
   db.insert(alertLogs)
@@ -104,6 +137,146 @@ function logAlert(
     .run();
 }
 
+export interface Notification {
+  category: AlertCategory;
+  /** Every rule key this notification covers; each gets its own log row. */
+  ruleKeys: string[];
+  subject: string;
+  text: string;
+  lines: string[];
+}
+
+/**
+ * Sends one notification over every configured channel, or explains why not.
+ *
+ * Returns whether anything actually carried it, which is what decides if the
+ * alert counts as "notified" — a single dead webhook must not re-arm the alert
+ * and make it fire again next poll.
+ */
+async function dispatch(
+  device: DeviceRow,
+  notification: Notification,
+  log: FastifyBaseLogger,
+): Promise<boolean> {
+  const settings = getSettings();
+
+  // Muted: recorded, never sent. The dashboard keeps showing the condition —
+  // suppression silences the notification, not the monitoring.
+  const reason = suppressionReason(device, notification.category);
+  if (reason !== null) {
+    for (const ruleKey of notification.ruleKeys) {
+      logAlert(ruleKey, device.id, notification.subject, [], 'muted', 'none', reason);
+    }
+    log.info(
+      { device: device.slug, category: notification.category, reason },
+      'alert suppressed by device mute',
+    );
+    return false;
+  }
+
+  const smtpReady = isSmtpConfigured(settings);
+  const targets = listEnabledTargets();
+
+  // Record the condition even when nothing can carry it, otherwise a hub with
+  // no destination configured would retry — and re-log — on every single poll.
+  if (!smtpReady && targets.length === 0) {
+    for (const ruleKey of notification.ruleKeys) {
+      logAlert(
+        ruleKey,
+        device.id,
+        notification.subject,
+        [],
+        'skipped',
+        'email',
+        'No destination configured (no SMTP, no webhooks)',
+      );
+    }
+    log.warn(
+      { device: device.slug, category: notification.category },
+      'alert raised but no destination is configured',
+    );
+    return false;
+  }
+
+  // Both channels go out together. Mail waiting on a webhook to a receiver that
+  // has gone away — or the reverse — would make one broken destination delay
+  // every other one.
+  const [mail, deliveries] = await Promise.all([
+    smtpReady
+      ? sendMail({ subject: notification.subject, text: notification.text }, settings)
+      : null,
+    targets.length > 0
+      ? dispatchWebhooks(
+          {
+            event: 'alert',
+            hubTitle: settings.hubTitle,
+            subject: notification.subject,
+            text: notification.text,
+            deviceName: device.displayName,
+            deviceHost: device.host,
+            lines: notification.lines,
+            url: deviceUrl(device.slug),
+          },
+          targets,
+        )
+      : Promise.resolve([]),
+  ]);
+
+  const delivered = (mail?.ok ?? false) || deliveries.some((result) => result.ok);
+
+  for (const ruleKey of notification.ruleKeys) {
+    if (mail !== null) {
+      logAlert(
+        ruleKey,
+        device.id,
+        notification.subject,
+        mail.recipients,
+        mail.ok ? 'sent' : 'failed',
+        'email',
+        mail.error,
+      );
+    }
+    for (const result of deliveries) {
+      logAlert(
+        ruleKey,
+        device.id,
+        notification.subject,
+        [result.target.name],
+        result.ok ? 'sent' : 'failed',
+        'webhook',
+        result.error,
+      );
+    }
+  }
+
+  const failures = [
+    ...(mail !== null && !mail.ok ? [`email: ${mail.error ?? 'unknown error'}`] : []),
+    ...deliveries
+      .filter((result) => !result.ok)
+      .map((result) => `${result.target.name}: ${result.error ?? 'unknown error'}`),
+  ];
+
+  if (delivered) {
+    log.info(
+      {
+        device: device.slug,
+        category: notification.category,
+        recipients: mail?.ok === true ? mail.recipients.length : 0,
+        webhooks: deliveries.filter((result) => result.ok).length,
+        ...(failures.length > 0 ? { failures } : {}),
+      },
+      'alert sent',
+    );
+  } else {
+    log.error(
+      { device: device.slug, category: notification.category, failures },
+      'alert failed on every destination',
+    );
+  }
+
+  return delivered;
+}
+
 /**
  * Evaluates a fresh reading and sends at most one mail per poll, covering
  * every supply that crossed its threshold this cycle. Batching matters: a
@@ -114,13 +287,11 @@ function logAlert(
  * device that declines to report a level stays quiet instead of alerting as if
  * it were empty.
  */
-export async function evaluateAlerts(
+async function evaluateSupplyAlerts(
   device: DeviceRow,
   view: DeviceView,
   log: FastifyBaseLogger,
 ): Promise<void> {
-  const settings = getSettings();
-  if (!settings.alertsEnabled) return;
   if (view.supplies.length === 0) return;
 
   const conditions = evaluateSupplies(
@@ -140,108 +311,180 @@ export async function evaluateAlerts(
 
   if (toNotify.length === 0) return;
 
-  const { subject, text, lines } = buildAlertMail(device, toNotify, settings.hubTitle);
+  const { subject, text, lines } = buildAlertMail(
+    device,
+    toNotify,
+    getSettings().hubTitle,
+  );
 
-  const smtpReady = isSmtpConfigured(settings);
-  const targets = listEnabledTargets();
-  const names = toNotify.map((condition) => condition.supply.name);
+  const delivered = await dispatch(
+    device,
+    {
+      category: 'supply',
+      ruleKeys: toNotify.map((condition) => condition.ruleKey),
+      subject,
+      text,
+      lines,
+    },
+    log,
+  );
 
-  // Record the breach even when nothing can carry it, otherwise a hub with no
-  // destination configured would retry — and re-log — on every single poll.
-  if (!smtpReady && targets.length === 0) {
-    for (const condition of toNotify) {
-      markActive(condition, false);
-      logAlert(
-        condition.ruleKey,
-        device.id,
-        subject,
-        [],
-        'skipped',
-        'email',
-        'No destination configured (no SMTP, no webhooks)',
-      );
+  for (const condition of toNotify) markActive(condition.ruleKey, delivered);
+}
+
+/** One rule key for the whole device: media faults are a single condition. */
+function mediaRuleKey(slug: string): string {
+  return `device:${slug}:media`;
+}
+
+/**
+ * Alerts on media faults the device reports about itself.
+ *
+ * Distinct from supply thresholds, which are numbers this hub compares against
+ * operator settings. These are the device asserting it cannot print — an empty
+ * tray, a jam — and no threshold covers them. Only `error` level conditions
+ * notify; warnings like "paper low" are visible on the dashboard and do not
+ * earn a 3am email.
+ */
+async function evaluateMediaAlerts(
+  device: DeviceRow,
+  view: DeviceView,
+  log: FastifyBaseLogger,
+): Promise<void> {
+  const attention = assessAttention(view.state, view.stateReasons);
+  const ruleKey = mediaRuleKey(device.slug);
+  const active = isActive(ruleKey);
+
+  if (attention.level !== 'error') {
+    if (active) {
+      markCleared(ruleKey);
+      log.info({ ruleKey }, 'media alert cleared');
     }
+    return;
+  }
+
+  // Edge-triggered: a device that has been jammed for six hours has already
+  // been reported once, and does not need reporting again every poll.
+  if (active) return;
+
+  const hubTitle = getSettings().hubTitle;
+  const lines = attention.conditions.map((condition) => condition.label);
+  const headline = attention.summary ?? 'Needs attention';
+
+  const delivered = await dispatch(
+    device,
+    {
+      category: 'media',
+      ruleKeys: [ruleKey],
+      subject: `[${hubTitle}] ${device.displayName}: ${headline}`,
+      text: [
+        `${device.displayName} (${device.host}) needs attention:`,
+        '',
+        ...lines.map((line) => `  - ${line}`),
+        '',
+        'This is sent once per fault. You will not get another message until it clears.',
+      ].join('\n'),
+      lines,
+    },
+    log,
+  );
+
+  markActive(ruleKey, delivered);
+}
+
+/**
+ * Announces a device going unreachable, and coming back.
+ *
+ * Called on both poll outcomes, unlike the other categories — a device that
+ * fails to respond produces no reading to evaluate, and "no reading" is
+ * precisely the thing being reported here.
+ */
+export async function evaluateReachability(
+  device: DeviceRow,
+  succeeded: boolean,
+  log: FastifyBaseLogger,
+): Promise<void> {
+  const settings = getSettings();
+  if (!settings.alertsEnabled) return;
+
+  // Read rather than passed in: the poller has already persisted the outcome by
+  // the time this runs, and taking the count from the row it wrote keeps one
+  // source of truth instead of two that can disagree.
+  const status = db
+    .select({
+      consecutiveFailures: deviceStatus.consecutiveFailures,
+      lastError: deviceStatus.lastError,
+      lastSuccessAt: deviceStatus.lastSuccessAt,
+    })
+    .from(deviceStatus)
+    .where(eq(deviceStatus.deviceId, device.id))
+    .all()[0];
+
+  const consecutiveFailures = status?.consecutiveFailures ?? 0;
+  const ruleKey = offlineRuleKey(device.slug);
+  const wasActive = isActive(ruleKey);
+
+  const transition = decideReachability({
+    succeeded,
+    consecutiveFailures,
+    isOfflineAlertActive: wasActive,
+  });
+
+  if (transition === null) return;
+
+  if (transition === 'offline') {
+    const { subject, text, lines } = buildOfflineMail(
+      device,
+      settings.hubTitle,
+      consecutiveFailures,
+      status?.lastError ?? null,
+      status?.lastSuccessAt?.toISOString() ?? null,
+    );
+
+    const delivered = await dispatch(
+      device,
+      { category: 'offline', ruleKeys: [ruleKey], subject, text, lines },
+      log,
+    );
+
+    markActive(ruleKey, delivered);
     log.warn(
-      { supplies: names },
-      'supply threshold crossed but no destination is configured',
+      { device: device.slug, failures: consecutiveFailures },
+      'device marked offline',
     );
     return;
   }
 
-  // Both channels go out together. Mail waiting on a webhook to a receiver that
-  // has gone away — or the reverse — would make one broken destination delay
-  // every other one.
-  const [mail, deliveries] = await Promise.all([
-    smtpReady ? sendMail({ subject, text }, settings) : null,
-    targets.length > 0
-      ? dispatchWebhooks(
-          {
-            event: 'alert',
-            hubTitle: settings.hubTitle,
-            subject,
-            text,
-            deviceName: device.displayName,
-            deviceHost: device.host,
-            lines,
-            url: deviceUrl(device.slug),
-          },
-          targets,
-        )
-      : Promise.resolve([]),
-  ]);
+  // Recovered. The clear happens whether or not the message got out: the
+  // device is demonstrably back, and leaving the alert active would mean the
+  // next outage never announces itself.
+  const downSince = triggeredAt(ruleKey);
+  const { subject, text, lines } = buildRecoveryMail(
+    device,
+    settings.hubTitle,
+    downSince,
+  );
 
-  // "Notified" means at least one channel took it. Requiring all of them would
-  // let a single dead webhook re-arm the alert and mail about it every hour.
-  const delivered = (mail?.ok ?? false) || deliveries.some((result) => result.ok);
+  await dispatch(
+    device,
+    { category: 'offline', ruleKeys: [ruleKey], subject, text, lines },
+    log,
+  );
 
-  for (const condition of toNotify) {
-    markActive(condition, delivered);
+  markCleared(ruleKey);
+  log.info({ device: device.slug }, 'device recovered');
+}
 
-    if (mail !== null) {
-      logAlert(
-        condition.ruleKey,
-        device.id,
-        subject,
-        mail.recipients,
-        mail.ok ? 'sent' : 'failed',
-        'email',
-        mail.error,
-      );
-    }
+/** Everything evaluated from a successful reading. */
+export async function evaluateAlerts(
+  device: DeviceRow,
+  view: DeviceView,
+  log: FastifyBaseLogger,
+): Promise<void> {
+  if (!getSettings().alertsEnabled) return;
 
-    for (const result of deliveries) {
-      logAlert(
-        condition.ruleKey,
-        device.id,
-        subject,
-        [result.target.name],
-        result.ok ? 'sent' : 'failed',
-        'webhook',
-        result.error,
-      );
-    }
-  }
-
-  const failures = [
-    ...(mail !== null && !mail.ok ? [`email: ${mail.error ?? 'unknown error'}`] : []),
-    ...deliveries
-      .filter((result) => !result.ok)
-      .map((result) => `${result.target.name}: ${result.error ?? 'unknown error'}`),
-  ];
-
-  if (delivered) {
-    log.info(
-      {
-        supplies: names,
-        recipients: mail?.ok === true ? mail.recipients.length : 0,
-        webhooks: deliveries.filter((result) => result.ok).length,
-        ...(failures.length > 0 ? { failures } : {}),
-      },
-      'supply alert sent',
-    );
-  } else {
-    log.error({ supplies: names, failures }, 'supply alert failed on every destination');
-  }
+  await evaluateSupplyAlerts(device, view, log);
+  await evaluateMediaAlerts(device, view, log);
 }
 
 /** Recent alert history for the admin portal. */
@@ -258,3 +501,28 @@ export function recentAlertLogs(limit = 50) {
 export function activeAlerts() {
   return db.select().from(alertState).where(eq(alertState.isActive, true)).all();
 }
+
+/**
+ * Drops alert state for a device whose suppression flags just changed.
+ *
+ * Not used for muting — a mute should not forget an outstanding condition —
+ * but exported for the device delete path, where leaving state behind would
+ * let a re-added device with the same slug start out believing it is already
+ * alerting.
+ */
+export function clearAlertStateFor(slug: string): void {
+  const prefix = `device:${slug}:`;
+  const keys = db
+    .select({ ruleKey: alertState.ruleKey })
+    .from(alertState)
+    .all()
+    .filter((row) => row.ruleKey.startsWith(prefix))
+    .map((row) => row.ruleKey);
+
+  if (keys.length > 0) {
+    db.delete(alertState).where(inArray(alertState.ruleKey, keys)).run();
+  }
+}
+
+/** Suppression flags are read straight off the device row. */
+export type { MuteFlags };

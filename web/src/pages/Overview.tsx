@@ -7,6 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import {
+  BellOff,
   CircleAlert,
   CircleCheck,
   Plus,
@@ -105,12 +106,22 @@ function DeviceCard({ device }: { device: DeviceSummary }) {
   return (
     <Link to={`/devices/${device.slug}`} className="device-card">
       <div className="device-card-top">
-        <Printer
-          className="device-icon"
-          size={18}
-          strokeWidth={1.75}
-          aria-hidden="true"
-        />
+        <span className="device-card-marks">
+          <Printer
+            className="device-icon"
+            size={18}
+            strokeWidth={1.75}
+            aria-hidden="true"
+          />
+          {/* Quiet on purpose: muting is a fact about the device, not a fault,
+              and it must not compete with the status pill beside it. */}
+          {device.alertsSuppressed && (
+            <span className="mute-badge" title={t('devicesPage.muted')}>
+              <BellOff size={14} strokeWidth={2} aria-hidden="true" />
+              <span className="visually-hidden">{t('devicesPage.muted')}</span>
+            </span>
+          )}
+        </span>
         <StatusPill device={device} />
       </div>
 

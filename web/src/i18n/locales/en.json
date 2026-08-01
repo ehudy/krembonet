@@ -39,12 +39,11 @@
   "nav": {
     "overview": "Overview",
     "admin": "Admin",
-    "addDevice": "Add a device",
     "main": "Main",
     "toggle": "Toggle navigation",
     "closeNav": "Close navigation",
-    "localOnly": "Local network only",
-    "brandSubtitle": "Local device telemetry"
+    "brandSubtitle": "Local device telemetry",
+    "devices": "Devices"
   },
   "overview": {
     "title": "Overview",
@@ -346,7 +345,17 @@
     "switchToIt": "Switch to it",
     "required": " *",
     "noConfig": "This adapter needs no configuration.",
-    "secretStored": "Leave blank to keep the stored value."
+    "secretStored": "Leave blank to keep the stored value.",
+    "suppression": "Alert suppression",
+    "suppressionHint": "Silences notification, never monitoring. A muted device is still polled, still evaluated, and still shown as failing here — only the email and webhooks stop.",
+    "maintenanceMode": "Maintenance mode",
+    "maintenanceModeHint": "Silences every alert for this device.",
+    "muteSupply": "Mute supply alerts",
+    "muteSupplyHint": "Ink and toner crossing their thresholds.",
+    "muteMedia": "Mute media alerts",
+    "muteMediaHint": "Paper out, tray empty, jams.",
+    "muteOffline": "Mute offline alerts",
+    "muteOfflineHint": "The device becoming unreachable, and recovering."
   },
   "discover": {
     "title": "Auto-discover",
@@ -443,5 +452,22 @@
     "title": "Page not found",
     "body": "Nothing is routed at <path>.",
     "back": "Back to Overview"
+  },
+  "devicesPage": {
+    "title": "Devices",
+    "subtitle": "Every monitored printer",
+    "search": "Search by name, model, location or address…",
+    "filterAll": "All",
+    "filterAttention": "Needs attention",
+    "filterOffline": "Offline",
+    "filterMuted": "Muted",
+    "showing": "{{shown}} of {{total}}",
+    "noMatch": "No devices match that search.",
+    "empty": "No devices are being monitored yet.",
+    "muted": "Alerts muted",
+    "mutedCategories": "Alerts muted: {{categories}}",
+    "categorySupply": "supplies",
+    "categoryMedia": "media",
+    "categoryOffline": "offline"
   }
 }

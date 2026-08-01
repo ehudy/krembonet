@@ -9,14 +9,13 @@
  * disagree for a frame.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { Home, Menu, Plus, Printer, Settings, type LucideIcon } from 'lucide-react';
+import { Home, Menu, Printer, Settings, type LucideIcon } from 'lucide-react';
 
-import { api } from '../api.js';
 import { VersionBadge } from './VersionBadge.js';
 import { DEFAULT_HUB_TITLE } from '../hooks/useBranding.js';
-import { useTranslation, type Translate } from '../i18n/i18n.js';
+import { useTranslation } from '../i18n/i18n.js';
 import { Link, matchPath, useRouter } from '../router.js';
-import type { DeviceSummary, UpdateStatus } from '../types.js';
+import type { UpdateStatus } from '../types.js';
 
 interface NavItem {
   to: string;
@@ -27,30 +26,33 @@ interface NavItem {
 }
 
 /**
- * Builds the sidebar from the devices the hub actually has.
+ * Fixed navigation, three items.
  *
- * This used to be a hardcoded link to one device's slug, which is the single
- * assumption that made the app a one-printer tool.
+ * This used to render one link per device, which worked at three printers and
+ * fell apart at thirty: the nav grew without bound, pushed Admin off the
+ * bottom, and offered no way to find anything. Devices now has its own page
+ * with search and filters, so the sidebar stays the same height at 3 devices
+ * and at 300.
  */
-function navFor(devices: DeviceSummary[], t: Translate): NavItem[] {
-  return [
-    { to: '/', label: t('nav.overview'), icon: Home },
-    ...devices.map((device) => ({
-      to: `/devices/${device.slug}`,
-      label: device.displayName,
-      icon: Printer,
-      // Bookmarks and older links still point at /printers/:slug, so the item
-      // has to light up for both.
-      match: [`/printers/${device.slug}`],
-    })),
-    // With no devices the sidebar would be Overview and Admin only, which
-    // reads as a broken install rather than an empty one.
-    ...(devices.length === 0
-      ? [{ to: '/admin/devices', label: t('nav.addDevice'), icon: Plus }]
-      : []),
-    { to: '/admin', label: t('nav.admin'), icon: Settings, match: ['/admin/:page'] },
-  ];
-}
+const PRIMARY_NAV: NavItem[] = [
+  { to: '/', label: 'nav.overview', icon: Home },
+  // Individual devices live under /devices/:slug, so the item stays lit while
+  // looking at one.
+  {
+    to: '/devices',
+    label: 'nav.devices',
+    icon: Printer,
+    match: ['/devices/:slug', '/printers/:slug'],
+  },
+];
+
+/** Pinned to the bottom, away from the things looked at every day. */
+const ADMIN_NAV: NavItem = {
+  to: '/admin',
+  label: 'nav.admin',
+  icon: Settings,
+  match: ['/admin/:page'],
+};
 
 function isActive(item: NavItem, path: string): boolean {
   if (item.to === '/') return path === '/';
@@ -114,24 +116,10 @@ export function AppShell({
   const { path } = useRouter();
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
-  const [devices, setDevices] = useState<DeviceSummary[]>([]);
 
   // Close the drawer whenever navigation happens, otherwise it stays over the
   // page you just navigated to on mobile.
   useEffect(() => setIsOpen(false), [path]);
-
-  // Reloaded on navigation so a device added in the admin portal appears in the
-  // sidebar without a full page refresh.
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .listDevices(controller.signal)
-      .then((response) => setDevices(response.devices))
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [path]);
-
-  const nav = navFor(devices, t);
 
   return (
     <div className={`shell${isOpen ? ' is-drawer-open' : ''}`}>
@@ -139,7 +127,7 @@ export function AppShell({
         <Brand title={title} subtitle={subtitle} logoUrl={logoUrl} />
 
         <nav className="nav" aria-label={t('nav.main')}>
-          {nav.map((item) => {
+          {PRIMARY_NAV.map((item) => {
             const Icon = item.icon;
             return (
               <Link
@@ -155,17 +143,33 @@ export function AppShell({
                   strokeWidth={1.75}
                   aria-hidden="true"
                 />
-                {item.label}
+                {t(item.label)}
               </Link>
             );
           })}
         </nav>
 
+        {/* Admin sits at the bottom, pushed there by the spacer, so the two
+            things looked at daily stay at the top and the settings live out of
+            the way — but always in the same place. */}
+        <div className="sidebar-spacer" />
+
+        <nav className="nav nav-secondary" aria-label={t('nav.admin')}>
+          <Link
+            to={ADMIN_NAV.to}
+            className={`nav-item${isActive(ADMIN_NAV, path) ? ' is-active' : ''}`}
+          >
+            <Settings
+              className="nav-icon"
+              size={16}
+              strokeWidth={1.75}
+              aria-hidden="true"
+            />
+            {t(ADMIN_NAV.label)}
+          </Link>
+        </nav>
+
         <div className="sidebar-footer">
-          <span className="sidebar-status">
-            <span className="dot" aria-hidden="true" />
-            {t('nav.localOnly')}
-          </span>
           {/* Rendered only once the version is known, so the footer does not
               reflow from "vundefined" to a real number on load. */}
           {update !== undefined && update.currentVersion !== '' && (

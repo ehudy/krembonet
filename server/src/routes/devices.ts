@@ -9,6 +9,7 @@
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 
+import { clearAlertStateFor } from '../alerts/engine.js';
 import { requireAdmin } from '../auth/session.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
@@ -39,6 +40,28 @@ interface DeviceBody {
   enabled?: boolean;
   config?: RawConfig;
   capabilities?: string[] | null;
+  isMuted?: boolean;
+  muteSupplyAlerts?: boolean;
+  muteMediaAlerts?: boolean;
+  muteOfflineAlerts?: boolean;
+}
+
+/** Suppression flags, as booleans, from whatever the form sent. */
+const MUTE_KEYS = [
+  'isMuted',
+  'muteSupplyAlerts',
+  'muteMediaAlerts',
+  'muteOfflineAlerts',
+] as const;
+
+function mutePatch(
+  body: DeviceBody,
+): Partial<Record<(typeof MUTE_KEYS)[number], boolean>> {
+  const patch: Partial<Record<(typeof MUTE_KEYS)[number], boolean>> = {};
+  for (const key of MUTE_KEYS) {
+    if (body[key] !== undefined) patch[key] = body[key] === true;
+  }
+  return patch;
 }
 
 interface ProbeBody {
@@ -91,6 +114,10 @@ function presentDevice(row: typeof devices.$inferSelect) {
       row.capabilities === null ? null : (JSON.parse(row.capabilities) as string[]),
     config: redacted.values,
     secretsSet: redacted.secretsSet,
+    isMuted: row.isMuted,
+    muteSupplyAlerts: row.muteSupplyAlerts,
+    muteMediaAlerts: row.muteMediaAlerts,
+    muteOfflineAlerts: row.muteOfflineAlerts,
   };
 }
 
@@ -244,6 +271,7 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
           host,
           config: serializeConfig(adapter, normalized),
           enabled: body.enabled !== false,
+          ...mutePatch(body),
           capabilities:
             body.capabilities === undefined || body.capabilities === null
               ? null
@@ -327,6 +355,7 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
           host,
           config: serializeConfig(adapter, merged),
           enabled: body.enabled === undefined ? existing.enabled : body.enabled !== false,
+          ...mutePatch(body),
           capabilities:
             body.capabilities === undefined
               ? existing.capabilities
@@ -362,6 +391,10 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
 
       // Supplies, history, media and jobs cascade; alert logs keep their rows
       // with a null device so the audit trail survives the device.
+      // Alert state is keyed by slug, so a device re-added under the same name
+      // would otherwise start out believing it is already alerting — and never
+      // announce the next real crossing.
+      clearAlertStateFor(existing.slug);
       db.delete(devices).where(eq(devices.id, id)).run();
 
       clearCache();

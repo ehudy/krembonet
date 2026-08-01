@@ -39,12 +39,11 @@
   "nav": {
     "overview": "Resumen",
     "admin": "Administración",
-    "addDevice": "Añadir un dispositivo",
     "main": "Principal",
     "toggle": "Alternar navegación",
     "closeNav": "Cerrar navegación",
-    "localOnly": "Solo red local",
-    "brandSubtitle": "Telemetría de dispositivos locales"
+    "brandSubtitle": "Telemetría de dispositivos locales",
+    "devices": "Dispositivos"
   },
   "overview": {
     "title": "Resumen",
@@ -346,7 +345,17 @@
     "switchToIt": "Cambiar a él",
     "required": " *",
     "noConfig": "Este adaptador no necesita configuración.",
-    "secretStored": "Déjalo en blanco para conservar el valor guardado."
+    "secretStored": "Déjalo en blanco para conservar el valor guardado.",
+    "suppression": "Supresión de alertas",
+    "suppressionHint": "Silencia la notificación, nunca la monitorización. Un dispositivo silenciado se sigue sondeando, se sigue evaluando y se sigue mostrando aquí como fallido — solo se detienen el correo y los webhooks.",
+    "maintenanceMode": "Modo mantenimiento",
+    "maintenanceModeHint": "Silencia todas las alertas de este dispositivo.",
+    "muteSupply": "Silenciar alertas de consumibles",
+    "muteSupplyHint": "Tinta y tóner que cruzan sus umbrales.",
+    "muteMedia": "Silenciar alertas de papel",
+    "muteMediaHint": "Sin papel, bandeja vacía, atascos.",
+    "muteOffline": "Silenciar alertas de conexión",
+    "muteOfflineHint": "El dispositivo dejando de responder, y recuperándose."
   },
   "discover": {
     "title": "Detección automática",
@@ -443,5 +452,22 @@
     "title": "Página no encontrada",
     "body": "No hay nada enrutado en <path>.",
     "back": "Volver al resumen"
+  },
+  "devicesPage": {
+    "title": "Dispositivos",
+    "subtitle": "Todas las impresoras monitorizadas",
+    "search": "Buscar por nombre, modelo, ubicación o dirección…",
+    "filterAll": "Todos",
+    "filterAttention": "Requieren atención",
+    "filterOffline": "Sin conexión",
+    "filterMuted": "Silenciados",
+    "showing": "{{shown}} de {{total}}",
+    "noMatch": "Ningún dispositivo coincide con esa búsqueda.",
+    "empty": "Todavía no se monitoriza ningún dispositivo.",
+    "muted": "Alertas silenciadas",
+    "mutedCategories": "Alertas silenciadas: {{categories}}",
+    "categorySupply": "consumibles",
+    "categoryMedia": "papel",
+    "categoryOffline": "sin conexión"
   }
 }
