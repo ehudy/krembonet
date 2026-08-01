@@ -5,24 +5,8 @@
  * rules, not recomputed here. This panel used to carry its own 15%/85%
  * constants, which meant a bar could turn red at a level that sent no mail.
  */
+import { fillColor } from '../lib/supplyColor.js';
 import type { Supply, SupplyLevel } from '../types.js';
-
-/**
- * The colour a bar is filled with.
- *
- * A breached supply is amber-red regardless of what the device says its colour
- * is: the point of the bar at that moment is "act on this", and a cyan tank
- * drawn in cyan while it is empty buries exactly the row that matters.
- *
- * Otherwise the device's own colour wins where it gave one — a magenta tank
- * drawn magenta is real information, not decoration — and the brand accent is
- * the fallback for the many devices that report no colour at all.
- */
-function fillColor(supply: Supply): string {
-  if (supply.breached) return 'var(--danger)';
-  if (supply.colorHex !== null && supply.colorHex !== '') return supply.colorHex;
-  return 'var(--accent)';
-}
 
 /** What to show on the right of the bar, given a level that may have no number. */
 function levelText(supply: Supply): string {

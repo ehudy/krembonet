@@ -108,8 +108,20 @@ export interface DeviceStatus {
   suppliesAgeSeconds: number;
   jobsAgeSeconds: number;
   servedAt: string;
+  attention: AttentionLevel;
+  attentionSummary: string | null;
+  attentionReasons: string[];
   ttl: { suppliesSeconds: number; jobsSeconds: number };
 }
+
+/**
+ * How badly a device needs someone to walk over to it.
+ *
+ * Decided server-side from the device's own state reasons — see
+ * server/src/devices/attention.ts. `error` means it cannot print until
+ * something is done; `warning` means it still can, but not for long.
+ */
+export type AttentionLevel = 'ok' | 'warning' | 'error';
 
 export interface DeviceSummary {
   slug: string;
@@ -126,6 +138,11 @@ export interface DeviceSummary {
   /** Supplies currently past their alert threshold, counted by the alert rules. */
   lowSupplies: number;
   activeJobs: number;
+  attention: AttentionLevel;
+  /** One phrase for a status pill, e.g. "Paper out" or "Paper jam +1". */
+  attentionSummary: string | null;
+  /** Every condition, most severe first. */
+  attentionReasons: string[];
 }
 
 export interface DeviceListResponse {

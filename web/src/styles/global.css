@@ -39,6 +39,19 @@
      a card and over the canvas without needing a variant for each. */
   --hover-surface: rgb(39 39 42 / 60%);
 
+  /* Stands in for black ink, which reports as #000000 and disappears against a
+     #18181B card — a black cartridge at 8% looked identical to one at 80%.
+     Light here, near-black on the light theme, so the substitution is always
+     the readable direction. See web/src/lib/supplyColor.ts. */
+  --supply-dark-ink: #d4d4d8;
+
+  /* Card hover lift. Tight and low-opacity: at 20px blur and 35% this read as
+     a drop shadow from another design language. */
+  --card-shadow: 0 2px 8px rgb(0 0 0 / 40%);
+  /* A modal floats over a scrim and does need real separation, but it is
+     themed for the same reason the card shadow is. */
+  --modal-shadow: 0 16px 40px rgb(0 0 0 / 55%);
+
   /* Status. Grounded, not neon — these sit on black and must read as
      information rather than decoration. */
   --ok: #10b981;
@@ -96,6 +109,11 @@
   --warning-text: #92400e;
 
   --hover-surface: rgb(228 228 231 / 60%);
+  --supply-dark-ink: #27272a;
+  /* Barely there. A heavy shadow on a white canvas reads as a rendering
+     artefact rather than a lift; the border change carries most of the hover. */
+  --card-shadow: 0 1px 3px rgb(9 9 11 / 8%);
+  --modal-shadow: 0 12px 32px rgb(9 9 11 / 14%);
 
   --sidebar-bg: #ffffff;
   --sidebar-text: #52525b;
@@ -123,6 +141,12 @@
     --warning-text: #92400e;
 
     --hover-surface: rgb(228 228 231 / 60%);
+    --supply-dark-ink: #27272a;
+    /* Barely there. A heavy shadow on a white canvas reads as a rendering
+       artefact rather than a lift; the border change carries most of the
+       hover. */
+    --card-shadow: 0 1px 3px rgb(9 9 11 / 8%);
+    --modal-shadow: 0 12px 32px rgb(9 9 11 / 14%);
 
     --sidebar-bg: #ffffff;
     --sidebar-text: #52525b;
@@ -533,7 +557,7 @@ h1 {
 
 .device-card:hover {
   border-color: var(--border-strong);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+  box-shadow: var(--card-shadow);
   transform: translateY(-1px);
 }
 
@@ -1790,7 +1814,7 @@ td code {
   max-height: min(80vh, 640px);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 60px rgb(0 0 0 / 55%);
+  box-shadow: var(--modal-shadow);
 }
 
 .modal-head {

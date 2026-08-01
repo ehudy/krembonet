@@ -10,6 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import { listAlertRules } from '../alerts/store.js';
 import { evaluateSupplies } from '../alerts/rules.js';
 import { requireViewer } from '../auth/session.js';
+import { assessAttention } from '../devices/attention.js';
 import { levelToPercent } from '../devices/types.js';
 import {
   ageMs,
@@ -49,6 +50,16 @@ function decorate(view: DeviceView, deviceId: number) {
     suppliesAgeSeconds: Math.round(ageMs(view.suppliesUpdatedAt) / 1000),
     jobsAgeSeconds: Math.round(ageMs(view.jobsUpdatedAt) / 1000),
     servedAt: new Date().toISOString(),
+    // The detail view gets every condition, not just the headline: an operator
+    // walking to the device wants to know it is both jammed and out of paper.
+    ...(() => {
+      const attention = assessAttention(view.state, view.stateReasons);
+      return {
+        attention: attention.level,
+        attentionSummary: attention.summary,
+        attentionReasons: attention.conditions.map((condition) => condition.label),
+      };
+    })(),
   };
 }
 
@@ -65,6 +76,11 @@ function countBreached(view: DeviceView, deviceId: number): number {
 }
 
 function summarize(view: DeviceView, deviceId: number) {
+  // Reachable and stocked is not the same as working: an empty tray stops a
+  // printer just as completely as an unplugged one, and the dashboard used to
+  // call that "Healthy".
+  const attention = assessAttention(view.state, view.stateReasons);
+
   return {
     slug: view.slug,
     displayName: view.displayName,
@@ -81,6 +97,10 @@ function summarize(view: DeviceView, deviceId: number) {
     // request per device.
     lowSupplies: countBreached(view, deviceId),
     activeJobs: view.jobs.length,
+    attention: attention.level,
+    /** One phrase for the card, e.g. "Paper out" or "Paper jam +1". */
+    attentionSummary: attention.summary,
+    attentionReasons: attention.conditions.map((condition) => condition.label),
   };
 }
 
@@ -118,6 +138,11 @@ export async function statusRoutes(app: FastifyInstance): Promise<void> {
               consecutiveFailures: 0,
               lowSupplies: 0,
               activeJobs: 0,
+              // A device configured but never polled has nothing to report, and
+              // must not read as an error — it has not been asked yet.
+              attention: 'ok' as const,
+              attentionSummary: null,
+              attentionReasons: [],
             }
           : summarize(view, device.id);
       }),
