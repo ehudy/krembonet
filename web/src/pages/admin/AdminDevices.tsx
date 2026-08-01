@@ -20,6 +20,7 @@ import {
   type ConfigValues,
 } from '../../components/AdapterConfigForm.js';
 import type { AdapterInfo, AdminDevice, ProbeResponse } from '../../types.js';
+import { AutoDiscover } from './AutoDiscover.js';
 
 interface Draft {
   id: number | null;
@@ -59,16 +60,19 @@ function draftFrom(device: AdminDevice): Draft {
   };
 }
 
-function ProbeReport({ probe, adapters }: { probe: ProbeResponse; adapters: AdapterInfo[] }) {
+function ProbeReport({
+  probe,
+  adapters,
+}: {
+  probe: ProbeResponse;
+  adapters: AdapterInfo[];
+}) {
   return (
     <div className="probe-report">
       {probe.results.map(({ adapter, label, result }) => {
         const known = adapters.some((entry) => entry.id === adapter);
         return (
-          <div
-            key={adapter}
-            className={`probe-row${result.reachable ? ' is-good' : ''}`}
-          >
+          <div key={adapter} className={`probe-row${result.reachable ? ' is-good' : ''}`}>
             <div className="probe-head">
               <strong>{known ? label : adapter}</strong>
               <span className={`pill ${result.reachable ? 'is-good' : 'is-bad'}`}>
@@ -88,30 +92,33 @@ function ProbeReport({ probe, adapters }: { probe: ProbeResponse; adapters: Adap
 
             {result.capabilities.length > 0 && (
               <p className="probe-caps">
-                Reports: {result.capabilities.filter((c) => c !== 'reachability').join(', ') || 'nothing yet'}
+                Reports:{' '}
+                {result.capabilities.filter((c) => c !== 'reachability').join(', ') ||
+                  'nothing yet'}
               </p>
             )}
 
-            {result.sample?.supplies !== undefined && result.sample.supplies.length > 0 && (
-              <ul className="probe-supplies">
-                {result.sample.supplies.slice(0, 8).map((supply) => (
-                  <li key={supply.index}>
-                    <span>{supply.label}</span>
-                    <span className="muted">
-                      {supply.level.kind === 'percent'
-                        ? `${supply.level.percent}%`
-                        : supply.level.kind === 'binary'
-                          ? supply.level.state === 'attention'
-                            ? 'low'
-                            : 'ok'
-                          : supply.level.kind === 'absolute'
-                            ? `${supply.level.value} of ${supply.level.max}`
-                            : 'not reported'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            {result.sample?.supplies !== undefined &&
+              result.sample.supplies.length > 0 && (
+                <ul className="probe-supplies">
+                  {result.sample.supplies.slice(0, 8).map((supply) => (
+                    <li key={supply.index}>
+                      <span>{supply.label}</span>
+                      <span className="muted">
+                        {supply.level.kind === 'percent'
+                          ? `${supply.level.percent}%`
+                          : supply.level.kind === 'binary'
+                            ? supply.level.state === 'attention'
+                              ? 'low'
+                              : 'ok'
+                            : supply.level.kind === 'absolute'
+                              ? `${supply.level.value} of ${supply.level.max}`
+                              : 'not reported'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
             {result.notes.length > 0 && (
               <ul className="probe-notes">
@@ -157,10 +164,15 @@ export function AdminDevices() {
     return () => controller.abort();
   }, [load]);
 
-  const schema = adapters.find((entry) => entry.id === draft?.adapter)?.configSchema ?? [];
+  const schema =
+    adapters.find((entry) => entry.id === draft?.adapter)?.configSchema ?? [];
 
   function updateConfig(key: string, value: unknown): void {
-    setDraft((current) => (current === null ? null : { ...current, config: { ...current.config, [key]: value } }));
+    setDraft((current) =>
+      current === null
+        ? null
+        : { ...current, config: { ...current.config, [key]: value } },
+    );
     setProbe(null);
   }
 
@@ -216,8 +228,8 @@ export function AdminDevices() {
       // Record what the probe actually found, so the dashboard renders panels
       // for what this device does rather than what its adapter might do.
       capabilities:
-        probe?.results.find((entry) => entry.adapter === draft.adapter)?.result.capabilities ??
-        undefined,
+        probe?.results.find((entry) => entry.adapter === draft.adapter)?.result
+          .capabilities ?? undefined,
     };
 
     try {
@@ -254,7 +266,8 @@ export function AdminDevices() {
     }
   }
 
-  if (devices === null && error === null) return <p className="muted">Loading devices…</p>;
+  if (devices === null && error === null)
+    return <p className="muted">Loading devices…</p>;
 
   return (
     <>
@@ -263,6 +276,17 @@ export function AdminDevices() {
 
       {adapters.length === 0 && (
         <div className="banner is-warning">No device adapters are registered.</div>
+      )}
+
+      {/* Above the list: finding devices is the first thing someone does on a
+          fresh hub, and it is the answer to an empty table. */}
+      {adapters.length > 0 && (
+        <AutoDiscover
+          onAdded={async () => {
+            setNotice('Device added from discovery.');
+            await load();
+          }}
+        />
       )}
 
       <section className="card">
@@ -284,9 +308,7 @@ export function AdminDevices() {
         </div>
 
         {devices !== null && devices.length === 0 ? (
-          <p className="muted">
-            No devices yet. Add one to start collecting readings.
-          </p>
+          <p className="muted">No devices yet. Add one to start collecting readings.</p>
         ) : (
           <table className="data-table">
             <thead>
@@ -303,8 +325,12 @@ export function AdminDevices() {
                 <tr key={device.id} className={device.enabled ? '' : 'is-muted'}>
                   <td>
                     <strong>{device.displayName}</strong>
-                    {device.location !== null && <small className="muted"> · {device.location}</small>}
-                    {device.model !== null && <small className="muted"> · {device.model}</small>}
+                    {device.location !== null && (
+                      <small className="muted"> · {device.location}</small>
+                    )}
+                    {device.model !== null && (
+                      <small className="muted"> · {device.model}</small>
+                    )}
                     {!device.enabled && <span className="pill is-warn">Disabled</span>}
                   </td>
                   <td>
@@ -313,7 +339,10 @@ export function AdminDevices() {
                   <td>
                     {device.adapter}
                     {!device.adapterKnown && (
-                      <span className="pill is-bad" title="No adapter is registered under this id">
+                      <span
+                        className="pill is-bad"
+                        title="No adapter is registered under this id"
+                      >
                         unknown
                       </span>
                     )}
@@ -352,7 +381,9 @@ export function AdminDevices() {
 
       {draft !== null && (
         <form className="card" onSubmit={(event) => void save(event)}>
-          <h2 className="card-title">{draft.id === null ? 'Add device' : `Edit ${draft.displayName}`}</h2>
+          <h2 className="card-title">
+            {draft.id === null ? 'Add device' : `Edit ${draft.displayName}`}
+          </h2>
 
           <div className="field-grid">
             <label className="field">
@@ -362,7 +393,9 @@ export function AdminDevices() {
               <input
                 value={draft.displayName}
                 autoFocus
-                onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
+                onChange={(event) =>
+                  setDraft({ ...draft, displayName: event.target.value })
+                }
               />
             </label>
 
@@ -391,7 +424,10 @@ export function AdminDevices() {
 
             <label className="field">
               <span>Adapter</span>
-              <select value={draft.adapter} onChange={(event) => switchAdapter(event.target.value)}>
+              <select
+                value={draft.adapter}
+                onChange={(event) => switchAdapter(event.target.value)}
+              >
                 {adapters.map((adapter) => (
                   <option key={adapter.id} value={adapter.id}>
                     {adapter.label}
@@ -404,7 +440,9 @@ export function AdminDevices() {
               <input
                 type="checkbox"
                 checked={draft.enabled}
-                onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+                onChange={(event) =>
+                  setDraft({ ...draft, enabled: event.target.checked })
+                }
               />
               <span>
                 Enabled

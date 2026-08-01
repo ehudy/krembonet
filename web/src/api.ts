@@ -15,6 +15,7 @@ import type {
   MediaType,
   DeviceListResponse,
   DeviceStatus,
+  DiscoveryResponse,
   ProbeResponse,
   SessionInfo,
   SetupStatus,
@@ -148,6 +149,17 @@ export const api = {
     request<ProbeResponse>('/api/admin/devices/probe', {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+
+  /**
+   * Sweeps a subnet. Slow by nature — a /24 takes several seconds — so callers
+   * should show progress and pass a signal they can abort.
+   */
+  discoverDevices: (body: { subnet: string; community?: string }, signal?: AbortSignal) =>
+    request<DiscoveryResponse>('/api/admin/devices/discover', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      signal,
     }),
 
   createDevice: (body: Record<string, unknown>) =>

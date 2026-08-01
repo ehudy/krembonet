@@ -2,7 +2,12 @@ import Fastify from 'fastify';
 
 import { registerAuth } from './auth/session.js';
 import { config } from './config.js';
+import { assertEncryptionKey } from './crypto/secrets.js';
 import { closeDatabase } from './db/client.js';
+import {
+  assertStoredSecretsReadable,
+  encryptExistingSecrets,
+} from './db/encrypt-secrets.js';
 import { runMigrations } from './db/migrate.js';
 import { seedDatabase } from './db/seed.js';
 import { ensureGlobalRules } from './alerts/store.js';
@@ -17,6 +22,25 @@ import { setupRoutes } from './routes/setup.js';
 import { healthRoutes } from './routes/health.js';
 import { statusRoutes } from './routes/status.js';
 
+/**
+ * Refuse to start without a usable encryption key.
+ *
+ * Checked before the database is even opened. Booting without it and failing
+ * later — on the first poll of an SNMP device, or the first alert email — would
+ * turn a one-line configuration mistake into an outage discovered at 2am by
+ * whoever was expecting the alert that never came.
+ *
+ * Printed with `console.error` rather than the structured logger on purpose:
+ * this is multi-line instructions for a human at a terminal, and pino would
+ * render it as one JSON string with `\n` in it.
+ */
+try {
+  assertEncryptionKey();
+} catch (error) {
+  console.error(`\n${error instanceof Error ? error.message : String(error)}\n`);
+  process.exit(1);
+}
+
 const app = Fastify({ logger: loggerOptions });
 
 // Adapters must be registered before anything resolves a device row, since
@@ -25,6 +49,21 @@ registerBuiltinAdapters();
 
 // Migrate and seed before the poller or any request can touch the database.
 runMigrations();
+
+// After the schema, and after adapters register — which config fields count as
+// secret is the adapter's answer. Idempotent, so it runs on every boot.
+encryptExistingSecrets(app.log);
+
+// A key that no longer matches the database is caught here rather than on the
+// first request that reads a setting. The alternative is a server that starts
+// cleanly and then 500s everywhere, with nothing pointing at `.env`.
+try {
+  assertStoredSecretsReadable();
+} catch (error) {
+  console.error(`\n${error instanceof Error ? error.message : String(error)}\n`);
+  process.exit(1);
+}
+
 seedDatabase();
 // Alert thresholds live in alert_rules now, so a fresh database needs the two
 // catch-all rules before the first poll can evaluate anything.

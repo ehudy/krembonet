@@ -174,9 +174,20 @@ password and a name for the hub, and you are in. Then add devices from **Admin �
 Devices** — enter an address, press **Test connection**, and it will tell you what
 answered and what it can actually report before you save anything.
 
-Nothing needs to go in `.env` for this. `PLOTTER_HOST` / `PLOTTER_IPP_URI` still work for
-seeding a device from the environment, and `ADMIN_PASSWORD` still works for automated
-deployments that cannot run a wizard.
+One thing does need to go in `.env`: `ENCRYPTION_KEY`, which encrypts stored secrets. The
+server refuses to start without it, and prints this command if it is missing:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Everything else is optional. `PLOTTER_HOST` / `PLOTTER_IPP_URI` still work for seeding a
+device from the environment, and `ADMIN_PASSWORD` still works for automated deployments
+that cannot run a wizard.
+
+Rather than typing addresses in, **Admin → Devices → Auto-discover** sweeps a subnet
+(`192.168.1.0/24`) for anything answering on IPP or SNMP, identifies each one with the
+same probe the manual button uses, and adds it in one click.
 
 ## Local development
 
@@ -200,14 +211,16 @@ In production Fastify serves the built SPA itself, so there is no CORS surface.
 
 ## API
 
-| Route                            | Returns                                                          |
-| -------------------------------- | ---------------------------------------------------------------- |
-| `GET /api/health`                | Liveness, used by the Docker healthcheck                         |
-| `GET /api/hub`                   | Hub name, theme, and custom CSS — the chrome the SPA needs first |
-| `GET /api/access`                | Whether this browser may read the dashboard, and why not         |
-| `POST /api/access/unlock`        | Exchanges the viewer passcode for a viewer cookie                |
-| `GET /api/devices`               | Registered devices, their online state and capabilities          |
-| `GET /api/printers/:slug/status` | Full cached snapshot — supplies, media, jobs                     |
+| Route                              | Returns                                                          |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| `GET /api/health`                  | Liveness, used by the Docker healthcheck                         |
+| `GET /api/hub`                     | Hub name, theme, and custom CSS — the chrome the SPA needs first |
+| `GET /api/access`                  | Whether this browser may read the dashboard, and why not         |
+| `POST /api/access/unlock`          | Exchanges the viewer passcode for a viewer cookie                |
+| `GET /api/devices`                 | Registered devices, their online state and capabilities          |
+| `GET /api/printers/:slug/status`   | Full cached snapshot — supplies, media, jobs                     |
+| `POST /api/admin/devices/probe`    | Identifies one address (admin only)                              |
+| `POST /api/admin/devices/discover` | Sweeps a subnet and identifies what answers (admin only)         |
 
 The device endpoints are subject to the access mode below; `/api/health`,
 `/api/hub`, and `/api/access` stay open, since the shell has to render its own
@@ -287,6 +300,27 @@ portal), and `@import` and remote `url()` are stripped, since this hub does not
 fetch anything off the local network. `data:` URIs are kept, which is how an
 inlined logo arrives.
 
+### Finding devices
+
+**Admin → Devices → Auto-discover** takes a subnet in CIDR form and sweeps it. IPP is
+detected by a TCP connect to 631; SNMP by a real GET of `sysDescr` on 161, because from
+the outside a closed UDP port and a silent one look the same. That means **a device using
+a non-default SNMP community will not be found** — the community used for the sweep is a
+field on the form, and anything still missing can be added by address.
+
+Everything that answers is then run through the same probe the manual **Test connection**
+button uses, so a discovered device is identified by identical code to one typed in by
+hand. Results carry the probe's own caveats: "responded, but reported no supplies" is the
+difference between a device worth adding and one that will never alert.
+
+Discovery only ever proposes. Nothing is written until someone presses **Add**, and
+devices already registered are marked rather than offered a second time.
+
+Bounds, because this is a port scanner: `/20` maximum (4094 hosts), a short per-host
+timeout, capped concurrency, at most 32 hosts identified per sweep, and a total deadline
+after which partial results come back marked as partial. Public address ranges are
+refused unless `DISCOVERY_ALLOW_PUBLIC_RANGES=true`.
+
 ### Adding devices
 
 **Admin → Devices** takes an address and an adapter. The connection form is generated
@@ -312,16 +346,44 @@ This is built for a trusted LAN and the defaults say so:
 - **The admin password is a single shared secret.** It is hashed with scrypt at rest and
   never compared in plaintext, but there are no user accounts, no roles and no audit of
   who did what.
-- **Device credentials — SNMP community strings and v3 keys — are stored in plaintext**
-  in the SQLite file, like the SMTP password below. They are never returned to the
-  browser, but anyone with filesystem access to `data/` can read them.
-- **SMTP credentials are stored in plaintext** in the SQLite file. Anyone with filesystem
-  access to `data/` can read them. Use a dedicated sending account — for Google Workspace,
-  an App Password rather than the account password. The value is never sent back to the
-  browser: the settings API exposes only a `smtpPasswordSet` flag, and saving the form
-  with the field blank keeps the stored password.
+- **Secrets are encrypted at rest, but the key is not.** See below. `ENCRYPTION_KEY`
+  lives in the environment, so anyone who can read the process environment can read the
+  secrets; what this protects is the database _file_.
+- **Secrets are never returned to the browser.** The settings API exposes a
+  `smtpPasswordSet` flag, device config exposes `secretsSet`, and webhooks expose header
+  _names_ only. Saving a form with a secret field blank keeps the stored value rather
+  than clearing it.
+- **Subnet discovery is a port scanner** and is admin-only for that reason. It refuses
+  public address ranges by default and is bounded on every axis — subnet size, per-host
+  timeout, concurrency, hosts probed, and total runtime.
 
 Do not put this on the public internet as-is.
+
+### Secrets at rest
+
+Reversible secrets — the SMTP password, SNMP community strings, SNMPv3 auth and privacy
+keys, and webhook auth headers — are encrypted with **AES-256-GCM** before they are
+written to SQLite. GCM rather than CBC because it detects tampering: a row edited by hand
+fails to decrypt instead of yielding plausible garbage that gets handed to an SMTP server.
+
+`ENCRYPTION_KEY` is **required** and the server refuses to start without it:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Keep it with your backups. It is never written to the database, so losing it means
+re-entering every stored secret — the hub tells you exactly which ones on the next boot
+rather than failing at 2am on an alert that never sent.
+
+Password _hashes_ are deliberately left alone. The admin password and viewer passcode are
+scrypt hashes that nothing reads back, so encrypting them would add no secrecy scrypt does
+not already provide while turning a lost key into a hub nobody can sign in to.
+
+Upgrading an existing install needs no manual step beyond setting the key. A sweep runs on
+every boot and encrypts anything still in plaintext; it is idempotent, so the second boot
+is a no-op, and interruptible, so a process killed halfway leaves a database that still
+works and finishes on the next start.
 
 ## Database
 
@@ -427,9 +489,10 @@ docker compose --profile monitoring up -d
   media). Device-generic data model, capability-driven UI, hashed admin credentials.
   Alerts to email and to Discord/Slack/ntfy/generic webhooks. Dashboard access modes
   (public, shared passcode, admins only), themes including a kiosk mode, and custom CSS.
-  Nothing needs to be configured by hand to get running.
-- **Next** — non-printer adapters (ping, HTTP, UPS), per-device alert rules in the UI
-  (the schema already supports them), and encrypting device credentials at rest.
+  Secrets encrypted at rest with AES-256-GCM, and subnet auto-discovery. Nothing needs to
+  be configured by hand to get running.
+- **Next** — non-printer adapters (ping, HTTP, UPS), and per-device alert rules in the UI
+  (the schema already supports them).
 - **Later** — dropping the `ipptool` binary dependency in favour of a pure-JS IPP client
   so `npm install && npm start` works anywhere. The adapter boundary makes that a swap
   rather than a rewrite.

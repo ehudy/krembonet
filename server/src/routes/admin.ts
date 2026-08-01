@@ -20,6 +20,7 @@ import {
   WEBHOOK_FORMAT_LABELS,
   WEBHOOK_FORMATS,
 } from '../alerts/webhook-format.js';
+import { decryptSecret, encryptSecret } from '../crypto/secrets.js';
 import { db } from '../db/client.js';
 import { mediaTypes, webhooks } from '../db/schema.js';
 import {
@@ -133,9 +134,16 @@ function presentWebhook(row: typeof webhooks.$inferSelect) {
   };
 }
 
+/**
+ * Reads stored headers far enough to list their *names*.
+ *
+ * The values are why this blob is encrypted, and they stop here — the portal
+ * shows which headers exist so an operator can tell a configured destination
+ * from an unconfigured one, without the token itself ever reaching a browser.
+ */
 function safeParseHeaders(raw: string): Record<string, string> {
   try {
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(decryptSecret(raw));
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     return Object.fromEntries(
       Object.entries(parsed as Record<string, unknown>)
@@ -207,7 +215,10 @@ function parseWebhookHeaders(
   }
 
   if (entries.length === 0) return { headers: null };
-  return { headers: JSON.stringify(Object.fromEntries(entries)) };
+
+  // Encrypted here, at the one point a header blob enters storage. These carry
+  // bearer tokens for private ntfy topics and the like.
+  return { headers: encryptSecret(JSON.stringify(Object.fromEntries(entries))) };
 }
 
 type WebhookValues = {

@@ -9,6 +9,7 @@
  */
 import { eq } from 'drizzle-orm';
 
+import { decryptSecret } from '../crypto/secrets.js';
 import { db } from '../db/client.js';
 import { webhooks } from '../db/schema.js';
 import {
@@ -38,11 +39,20 @@ export interface WebhookTarget {
 /** Long enough for a cold serverless receiver, short enough not to stall a poll. */
 const REQUEST_TIMEOUT_MS = 10_000;
 
+/**
+ * Decodes the stored header blob.
+ *
+ * The blob is encrypted at rest — it routinely holds a bearer token — so this
+ * decrypts before parsing. A failure here costs the operator their custom
+ * headers rather than the alert: a webhook that would have carried an auth
+ * header still gets attempted, and the receiver's 401 is a far more legible
+ * symptom than a poll that threw.
+ */
 function parseHeaders(raw: string | null): Record<string, string> {
   if (raw === null || raw.trim() === '') return {};
 
   try {
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(decryptSecret(raw));
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
 
     const headers: Record<string, string> = {};
@@ -51,8 +61,7 @@ function parseHeaders(raw: string | null): Record<string, string> {
     }
     return headers;
   } catch {
-    // A malformed header blob should cost the operator their custom headers,
-    // not the alert itself.
+    // Malformed JSON, or a blob that will not decrypt because the key changed.
     return {};
   }
 }

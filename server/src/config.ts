@@ -65,6 +65,17 @@ export const config = {
 
   databasePath: str('DATABASE_PATH', './data/krembonet.db'),
 
+  /**
+   * 32-byte hex key encrypting stored secrets. See crypto/secrets.ts.
+   *
+   * Read as optional here and enforced at boot rather than thrown from this
+   * module, for two reasons: the boot path can print generation instructions
+   * far more legibly than a stack trace from a config import, and the pure
+   * modules whose tests import this file have no business demanding a key they
+   * never use.
+   */
+  encryptionKey: optional('ENCRYPTION_KEY'),
+
   /** Null when no device is configured. See `seedPlotter`. */
   plotter: seedPlotter(),
 
@@ -125,6 +136,26 @@ export const config = {
      */
     sessionSecret: str('SESSION_SECRET', randomBytes(32).toString('hex')),
     sessionHours: int('SESSION_HOURS', 12),
+  },
+
+  discovery: {
+    /**
+     * Allows sweeping addresses outside the private ranges.
+     *
+     * Off by default. This is a LAN tool, and a subnet sweep aimed at public
+     * space is either a typo or the kind of thing that gets an address
+     * blocklisted. The escape hatch exists for networks — universities,
+     * older enterprises — that genuinely use public addressing internally.
+     */
+    allowPublicRanges: (process.env['DISCOVERY_ALLOW_PUBLIC_RANGES'] ?? '') === 'true',
+
+    /**
+     * Hard ceiling on one sweep, after which partial results are returned.
+     *
+     * Bounds the worst case: a /20 of addresses that all accept a TCP
+     * connection and then never speak.
+     */
+    deadlineMs: int('DISCOVERY_DEADLINE_MS', 120_000),
   },
 
   viewer: {

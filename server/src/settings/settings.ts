@@ -9,6 +9,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { settings } from '../db/schema.js';
 import { hasViewerPasscode } from '../auth/viewer.js';
+import { decryptSecret, encryptSecret, isEncrypted } from '../crypto/secrets.js';
 import {
   DEFAULT_SETTINGS,
   SECRET_KEYS,
@@ -26,6 +27,13 @@ function parseValue<K extends keyof AppSettings>(
 ): AppSettings[K] {
   const fallback = DEFAULT_SETTINGS[key];
   if (raw === null) return fallback;
+
+  // Reversible secrets are stored as ciphertext; see crypto/secrets.ts. A value
+  // written before encryption existed carries no envelope and passes straight
+  // through, which is what lets the boot-time migration be interruptible.
+  if (SECRET_KEYS.has(key) && isEncrypted(raw)) {
+    return decryptSecret(raw) as AppSettings[K];
+  }
 
   if (typeof fallback === 'number') {
     const parsed = Number.parseInt(raw, 10);
@@ -89,7 +97,8 @@ export function updateSettings(patch: Partial<AppSettings>): void {
       if (!SETTING_KEYS.includes(typedKey)) continue;
       if (SECRET_KEYS.has(typedKey) && value === '') continue;
 
-      const serialized = serializeValue(value as AppSettings[keyof AppSettings]);
+      const plain = serializeValue(value as AppSettings[keyof AppSettings]);
+      const serialized = SECRET_KEYS.has(typedKey) ? encryptSecret(plain) : plain;
 
       tx.insert(settings)
         .values({

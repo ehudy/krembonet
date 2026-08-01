@@ -303,6 +303,37 @@ export interface ProbeOutcome {
   notes: string[];
 }
 
+/** One address that answered a subnet sweep, after identification. */
+export interface DiscoveredDevice {
+  host: string;
+  /** Which of 631 (IPP) / 161 (SNMP) answered. */
+  ports: number[];
+  adapter: string | null;
+  adapterLabel: string | null;
+  identity: DeviceIdentity;
+  capabilities: string[];
+  confidence: number;
+  notes: string[];
+  suggestedName: string;
+  /** Ready to submit as a new device. */
+  config: Record<string, unknown>;
+  alreadyAdded: boolean;
+}
+
+export interface DiscoveryResponse {
+  /** Canonical form of what was swept, which may differ from what was typed. */
+  subnet: string;
+  hostCount: number;
+  scanned: number;
+  responsive: number;
+  /** More hosts answered than the server was willing to identify. */
+  truncated: boolean;
+  /** The overall deadline cut the sweep short; results are partial. */
+  timedOut: boolean;
+  devices: DiscoveredDevice[];
+  elapsedMs: number;
+}
+
 export interface ProbeResponse {
   host: string;
   results: { adapter: string; label: string; result: ProbeOutcome }[];

@@ -13,14 +13,20 @@ import { requireAdmin } from '../auth/session.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { devices } from '../db/schema.js';
-import { DeviceError, type DeviceCapability, type ProbeResult } from '../devices/adapter.js';
+import { DeviceError, type DeviceCapability } from '../devices/adapter.js';
 import {
   mergeConfig,
   parseStoredConfig,
+  readStoredConfig,
   redactConfig,
+  serializeConfig,
   slugify,
   type RawConfig,
 } from '../devices/config-io.js';
+import { parseCidr } from '../devices/discovery/cidr.js';
+import { DEFAULT_DISCOVER, discover } from '../devices/discovery/discover.js';
+import { DEFAULT_SWEEP } from '../devices/discovery/scan.js';
+import { probeAll, suggestedAdapter } from '../devices/probe.js';
 import { getAdapter, hasAdapter, listAdapters } from '../devices/registry.js';
 import { clearCache } from '../poller/cache.js';
 import { hydrateCacheFromDb, pollSupplies } from '../poller/pollDevice.js';
@@ -39,6 +45,12 @@ interface ProbeBody {
   host?: string;
   adapter?: string;
   config?: RawConfig;
+}
+
+interface DiscoverBody {
+  subnet?: string;
+  /** SNMP community to try during the sweep. Defaults to `public`. */
+  community?: string;
 }
 
 function existingSlugs(exceptId?: number): Set<string> {
@@ -75,52 +87,11 @@ function presentDevice(row: typeof devices.$inferSelect) {
     vendor: row.vendor,
     model: row.model,
     serial: row.serial,
-    capabilities: row.capabilities === null ? null : (JSON.parse(row.capabilities) as string[]),
+    capabilities:
+      row.capabilities === null ? null : (JSON.parse(row.capabilities) as string[]),
     config: redacted.values,
     secretsSet: redacted.secretsSet,
   };
-}
-
-/** Ranks adapters by how confident each is that it recognises the device. */
-async function probeAll(
-  host: string,
-  rawConfig: RawConfig,
-  adapterId?: string,
-): Promise<{ adapter: string; label: string; result: ProbeResult }[]> {
-  const candidates =
-    adapterId === undefined ? listAdapters() : [getAdapter(adapterId)];
-
-  const results: { adapter: string; label: string; result: ProbeResult }[] = [];
-
-  for (const adapter of candidates) {
-    try {
-      const parsed = adapter.parseConfig(rawConfig);
-      const result = await adapter.probe(parsed, {
-        timeoutMs: config.deviceTimeoutMs,
-        host,
-      });
-      results.push({ adapter: adapter.id, label: adapter.label, result });
-    } catch (error) {
-      // A config the adapter cannot even parse is a legitimate outcome when
-      // probing every adapter at once — the IPP adapter needs a URI the SNMP
-      // form never collects. Report it rather than failing the whole probe.
-      const message =
-        error instanceof DeviceError ? error.message : String(error);
-      results.push({
-        adapter: adapter.id,
-        label: adapter.label,
-        result: {
-          reachable: false,
-          confidence: 0,
-          identity: { vendor: null, makeAndModel: null, serial: null, firmware: null },
-          capabilities: [],
-          notes: [message],
-        },
-      });
-    }
-  }
-
-  return results.sort((a, b) => b.result.confidence - a.result.confidence);
 }
 
 export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
@@ -135,7 +106,12 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
   }));
 
   app.get('/api/admin/devices', { preHandler: requireAdmin }, async () => ({
-    devices: db.select().from(devices).orderBy(devices.displayName).all().map(presentDevice),
+    devices: db
+      .select()
+      .from(devices)
+      .orderBy(devices.displayName)
+      .all()
+      .map(presentDevice),
   }));
 
   app.post<{ Body: ProbeBody }>(
@@ -153,18 +129,73 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const results = await probeAll(host, request.body?.config ?? {}, adapterId);
-      const best = results[0];
 
-      return {
-        host,
-        results,
-        // Only a suggestion. The admin picks, because a probe that guesses
-        // wrong and silently commits is worse than one that asks.
-        suggested:
-          best !== undefined && best.result.reachable && best.result.confidence > 0
-            ? best.adapter
-            : null,
-      };
+      return { host, results, suggested: suggestedAdapter(results) };
+    },
+  );
+
+  /**
+   * Sweeps a subnet and identifies whatever answers.
+   *
+   * Admin-only for the same reason the probe is, and more so: this makes the
+   * server connect to every address in a range, which is a port scanner by any
+   * other name. It is bounded on every axis — subnet size, per-host timeout,
+   * concurrency, how many hosts get probed, and a total deadline — so it cannot
+   * be turned into a long-running load generator against someone's network.
+   */
+  app.post<{ Body: DiscoverBody }>(
+    '/api/admin/devices/discover',
+    { preHandler: requireAdmin },
+    async (request, reply) => {
+      const parsed = parseCidr(String(request.body?.subnet ?? ''));
+      if ('error' in parsed) return reply.code(400).send({ error: parsed.error });
+
+      const { subnet } = parsed;
+
+      // A LAN tool sweeping a public range is either a mistake or something
+      // that gets an address blocked. Refused by default, with an escape hatch
+      // for the networks that genuinely use public space internally.
+      if (!subnet.isPrivate && !config.discovery.allowPublicRanges) {
+        return reply.code(400).send({
+          error: `${subnet.cidr} is outside the private address ranges. If this really is your own network, set DISCOVERY_ALLOW_PUBLIC_RANGES=true.`,
+        });
+      }
+
+      const controller = new AbortController();
+      const deadline = setTimeout(() => controller.abort(), config.discovery.deadlineMs);
+
+      try {
+        const result = await discover(subnet.hosts, {
+          ...DEFAULT_SWEEP,
+          ...DEFAULT_DISCOVER,
+          community:
+            String(request.body?.community ?? '').trim() || DEFAULT_SWEEP.community,
+          knownHosts: new Set(
+            db
+              .select({ host: devices.host })
+              .from(devices)
+              .all()
+              .map((row) => row.host),
+          ),
+          signal: controller.signal,
+        });
+
+        request.log.info(
+          { subnet: subnet.cidr, scanned: result.scanned, found: result.devices.length },
+          'subnet discovery finished',
+        );
+
+        return {
+          subnet: subnet.cidr,
+          hostCount: subnet.hosts.length,
+          // True when the deadline cut the sweep short, so the UI can say the
+          // list is partial rather than presenting it as the whole network.
+          timedOut: controller.signal.aborted,
+          ...result,
+        };
+      } finally {
+        clearTimeout(deadline);
+      }
     },
   );
 
@@ -205,12 +236,13 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
         .values({
           slug,
           displayName,
-          location: body.location === undefined || body.location === null || body.location === ''
-            ? null
-            : String(body.location).trim(),
+          location:
+            body.location === undefined || body.location === null || body.location === ''
+              ? null
+              : String(body.location).trim(),
           adapter: adapterId,
           host,
-          config: JSON.stringify(normalized),
+          config: serializeConfig(adapter, normalized),
           enabled: body.enabled !== false,
           capabilities:
             body.capabilities === undefined || body.capabilities === null
@@ -256,7 +288,9 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
       const adapter = getAdapter(adapterId);
 
       const displayName =
-        body.displayName === undefined ? existing.displayName : String(body.displayName).trim();
+        body.displayName === undefined
+          ? existing.displayName
+          : String(body.displayName).trim();
       if (displayName === '') {
         return reply.code(400).send({ error: 'A display name is required.' });
       }
@@ -265,11 +299,12 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
       if (host === '') return reply.code(400).send({ error: 'An address is required.' });
 
       // Blank secrets in the submission fall back to what is stored, so saving
-      // the form without retyping a community string keeps it.
+      // the form without retyping a community string keeps it. Read decrypted,
+      // because `parseConfig` below validates the real values — an SNMPv3 key
+      // still in its envelope would pass a length check it should not.
+      const stored = readStoredConfig(adapter, existing.config);
       const merged =
-        body.config === undefined
-          ? parseStoredConfig(existing.config)
-          : mergeConfig(adapter, parseStoredConfig(existing.config), body.config);
+        body.config === undefined ? stored : mergeConfig(adapter, stored, body.config);
 
       try {
         adapter.parseConfig(merged);
@@ -290,7 +325,7 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
                 : String(body.location).trim(),
           adapter: adapterId,
           host,
-          config: JSON.stringify(merged),
+          config: serializeConfig(adapter, merged),
           enabled: body.enabled === undefined ? existing.enabled : body.enabled !== false,
           capabilities:
             body.capabilities === undefined

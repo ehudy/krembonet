@@ -31,6 +31,7 @@ import {
   type DeviceReading,
 } from '../devices/adapter.js';
 import { guarded } from '../devices/concurrency.js';
+import { readStoredConfig } from '../devices/config-io.js';
 import { getAdapter } from '../devices/registry.js';
 import { sortMediaBySlot } from '../devices/ipp/normalize.js';
 import type {
@@ -80,8 +81,9 @@ export function capabilitiesOf(device: DeviceRow): DeviceCapability[] {
     try {
       const parsed: unknown = JSON.parse(device.capabilities);
       if (Array.isArray(parsed)) {
-        return parsed.filter((value): value is DeviceCapability =>
-          typeof value === 'string' && isCapability(value),
+        return parsed.filter(
+          (value): value is DeviceCapability =>
+            typeof value === 'string' && isCapability(value),
         );
       }
     } catch {
@@ -101,10 +103,19 @@ function parseConfigFor(device: DeviceRow): { adapterId: string; config: never }
 
   let raw: unknown;
   try {
-    raw = JSON.parse(device.config);
+    // Decrypts the adapter's secret fields on the way through — the poller is
+    // the main consumer of the plaintext, and the only place it exists is
+    // between this call and the request that uses it.
+    raw = readStoredConfig(adapter, device.config);
   } catch (error) {
+    // Covers both malformed JSON and a secret that will not decrypt, which is
+    // almost always a changed ENCRYPTION_KEY. Reported as a config error so the
+    // device shows up unreachable with the reason attached, rather than taking
+    // down the poll cycle for every other device.
     throw new DeviceError(
-      `Device "${device.slug}" has invalid config JSON.`,
+      `Device "${device.slug}" has unreadable config: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
       'CONFIG',
       { cause: error },
     );
@@ -153,7 +164,10 @@ function persistReading(device: DeviceRow, reading: DeviceReading): void {
     // Identity is written back only when the device actually reported it, so a
     // partial read never blanks a model name an earlier poll established.
     const identityPatch: Record<string, string> = {};
-    if (reading.identity.makeAndModel !== null && reading.identity.makeAndModel !== device.model) {
+    if (
+      reading.identity.makeAndModel !== null &&
+      reading.identity.makeAndModel !== device.model
+    ) {
       identityPatch['model'] = reading.identity.makeAndModel;
     }
     if (reading.identity.vendor !== null && reading.identity.vendor !== device.vendor) {
@@ -162,7 +176,10 @@ function persistReading(device: DeviceRow, reading: DeviceReading): void {
     if (reading.identity.serial !== null && reading.identity.serial !== device.serial) {
       identityPatch['serial'] = reading.identity.serial;
     }
-    if (reading.identity.firmware !== null && reading.identity.firmware !== device.firmware) {
+    if (
+      reading.identity.firmware !== null &&
+      reading.identity.firmware !== device.firmware
+    ) {
       identityPatch['firmware'] = reading.identity.firmware;
     }
     if (Object.keys(identityPatch).length > 0) {
@@ -182,7 +199,9 @@ function persistReading(device: DeviceRow, reading: DeviceReading): void {
         .where(eq(suppliesTable.deviceId, device.id))
         .all();
 
-      const previousLevels = new Map(previous.map((row) => [row.name, levelFromColumns(row)]));
+      const previousLevels = new Map(
+        previous.map((row) => [row.name, levelFromColumns(row)]),
+      );
 
       for (const supply of reading.supplies) {
         const level = levelToColumns(supply.level);
