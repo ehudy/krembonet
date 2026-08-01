@@ -5,11 +5,23 @@ dist/
 # Vite builds the SPA straight into the server's static root
 server/public/
 
-# SQLite lives on the Docker volume mount — never commit it
-data/
+# SQLite lives on the Docker volume mount — never commit its contents.
+#
+# `data/*` rather than `data/`, with the .gitkeep negated, so the directory
+# exists after a clone. It matters: with a bind mount, Docker creates a missing
+# source directory owned by root, and the container's unprivileged `node` user
+# then cannot write the database or the generated encryption key. A directory
+# that already exists belongs to whoever cloned the repo, and works.
+data/*
+!data/.gitkeep
 *.db
 *.db-shm
 *.db-wal
+
+# The auto-generated encryption key. `data/` already covers the default
+# location; these catch it wherever DATABASE_PATH puts it.
+encryption.key
+*.key
 
 .env
 .env.local

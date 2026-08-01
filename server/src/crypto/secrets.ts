@@ -6,19 +6,38 @@
  * edited by hand fails to decrypt instead of yielding plausible garbage that
  * gets handed to an SMTP server or an SNMP agent.
  *
- * What this does and does not protect. The key lives in the environment and the
- * ciphertext lives in SQLite, so this defends against the database file leaving
- * the machine — a backup on a share, a copied volume, a support bundle, someone
- * reading `krembonet.db` with the sqlite3 CLI. It does not defend against an
- * attacker who already has the process environment, and it is not meant to.
+ * Where the key comes from, in order: `ENCRYPTION_KEY`, then
+ * `<data>/encryption.key`, then a freshly generated one written to that path at
+ * mode 0600. The third case is what makes `docker compose up` work on a clean
+ * checkout without the operator generating anything first.
+ *
+ * **What this protects, honestly.** With the key in the environment, this
+ * defends the database *file*: a copied volume, a backup of `krembonet.db`, a
+ * support bundle, someone reading the file with the sqlite3 CLI. With an
+ * auto-generated key the protection is narrower, because the key file sits in
+ * the same directory as the database — anyone who copies all of `data/` gets
+ * both. That is still worth having (the common accident is a stray copy of the
+ * `.db` alone, and every secret in it stays unreadable), but an operator who
+ * wants real separation should set `ENCRYPTION_KEY` and keep it elsewhere. The
+ * README says so too, in those words.
+ *
+ * Nothing here defends against an attacker who already has the process
+ * environment or the whole data directory, and it is not meant to.
  *
  * Hashes are deliberately *not* encrypted. The admin password and viewer
  * passcode are scrypt hashes, which nothing ever needs to read back; encrypting
  * them would add no secrecy that scrypt does not already provide, while making
- * a lost `ENCRYPTION_KEY` mean a locked-out hub rather than a re-enterable SMTP
- * password. Only reversible secrets go through here.
+ * a lost key mean a locked-out hub rather than a re-enterable SMTP password.
+ * Only reversible secrets go through here.
  */
-import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 
 import { config } from '../config.js';
 
@@ -36,6 +55,9 @@ const TAG_BYTES = 16;
  */
 export const ENCRYPTED_PREFIX = 'enc.v1.';
 
+/** Sits beside the database, so it rides along on the same Docker volume. */
+export const KEY_FILE_NAME = 'encryption.key';
+
 export class EncryptionKeyError extends Error {
   override readonly name = 'EncryptionKeyError';
 }
@@ -44,22 +66,30 @@ export class DecryptionError extends Error {
   override readonly name = 'DecryptionError';
 }
 
-/** Instructions, not just a complaint — this halts a boot. */
+/**
+ * Shown when a key that *was* supplied cannot be used.
+ *
+ * A missing key is no longer an error — one gets generated. This text is for
+ * the case where someone set `ENCRYPTION_KEY` or wrote a key file by hand and
+ * got it wrong, which must not be silently replaced with a fresh key: that
+ * would orphan every secret already in the database.
+ */
 export const KEY_INSTRUCTIONS = [
-  'ENCRYPTION_KEY is required. It encrypts stored secrets (the SMTP password,',
-  'SNMP community strings, SNMPv3 keys, and webhook auth headers) so that a',
-  'copy of the database file is not a copy of your credentials.',
+  'ENCRYPTION_KEY protects stored secrets (the SMTP password, SNMP community',
+  'strings, SNMPv3 keys, and webhook auth headers) so that a copy of the',
+  'database file is not a copy of your credentials.',
   '',
-  'Generate one:',
+  'It must be 64 hexadecimal characters (32 bytes). Generate one with:',
   '',
-  '  node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+  "  node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
   '',
-  'Then put it in .env as a single line:',
+  'Then set it in .env as a single line:',
   '',
   '  ENCRYPTION_KEY=<the 64-character hex string>',
   '',
-  'Keep it with your backups. Losing it means re-entering every stored secret;',
-  'changing it has the same effect. It is never written to the database.',
+  'Or leave it unset entirely and a key will be generated for you at',
+  `<data directory>/${KEY_FILE_NAME}. Either way, back it up: losing it means`,
+  're-entering every stored secret, and changing it has the same effect.',
 ].join('\n');
 
 /**
@@ -142,7 +172,9 @@ export function decryptWithKey(key: Buffer, stored: string): string {
   try {
     const decipher = createDecipheriv('aes-256-gcm', key, iv);
     decipher.setAuthTag(tag);
-    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString(
+      'utf8',
+    );
   } catch {
     // Either the key is wrong or the row was edited. Both are the same
     // situation for the caller — this value cannot be trusted — and saying
@@ -158,37 +190,150 @@ export function keysMatch(a: Buffer, b: Buffer): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-let cachedKey: Buffer | null = null;
+/** Where a generated key is written: alongside the database. */
+export function keyFilePath(): string {
+  return join(dirname(resolve(config.databasePath)), KEY_FILE_NAME);
+}
+
+export type KeySource = 'env' | 'file' | 'generated';
+
+export interface ResolvedKey {
+  key: Buffer;
+  source: KeySource;
+  /** Where it came from, for `file` and `generated`. */
+  path?: string;
+  /** Non-fatal notes for the boot log, e.g. permissions worth tightening. */
+  warnings: string[];
+}
 
 /**
- * The configured key, parsed once.
+ * Reads an existing key file, complaining about loose permissions.
  *
- * Cached because `getSettings` runs on effectively every request and re-parsing
- * hex each time is pure waste. The environment cannot change under a running
- * process, so there is nothing to invalidate.
+ * A malformed file is an error rather than a cue to regenerate. Overwriting it
+ * would produce a hub that boots cleanly and cannot read a single stored
+ * secret — the worst possible outcome, because it looks like success.
  */
-export function encryptionKey(): Buffer {
-  if (cachedKey !== null) return cachedKey;
+function readKeyFile(path: string): ResolvedKey {
+  const warnings: string[] = [];
+  const contents = readFileSync(path, 'utf8');
 
-  if (config.encryptionKey === null) {
-    throw new EncryptionKeyError(KEY_INSTRUCTIONS);
+  let key: Buffer;
+  try {
+    key = parseKey(contents);
+  } catch (error) {
+    throw new EncryptionKeyError(
+      `${path} does not contain a valid key: ${
+        error instanceof Error ? error.message.split('\n')[0] : String(error)
+      }\n\nFix or delete the file — deleting it generates a fresh key, which makes\nexisting stored secrets unreadable.\n\n${KEY_INSTRUCTIONS}`,
+    );
   }
 
-  cachedKey = parseKey(config.encryptionKey);
-  return cachedKey;
-}
+  try {
+    // Group/other bits set means every user on the box can read the key. Fixed
+    // rather than merely reported: it is our file, and the correct mode is not
+    // a matter of taste.
+    const mode = statSync(path).mode & 0o777;
+    if ((mode & 0o077) !== 0) {
+      chmodSync(path, 0o600);
+      warnings.push(
+        `${path} was readable by other users (mode ${mode.toString(8)}); tightened to 600.`,
+      );
+    }
+  } catch {
+    // Permission inspection is a nicety; a filesystem that cannot answer (or
+    // does not model Unix modes at all) must not stop the hub from booting.
+  }
 
-export function hasEncryptionKey(): boolean {
-  return config.encryptionKey !== null;
+  return { key, source: 'file', path, warnings };
 }
 
 /**
- * Validates the key at boot so a missing or malformed one is a startup failure
- * with instructions, not a 500 the first time someone saves an SMTP password.
+ * Generates a key and writes it, or adopts one that appeared first.
+ *
+ * `wx` makes the create-or-lose race explicit: two processes starting together
+ * cannot end up with different keys, because the loser reads the winner's file
+ * rather than overwriting it.
  */
-export function assertEncryptionKey(): void {
-  encryptionKey();
+function generateKeyFile(path: string): ResolvedKey {
+  const key = randomBytes(KEY_BYTES);
+
+  mkdirSync(dirname(path), { recursive: true });
+
+  try {
+    // Mode on the open, not a later chmod: a chmod leaves a window where the
+    // key exists at the default umask.
+    writeFileSync(path, `${key.toString('hex')}\n`, { mode: 0o600, flag: 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return readKeyFile(path);
+
+    throw new EncryptionKeyError(
+      `Could not write an encryption key to ${path}: ${
+        error instanceof Error ? error.message : String(error)
+      }\n\nEither make that directory writable, or set ENCRYPTION_KEY yourself.\n\n${KEY_INSTRUCTIONS}`,
+    );
+  }
+
+  return { key, source: 'generated', path, warnings: [] };
 }
+
+/**
+ * Env, then key file, then generate.
+ *
+ * `ENCRYPTION_KEY` wins when set so an operator can always override what is on
+ * disk — and a malformed one is an error rather than a fallback, for the same
+ * reason a malformed file is.
+ */
+export function resolveEncryptionKey(): ResolvedKey {
+  if (config.encryptionKey !== null) {
+    return { key: parseKey(config.encryptionKey), source: 'env', warnings: [] };
+  }
+
+  const path = keyFilePath();
+  try {
+    return readKeyFile(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  return generateKeyFile(path);
+}
+
+let cached: ResolvedKey | null = null;
+
+/**
+ * The key, resolved once.
+ *
+ * Cached because `getSettings` runs on effectively every request and re-reading
+ * a file each time is pure waste. Neither the environment nor the key file
+ * changes under a running process, so there is nothing to invalidate.
+ */
+export function encryptionKey(): Buffer {
+  cached ??= resolveEncryptionKey();
+  return cached.key;
+}
+
+/**
+ * Resolves the key at boot and reports where it came from.
+ *
+ * Called before anything touches the database so that a bad *explicit* key
+ * fails immediately with instructions, and so that the generated-key notice
+ * appears once, at startup, rather than never.
+ */
+export function initEncryptionKey(): ResolvedKey {
+  cached ??= resolveEncryptionKey();
+  return cached;
+}
+
+/**
+ * The file helpers, for tests.
+ *
+ * Exposed deliberately rather than exported outright: `resolveEncryptionKey`
+ * reads `config`, which is frozen at import, so testing the file behaviour any
+ * other way would mean either mocking `fs` — which would stop testing the
+ * filesystem properties that are the entire point — or reloading modules with
+ * a doctored environment.
+ */
+export const __testing = { readKeyFile, generateKeyFile };
 
 export function encryptSecret(plaintext: string): string {
   return encryptWithKey(encryptionKey(), plaintext);

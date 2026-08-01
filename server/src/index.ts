@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 
 import { registerAuth } from './auth/session.js';
 import { config } from './config.js';
-import { assertEncryptionKey } from './crypto/secrets.js';
+import { initEncryptionKey } from './crypto/secrets.js';
 import { closeDatabase } from './db/client.js';
 import {
   assertStoredSecretsReadable,
@@ -23,25 +23,43 @@ import { healthRoutes } from './routes/health.js';
 import { statusRoutes } from './routes/status.js';
 
 /**
- * Refuse to start without a usable encryption key.
+ * Resolve the encryption key before anything touches the database.
  *
- * Checked before the database is even opened. Booting without it and failing
- * later — on the first poll of an SNMP device, or the first alert email — would
- * turn a one-line configuration mistake into an outage discovered at 2am by
- * whoever was expecting the alert that never came.
+ * A *missing* key is not an error: one is generated and stored beside the
+ * database, so a clean checkout runs `docker compose up` and works. A key that
+ * was supplied and cannot be used is still fatal, because silently replacing it
+ * would orphan every secret already stored — a hub that boots cleanly and
+ * cannot read its own SMTP password is worse than one that refuses to start.
  *
  * Printed with `console.error` rather than the structured logger on purpose:
  * this is multi-line instructions for a human at a terminal, and pino would
  * render it as one JSON string with `\n` in it.
  */
+let encryptionKeySource;
 try {
-  assertEncryptionKey();
+  encryptionKeySource = initEncryptionKey();
 } catch (error) {
   console.error(`\n${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);
 }
 
 const app = Fastify({ logger: loggerOptions });
+
+for (const warning of encryptionKeySource.warnings) app.log.warn(warning);
+
+if (encryptionKeySource.source === 'generated') {
+  // Said loudly and once. An operator who never learns a key was generated is
+  // an operator who will not think to back it up.
+  app.log.warn(
+    { path: encryptionKeySource.path },
+    'generated a new encryption key — back this file up; without it, stored secrets cannot be recovered',
+  );
+} else {
+  app.log.info(
+    { source: encryptionKeySource.source },
+    'loaded the encryption key for secrets at rest',
+  );
+}
 
 // Adapters must be registered before anything resolves a device row, since
 // seeding and the first poll both look one up.

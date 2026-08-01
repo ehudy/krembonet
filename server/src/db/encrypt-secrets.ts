@@ -22,7 +22,12 @@
 import { inArray, isNotNull } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 
-import { decryptSecret, encryptSecret, isEncrypted } from '../crypto/secrets.js';
+import {
+  decryptSecret,
+  encryptSecret,
+  isEncrypted,
+  KEY_FILE_NAME,
+} from '../crypto/secrets.js';
 import { parseStoredConfig, serializeConfig } from '../devices/config-io.js';
 import { getAdapter, hasAdapter } from '../devices/registry.js';
 import { SECRET_KEYS } from '../settings/types.js';
@@ -110,8 +115,11 @@ export function assertStoredSecretsReadable(): void {
       '',
       ...unreadable.map((label) => `  - ${label}`),
       '',
-      'Either restore the previous ENCRYPTION_KEY, or — if it is genuinely lost —',
-      'clear these secrets and re-enter them:',
+      'The key in use came from ENCRYPTION_KEY, or from the generated key file',
+      `beside the database (${KEY_FILE_NAME}). Restoring whichever one was in`,
+      'use before is the fix — check your backups for both.',
+      '',
+      'If it is genuinely lost, clear these secrets and re-enter them:',
       '',
       '  sqlite3 <database> "DELETE FROM settings WHERE key = \'smtpPassword\';"',
       '',

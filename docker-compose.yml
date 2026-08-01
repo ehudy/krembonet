@@ -26,8 +26,10 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       SESSION_SECRET: ${SESSION_SECRET:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      # Required — the container exits at boot without it, with instructions.
-      # Deliberately no default: a fallback key would mean every install that
+      # Optional. Left blank, the container generates a key on first boot and
+      # keeps it at /app/data/encryption.key on the volume below, so a plain
+      # `docker compose up -d --build` works with no setup. Deliberately no
+      # default value here: a shipped fallback would mean every install that
       # forgot to set one shared the same key, which is no encryption at all.
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       VIEWER_SESSION_HOURS: ${VIEWER_SESSION_HOURS:-720}

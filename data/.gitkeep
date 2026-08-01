@@ -1,0 +1,9 @@
+Keeps this directory in the repository so a bind-mounted `./data` already
+exists and is owned by the user who cloned it. Without that, Docker creates the
+mount source as root and the container's unprivileged `node` user cannot write
+the SQLite database or the generated encryption key.
+
+Everything else in here is runtime state and is git-ignored: krembonet.db and
+its WAL sidecars, and encryption.key if one was generated. Back up this whole
+directory — the key is not stored in the database, so a backup of the .db alone
+cannot be decrypted.

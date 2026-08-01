@@ -174,16 +174,11 @@ password and a name for the hub, and you are in. Then add devices from **Admin �
 Devices** — enter an address, press **Test connection**, and it will tell you what
 answered and what it can actually report before you save anything.
 
-One thing does need to go in `.env`: `ENCRYPTION_KEY`, which encrypts stored secrets. The
-server refuses to start without it, and prints this command if it is missing:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-Everything else is optional. `PLOTTER_HOST` / `PLOTTER_IPP_URI` still work for seeding a
-device from the environment, and `ADMIN_PASSWORD` still works for automated deployments
-that cannot run a wizard.
+Nothing needs to go in `.env` for this — `cp .env.example .env` and the defaults work. An
+encryption key for stored secrets is generated on first boot if you do not supply one; see
+[Secrets at rest](#secrets-at-rest) for when you should supply one instead.
+`PLOTTER_HOST` / `PLOTTER_IPP_URI` still work for seeding a device from the environment,
+and `ADMIN_PASSWORD` still works for automated deployments that cannot run a wizard.
 
 Rather than typing addresses in, **Admin → Devices → Auto-discover** sweeps a subnet
 (`192.168.1.0/24`) for anything answering on IPP or SNMP, identifies each one with the
@@ -346,9 +341,9 @@ This is built for a trusted LAN and the defaults say so:
 - **The admin password is a single shared secret.** It is hashed with scrypt at rest and
   never compared in plaintext, but there are no user accounts, no roles and no audit of
   who did what.
-- **Secrets are encrypted at rest, but the key is not.** See below. `ENCRYPTION_KEY`
-  lives in the environment, so anyone who can read the process environment can read the
-  secrets; what this protects is the database _file_.
+- **Secrets are encrypted at rest, but the key is not.** See below. The key lives in the
+  environment or in `data/`, so anyone who can read either can read the secrets; what this
+  protects is the database _file_.
 - **Secrets are never returned to the browser.** The settings API exposes a
   `smtpPasswordSet` flag, device config exposes `secretsSet`, and webhooks expose header
   _names_ only. Saving a form with a secret field blank keeps the stored value rather
@@ -366,15 +361,32 @@ keys, and webhook auth headers — are encrypted with **AES-256-GCM** before the
 written to SQLite. GCM rather than CBC because it detects tampering: a row edited by hand
 fails to decrypt instead of yielding plausible garbage that gets handed to an SMTP server.
 
-`ENCRYPTION_KEY` is **required** and the server refuses to start without it:
+The key is resolved in this order:
+
+1. `ENCRYPTION_KEY`, if set — 64 hex characters.
+2. `data/encryption.key`, if it exists.
+3. Otherwise one is generated, written to `data/encryption.key` at mode `600`, and used.
+
+Step 3 is what makes `docker compose up -d --build` work on a clean checkout. **Be clear
+about what it costs:** the key then lives in the same directory as the database, so anyone
+who copies all of `data/` has both. That still defends against the common accident — a
+stray copy of `krembonet.db`, a support bundle, a backup of the database alone — but it is
+not the same as keeping the key elsewhere. For anything you would mind leaking, set
+`ENCRYPTION_KEY` in the environment and keep it out of `data/`:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Keep it with your backups. It is never written to the database, so losing it means
-re-entering every stored secret — the hub tells you exactly which ones on the next boot
-rather than failing at 2am on an alert that never sent.
+Either way, **back up whichever key you use**. It is never written to the database, so a
+backup of `krembonet.db` alone cannot be decrypted. Losing the key means re-entering every
+stored secret; the hub lists exactly which ones on the next boot rather than failing at 2am
+on an alert that never sent.
+
+A key that was _supplied_ is never silently replaced. A malformed `ENCRYPTION_KEY`, a
+corrupt key file, or a key that does not match what the database was written with all stop
+the boot with an explanation — because a hub that starts cleanly and cannot read its own
+SMTP password is worse than one that refuses to start.
 
 Password _hashes_ are deliberately left alone. The admin password and viewer passcode are
 scrypt hashes that nothing reads back, so encrypting them would add no secrecy scrypt does
