@@ -293,11 +293,27 @@ Two deliberate refusals:
 
 ### Appearance
 
+The palette is a near-black canvas with a single warm amber accent, carried on
+CSS custom properties: `--bg`, `--surface`, `--border`, `--text`, `--accent` and
+the status colours. Dark is the base and light is the override, so both themes
+share one accent — an accent that shifts hue between themes is two brands.
+
 `system`, `light`, `dark`, or `kiosk` — the last being dark with larger text and
 no navigation chrome, for a display bolted to a wall. Custom CSS is appended
-after the built-in stylesheet, so operator rules win without `!important`. The
-palette is driven by custom properties on `:root`; override those rather than
-restyling each component.
+after the built-in stylesheet, so operator rules win without `!important`.
+Override the custom properties on `:root` rather than restyling each component:
+
+```css
+:root {
+  --accent: #2563eb; /* your colour, everywhere it appears */
+}
+```
+
+**Hub name, subtitle and logo** are set in the same place. A blank subtitle
+hides the line under the name entirely rather than falling back to a default —
+blank is a layout choice, not a missing value. A logo replaces the name and
+subtitle; it takes a URL, a path this hub serves, or an inline `data:` image,
+which is usually easiest on a LAN with no web server to host from.
 
 Saved CSS is sanitised, and the portal reports what it changed. A literal
 `</style>` is escaped (it would end the element and turn the rest into markup —

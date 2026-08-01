@@ -195,7 +195,44 @@ export function AdminSettings() {
               Shown in the sidebar and used as the subject prefix on alert email.
             </small>
           </label>
+
+          <label className="field">
+            <span>Subtitle</span>
+            <input
+              value={draft.hubSubtitle}
+              placeholder="Local device telemetry"
+              onChange={(event) => update('hubSubtitle', event.target.value)}
+            />
+            <small className="field-hint">
+              The line under the name. Leave blank to hide it entirely.
+            </small>
+          </label>
+
+          <label className="field field-wide">
+            <span>Logo URL</span>
+            <input
+              value={draft.logoUrl}
+              placeholder="/assets/logo.svg  ·  https://…  ·  data:image/svg+xml;base64,…"
+              onChange={(event) => update('logoUrl', event.target.value)}
+            />
+            <small className="field-hint">
+              Shown in place of the name and subtitle. A full URL, a path served by this
+              hub, or an inline <code>data:</code> image — the last needs no web server,
+              which is usually the easiest option on a LAN.
+            </small>
+          </label>
         </div>
+
+        {draft.logoUrl !== '' && (
+          <div className="logo-preview">
+            <span className="field-hint">Preview</span>
+            {/* Rendered against the sidebar colour, not the card, so what is
+                previewed is what will actually be seen. */}
+            <div className="logo-preview-frame">
+              <img src={draft.logoUrl} alt="Logo preview" />
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="card">

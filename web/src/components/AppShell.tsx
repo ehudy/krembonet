@@ -3,8 +3,13 @@
  *
  * The sidebar collapses behind a toggle under 900px rather than disappearing,
  * so the hub stays usable from a phone next to the plotter.
+ *
+ * Branding is passed in rather than fetched here: App already loads it, and a
+ * second `/api/hub` request would let the sidebar and the document title
+ * disagree for a frame.
  */
 import { useEffect, useState, type ReactNode } from 'react';
+import { Home, Menu, Plus, Printer, Settings, type LucideIcon } from 'lucide-react';
 
 import { api } from '../api.js';
 import { DEFAULT_HUB_TITLE } from '../hooks/useBranding.js';
@@ -14,16 +19,16 @@ import type { DeviceSummary } from '../types.js';
 interface NavItem {
   to: string;
   label: string;
-  icon: string;
+  icon: LucideIcon;
   /** Extra path prefixes that should also light this item up. */
   match?: string[];
 }
 
-const OVERVIEW: NavItem = { to: '/', label: 'Overview', icon: '🏠' };
+const OVERVIEW: NavItem = { to: '/', label: 'Overview', icon: Home };
 const ADMIN: NavItem = {
   to: '/admin',
   label: 'Admin',
-  icon: '⚙️',
+  icon: Settings,
   match: ['/admin/:page'],
 };
 
@@ -39,7 +44,7 @@ function navFor(devices: DeviceSummary[]): NavItem[] {
     ...devices.map((device) => ({
       to: `/devices/${device.slug}`,
       label: device.displayName,
-      icon: '🖨️',
+      icon: Printer,
       // Bookmarks and older links still point at /printers/:slug, so the item
       // has to light up for both.
       match: [`/printers/${device.slug}`],
@@ -47,7 +52,7 @@ function navFor(devices: DeviceSummary[]): NavItem[] {
     // With no devices the sidebar would be Overview and Admin only, which
     // reads as a broken install rather than an empty one.
     ...(devices.length === 0
-      ? [{ to: '/admin/devices', label: 'Add a device', icon: '➕' }]
+      ? [{ to: '/admin/devices', label: 'Add a device', icon: Plus }]
       : []),
     ADMIN,
   ];
@@ -59,25 +64,56 @@ function isActive(item: NavItem, path: string): boolean {
   return (item.match ?? []).some((pattern) => matchPath(pattern, path) !== null);
 }
 
-/** `KremboNet` becomes `KN`; a title with no inner capitals falls back to its
- * first two letters, so the mark is never blank. */
-function initials(title: string): string {
-  const capitals = title.match(/[A-Z]/g);
-  if (capitals !== null && capitals.length >= 2) return capitals.slice(0, 3).join('');
-  return title.slice(0, 2).toUpperCase();
-}
-
 interface AppShellProps {
   children: ReactNode;
-  /**
-   * The operator-owned hub name. Passed in rather than fetched here: App
-   * already loads it as part of branding, and a second `/api/hub` request would
-   * let the sidebar and the document title disagree for a frame.
-   */
   title?: string;
+  /** Blank hides the line under the title entirely. */
+  subtitle?: string;
+  /** Blank falls back to the text title. */
+  logoUrl?: string;
 }
 
-export function AppShell({ children, title = DEFAULT_HUB_TITLE }: AppShellProps) {
+/**
+ * The hub's own mark: a logo when one is configured, the name otherwise.
+ *
+ * There is deliberately no initials badge. A generated two-letter square is a
+ * placeholder pretending to be an identity — it made every hub look like the
+ * same unbranded product, and it was the loudest coloured element on a palette
+ * that is otherwise almost entirely neutral.
+ */
+function Brand({
+  title,
+  subtitle,
+  logoUrl,
+}: {
+  title: string;
+  subtitle: string;
+  logoUrl: string;
+}) {
+  return (
+    <div className="brand">
+      {logoUrl === '' ? (
+        <span className="brand-text">
+          <strong>{title}</strong>
+          {/* Rendered only when there is something to say. An empty element
+              would still occupy its line-height and leave the title floating. */}
+          {subtitle !== '' && <small>{subtitle}</small>}
+        </span>
+      ) : (
+        // The title becomes the alt text: if the image fails, the hub is still
+        // named rather than showing a broken-image icon with no context.
+        <img className="brand-logo" src={logoUrl} alt={title} />
+      )}
+    </div>
+  );
+}
+
+export function AppShell({
+  children,
+  title = DEFAULT_HUB_TITLE,
+  subtitle = '',
+  logoUrl = '',
+}: AppShellProps) {
   const { path } = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
@@ -102,29 +138,29 @@ export function AppShell({ children, title = DEFAULT_HUB_TITLE }: AppShellProps)
   return (
     <div className={`shell${isOpen ? ' is-drawer-open' : ''}`}>
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            {initials(title)}
-          </span>
-          <span className="brand-text">
-            <strong>{title}</strong>
-            <small>Local device telemetry</small>
-          </span>
-        </div>
+        <Brand title={title} subtitle={subtitle} logoUrl={logoUrl} />
 
         <nav className="nav" aria-label="Main">
-          {nav.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={`nav-item${isActive(item, path) ? ' is-active' : ''}`}
-            >
-              <span className="nav-icon" aria-hidden="true">
-                {item.icon}
-              </span>
-              {item.label}
-            </Link>
-          ))}
+          {nav.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`nav-item${isActive(item, path) ? ' is-active' : ''}`}
+              >
+                {/* strokeWidth 1.75 rather than the default 2: at 16px the
+                    default reads heavy next to 13px label text. */}
+                <Icon
+                  className="nav-icon"
+                  size={16}
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="sidebar-footer">
@@ -151,7 +187,7 @@ export function AppShell({ children, title = DEFAULT_HUB_TITLE }: AppShellProps)
             aria-expanded={isOpen}
             onClick={() => setIsOpen((open) => !open)}
           >
-            <span aria-hidden="true">☰</span>
+            <Menu size={18} strokeWidth={1.75} aria-hidden="true" />
           </button>
           <span className="topbar-title">{title}</span>
         </header>

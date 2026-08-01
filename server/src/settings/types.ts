@@ -42,6 +42,25 @@ export interface AppSettings {
    */
   hubTitle: string;
 
+  /**
+   * The line under the hub name in the sidebar.
+   *
+   * Empty is a real choice, not a missing value: a blank subtitle hides the
+   * element entirely rather than falling back to a default, so an operator who
+   * wants just a name can have just a name. `DEFAULT_HUB_SUBTITLE` is only the
+   * value a fresh install starts with.
+   */
+  hubSubtitle: string;
+
+  /**
+   * Optional logo, shown in place of the hub name.
+   *
+   * A URL rather than an upload: this hub has no asset store, and adding one to
+   * hold a single image would be a lot of moving parts. An inline `data:` URI
+   * works and is the usual answer on a LAN with no web server to host from.
+   */
+  logoUrl: string;
+
   /** See `AccessMode`. The viewer passcode itself is hashed outside this record. */
   accessMode: AccessMode;
 
@@ -76,9 +95,12 @@ export interface AppSettings {
 }
 
 export const DEFAULT_HUB_TITLE = 'KremboNet';
+export const DEFAULT_HUB_SUBTITLE = 'Local device telemetry';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   hubTitle: DEFAULT_HUB_TITLE,
+  hubSubtitle: DEFAULT_HUB_SUBTITLE,
+  logoUrl: '',
 
   // Matches how every pre-M4 hub behaved. An upgrade must not lock people out.
   accessMode: 'public',

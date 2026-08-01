@@ -6,6 +6,13 @@
  * sign-in prompt rather than a page full of errors.
  */
 import { useCallback, useEffect, useState } from 'react';
+import {
+  Bell,
+  FileStack,
+  HardDrive,
+  SlidersHorizontal,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { ApiError, api } from '../../api.js';
 import { PageHeader } from '../../components/PageHeader.js';
@@ -17,11 +24,11 @@ import { AdminPaperTypes } from './AdminPaperTypes.js';
 import { AdminSettings } from './AdminSettings.js';
 import { AdminWebhooks } from './AdminWebhooks.js';
 
-const TABS = [
-  { to: '/admin', label: 'Settings' },
-  { to: '/admin/devices', label: 'Devices' },
-  { to: '/admin/paper-types', label: 'Paper types' },
-  { to: '/admin/alerts', label: 'Alerts' },
+const TABS: { to: string; label: string; icon: LucideIcon }[] = [
+  { to: '/admin', label: 'Settings', icon: SlidersHorizontal },
+  { to: '/admin/devices', label: 'Devices', icon: HardDrive },
+  { to: '/admin/paper-types', label: 'Paper types', icon: FileStack },
+  { to: '/admin/alerts', label: 'Alerts', icon: Bell },
 ];
 
 /** Sections under the Alerts tab. */
@@ -107,23 +114,27 @@ export function AdminPortal() {
       />
 
       <nav className="tabs" aria-label="Admin sections">
-        {TABS.map((tab) => (
-          <Link
-            key={tab.to}
-            to={tab.to}
-            className={`tab${
-              (tab.to === '/admin' && isSettings) ||
-              (tab.to === '/admin/alerts' && isAlerts) ||
-              (tab.to !== '/admin' &&
-                tab.to !== '/admin/alerts' &&
-                matchPath(tab.to, path) !== null)
-                ? ' is-active'
-                : ''
-            }`}
-          >
-            {tab.label}
-          </Link>
-        ))}
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <Link
+              key={tab.to}
+              to={tab.to}
+              className={`tab${
+                (tab.to === '/admin' && isSettings) ||
+                (tab.to === '/admin/alerts' && isAlerts) ||
+                (tab.to !== '/admin' &&
+                  tab.to !== '/admin/alerts' &&
+                  matchPath(tab.to, path) !== null)
+                  ? ' is-active'
+                  : ''
+              }`}
+            >
+              <Icon size={15} strokeWidth={1.75} aria-hidden="true" />
+              {tab.label}
+            </Link>
+          );
+        })}
       </nav>
 
       {isAlerts && (

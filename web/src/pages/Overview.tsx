@@ -6,6 +6,7 @@
  * per device.
  */
 import { useEffect, useState } from 'react';
+import { CircleCheck, Plus, Printer, TriangleAlert, WifiOff } from 'lucide-react';
 
 import { api } from '../api.js';
 import { Link } from '../router.js';
@@ -13,27 +14,44 @@ import type { DeviceListResponse, DeviceSummary } from '../types.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { relativeTime } from '../lib/format.js';
 
+/** Shared by every pill so the icon never outweighs the label beside it. */
+const PILL_ICON = { size: 13, strokeWidth: 2, 'aria-hidden': true } as const;
+
 function StatusPill({ device }: { device: DeviceSummary }) {
   if (!device.isOnline) {
-    return <span className="pill is-bad">Unreachable</span>;
+    return (
+      <span className="pill is-bad">
+        <WifiOff {...PILL_ICON} />
+        Unreachable
+      </span>
+    );
   }
   if (device.lowSupplies > 0) {
     return (
       <span className="pill is-warn">
+        <TriangleAlert {...PILL_ICON} />
         {device.lowSupplies} suppl{device.lowSupplies === 1 ? 'y' : 'ies'} low
       </span>
     );
   }
-  return <span className="pill is-good">Healthy</span>;
+  return (
+    <span className="pill is-good">
+      <CircleCheck {...PILL_ICON} />
+      Healthy
+    </span>
+  );
 }
 
 function DeviceCard({ device }: { device: DeviceSummary }) {
   return (
     <Link to={`/devices/${device.slug}`} className="device-card">
       <div className="device-card-top">
-        <span className="device-icon" aria-hidden="true">
-          🖨️
-        </span>
+        <Printer
+          className="device-icon"
+          size={18}
+          strokeWidth={1.75}
+          aria-hidden="true"
+        />
         <StatusPill device={device} />
       </div>
 
@@ -93,10 +111,7 @@ export function Overview() {
 
   return (
     <>
-      <PageHeader
-        title="Overview"
-        subtitle="Monitored devices and hub health"
-      />
+      <PageHeader title="Overview" subtitle="Monitored devices and hub health" />
 
       {error !== null && <div className="banner is-error">{error}</div>}
 
@@ -135,6 +150,7 @@ export function Overview() {
         <div className="empty-state">
           <p>No devices are being monitored yet.</p>
           <Link to="/admin/devices" className="btn-primary">
+            <Plus size={15} strokeWidth={2} aria-hidden="true" />
             Add your first device
           </Link>
         </div>

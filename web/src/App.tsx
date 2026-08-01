@@ -137,7 +137,11 @@ export function App() {
   }
 
   return (
-    <AppShell title={branding.title}>
+    <AppShell
+      title={branding.title}
+      subtitle={branding.subtitle}
+      logoUrl={branding.logoUrl}
+    >
       <Routes />
     </AppShell>
   );

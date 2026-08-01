@@ -25,6 +25,11 @@ const STYLE_ELEMENT_ID = 'krembonet-custom-css';
 
 const DEFAULT_BRANDING: HubBranding = {
   title: DEFAULT_HUB_TITLE,
+  // Blank rather than the server's default string: this is what renders before
+  // the fetch resolves, and a subtitle that appears and then vanishes on a hub
+  // that has none is worse than one that arrives a moment late.
+  subtitle: '',
+  logoUrl: '',
   theme: 'system',
   customCss: '',
 };
@@ -70,6 +75,9 @@ export function useBranding(): HubBranding {
       .then((hub) => {
         setBranding({
           title: hub.title === '' ? DEFAULT_HUB_TITLE : hub.title,
+          // Not defaulted: blank is the operator saying "no subtitle".
+          subtitle: hub.subtitle ?? '',
+          logoUrl: hub.logoUrl ?? '',
           theme: hub.theme,
           customCss: hub.customCss,
         });

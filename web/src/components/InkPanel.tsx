@@ -7,8 +7,22 @@
  */
 import type { Supply, SupplyLevel } from '../types.js';
 
-/** Used when a device reports no colour of its own. */
-const FALLBACK_COLOR = '#3b82f6';
+/**
+ * The colour a bar is filled with.
+ *
+ * A breached supply is amber-red regardless of what the device says its colour
+ * is: the point of the bar at that moment is "act on this", and a cyan tank
+ * drawn in cyan while it is empty buries exactly the row that matters.
+ *
+ * Otherwise the device's own colour wins where it gave one — a magenta tank
+ * drawn magenta is real information, not decoration — and the brand accent is
+ * the fallback for the many devices that report no colour at all.
+ */
+function fillColor(supply: Supply): string {
+  if (supply.breached) return 'var(--danger)';
+  if (supply.colorHex !== null && supply.colorHex !== '') return supply.colorHex;
+  return 'var(--accent)';
+}
 
 /** What to show on the right of the bar, given a level that may have no number. */
 function levelText(supply: Supply): string {
@@ -47,13 +61,27 @@ function SupplyRow({ supply }: { supply: Supply }) {
       <div className="supply-label" title={supply.label}>
         {supply.label}
       </div>
-      <div className="supply-track">
+      <div
+        className="supply-track"
+        // The bar is the visual form of a number the row already states, so it
+        // carries the ARIA meter role rather than being decoration a screen
+        // reader has to infer from a div.
+        role="meter"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        {...(supply.percent !== null ? { 'aria-valuenow': supply.percent } : {})}
+        aria-valuetext={levelText(supply)}
+        aria-label={supply.label}
+      >
         {width === null ? (
-          <div className="supply-fill is-unknown" title="This device did not report a level" />
+          <div
+            className="supply-fill is-unknown"
+            title="This device did not report a level"
+          />
         ) : (
           <div
             className="supply-fill"
-            style={{ width, backgroundColor: supply.colorHex ?? FALLBACK_COLOR }}
+            style={{ width, backgroundColor: fillColor(supply) }}
           />
         )}
       </div>

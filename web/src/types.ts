@@ -140,6 +140,10 @@ export type ThemeName = 'system' | 'dark' | 'light' | 'kiosk';
 /** Chrome the shell needs before anything else, from the open `/api/hub`. */
 export interface HubBranding {
   title: string;
+  /** Blank means "show nothing", not "show a default". */
+  subtitle: string;
+  /** Blank means no logo; the text title is shown instead. */
+  logoUrl: string;
   theme: ThemeName;
   customCss: string;
 }
@@ -156,6 +160,8 @@ export interface AccessStatus {
 
 export interface AdminSettings {
   hubTitle: string;
+  hubSubtitle: string;
+  logoUrl: string;
   accessMode: AccessMode;
   /** The passcode itself is never sent to the browser. */
   viewerPasscodeSet: boolean;

@@ -20,7 +20,7 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
    * says anything about a device.
    */
   app.get('/api/hub', async () => {
-    const { hubTitle, theme, customCss } = getSettings();
-    return { title: hubTitle, theme, customCss };
+    const { hubTitle, hubSubtitle, logoUrl, theme, customCss } = getSettings();
+    return { title: hubTitle, subtitle: hubSubtitle, logoUrl, theme, customCss };
   });
 }

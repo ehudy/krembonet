@@ -1,99 +1,125 @@
-:root {
-  --bg: #f1f5f9;
-  --surface: #ffffff;
-  --surface-sunken: #f8fafc;
-  --border: #e2e8f0;
-  --text: #0f172a;
-  --text-muted: #64748b;
-  --text-faint: #94a3b8;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --danger: #dc2626;
-  --sidebar-bg: #0f172a;
-  --sidebar-text: #cbd5e1;
-  --sidebar-active: #1e293b;
-  --warning-bg: #fef3c7;
-  --warning-border: #f59e0b;
-  --warning-text: #78350f;
-  --error-bg: #fee2e2;
-  --ok-bg: #dcfce7;
-  --ok-text: #15803d;
-  --sidebar-width: 232px;
+/* Design tokens — "Minimal Monolith", warm amber accent -------------------
 
-  /* Tells the browser how to paint scrollbars and native form controls. A
-     dark page with a light-mode date picker on it is the usual giveaway that
-     a theme only ever changed CSS variables. */
-  color-scheme: light;
-}
+   Dark is the base rather than an override. The brand is a pitch-black canvas
+   with one warm accent, so that palette lives in `:root` and light mode is the
+   exception layered on top. Two things fall out of that: the default render
+   before the branding fetch resolves is already the brand, and the common case
+   costs no override at all.
 
-/* Themes -----------------------------------------------------------------
-
-   The operator picks one in the admin portal and it lands on
-   `<html data-theme>`; see web/src/hooks/useBranding.ts.
-
-   `system` follows the browser. The `:not([data-theme])` clause covers the
-   moment before the branding fetch resolves, so a hub set to dark does not
-   flash white on every load for anyone whose OS is already dark.
-
-   The dark token block is written twice on purpose. CSS has no way to share
-   one declaration block between a media query and an attribute selector, and
-   the alternative — a second indirection layer of --dark-* variables aliased
-   into the real ones — costs more to read than twenty duplicated lines.
+   One duplication is unavoidable — CSS cannot share a declaration block
+   between a media query and an attribute selector — so the *light* tokens are
+   written twice, once for an explicit choice and once for `system` following
+   the OS. Aliasing through a second layer of --light-* variables would cost
+   more to read than fifteen duplicated lines.
    ---------------------------------------------------------------------- */
 
-:root[data-theme='dark'],
-:root[data-theme='kiosk'] {
-  --bg: #0b1120;
-  --surface: #131c2e;
-  --surface-sunken: #0f1729;
-  --border: #26324a;
-  --text: #e2e8f0;
-  --text-muted: #94a3b8;
-  --text-faint: #64748b;
-  --accent: #3b82f6;
-  --accent-hover: #60a5fa;
-  --danger: #f87171;
-  --sidebar-bg: #060b16;
-  --sidebar-text: #94a3b8;
-  --sidebar-active: #1c2740;
-  --warning-bg: #422006;
-  --warning-border: #b45309;
-  --warning-text: #fcd34d;
-  --error-bg: #450a0a;
-  --ok-bg: #052e16;
-  --ok-text: #4ade80;
+:root {
+  /* Canvas and surfaces. Zinc, not slate: the neutral is genuinely neutral so
+     the amber is the only warm thing on screen. */
+  --bg: #09090b;
+  --surface: #18181b;
+  --surface-sunken: #131316;
+  /* A hairline, not a border. It separates without drawing. */
+  --border: #27272a;
+  --border-strong: #3f3f46;
+
+  --text: #fafafa;
+  --text-muted: #71717a;
+  --text-faint: #52525b;
+
+  /* Warm amber/bronze: active nav, primary actions, focus rings, meters. */
+  --accent: #d97706;
+  --accent-hover: #f59e0b;
+  --accent-contrast: #ffffff;
+  /* Amber at low alpha, for tinted fills that must not become solid blocks. */
+  --accent-soft: rgb(217 119 6 / 14%);
+  --accent-ring: rgb(217 119 6 / 45%);
+
+  /* Status. Grounded, not neon — these sit on black and must read as
+     information rather than decoration. */
+  --ok: #10b981;
+  --danger: #ef4444;
+  --warning: #d97706;
+  --offline: #71717a;
+
+  --ok-bg: rgb(16 185 129 / 12%);
+  --ok-text: #34d399;
+  --error-bg: rgb(239 68 68 / 12%);
+  --error-text: #f87171;
+  --warning-bg: rgb(217 119 6 / 12%);
+  --warning-border: #d97706;
+  --warning-text: #fbbf24;
+
+  /* The sidebar is the same monolith as the canvas, separated by a hairline
+     rather than by a contrasting slab. */
+  --sidebar-bg: #09090b;
+  --sidebar-text: #a1a1aa;
+  --sidebar-active: #18181b;
+
+  --sidebar-width: 232px;
+  --radius: 10px;
+  --radius-sm: 7px;
+
+  /* How far an interactive element depresses when pressed. A variable so the
+     reduced-motion rule can flatten every one of them in a single place. */
+  --press: 0.98;
 
   color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
+/* Light: the same brand, inverted. The amber is unchanged — an accent that
+   shifts hue between themes is two brands, not one. */
+
+:root[data-theme='light'] {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-sunken: #f4f4f5;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+
+  --text: #18181b;
+  --text-muted: #71717a;
+  --text-faint: #a1a1aa;
+
+  --accent-hover: #b45309;
+  --ok-text: #047857;
+  --error-text: #b91c1c;
+  --warning-text: #92400e;
+
+  --sidebar-bg: #ffffff;
+  --sidebar-text: #52525b;
+  --sidebar-active: #f4f4f5;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
   :root[data-theme='system'],
   :root:not([data-theme]) {
-    --bg: #0b1120;
-    --surface: #131c2e;
-    --surface-sunken: #0f1729;
-    --border: #26324a;
-    --text: #e2e8f0;
-    --text-muted: #94a3b8;
-    --text-faint: #64748b;
-    --accent: #3b82f6;
-    --accent-hover: #60a5fa;
-    --danger: #f87171;
-    --sidebar-bg: #060b16;
-    --sidebar-text: #94a3b8;
-    --sidebar-active: #1c2740;
-    --warning-bg: #422006;
-    --warning-border: #b45309;
-    --warning-text: #fcd34d;
-    --error-bg: #450a0a;
-    --ok-bg: #052e16;
-    --ok-text: #4ade80;
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --surface-sunken: #f4f4f5;
+    --border: #e4e4e7;
+    --border-strong: #d4d4d8;
 
-    color-scheme: dark;
+    --text: #18181b;
+    --text-muted: #71717a;
+    --text-faint: #a1a1aa;
+
+    --accent-hover: #b45309;
+    --ok-text: #047857;
+    --error-text: #b91c1c;
+    --warning-text: #92400e;
+
+    --sidebar-bg: #ffffff;
+    --sidebar-text: #52525b;
+    --sidebar-active: #f4f4f5;
+
+    color-scheme: light;
   }
 }
 
-/* Kiosk: dark, chrome removed, everything a size up.
+/* Kiosk: the brand palette, chrome removed, everything a size up.
 
    For a display bolted to a wall that nobody is going to click. The sidebar
    and topbar are hidden rather than merely collapsed, because navigation the
@@ -124,8 +150,42 @@
   gap: 20px;
 }
 
+/* Motion --------------------------------------------------------------------
+
+   Every press, hover and fill transition in this stylesheet is opt-out here,
+   in one rule, rather than guarded at each site. `--press: 1` neutralises the
+   tactile scale without needing a second rule per component. */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --press: 1;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 * {
   box-sizing: border-box;
+}
+
+/* Native controls — checkboxes, radios, range thumbs, and the text selection
+   highlight — paint themselves with the browser's own accent unless told
+   otherwise. Left alone they stay system blue, which is the one colour this
+   palette does not contain, and it shows up on every form in the admin. */
+:root {
+  accent-color: var(--accent);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 body {
@@ -162,14 +222,14 @@ body {
   padding: 0 6px 20px;
 }
 
-.brand-mark {
-  background: var(--accent);
-  color: #fff;
-  font-weight: 800;
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  padding: 8px 9px;
-  border-radius: 8px;
+/* A logo image, when the operator supplies one. Capped rather than scaled to
+   a fixed size: logos are not all the same aspect ratio, and squashing one is
+   worse than letting it be a little smaller than its neighbour. */
+.brand-logo {
+  max-width: 100%;
+  max-height: 34px;
+  object-fit: contain;
+  display: block;
 }
 
 .brand-text {
@@ -180,12 +240,14 @@ body {
 }
 
 .brand-text strong {
-  color: #fff;
+  color: var(--text);
   font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .brand-text small {
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 11px;
 }
 
@@ -200,10 +262,11 @@ body {
   align-items: center;
   gap: 10px;
   padding: 9px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: var(--sidebar-text);
   text-decoration: none;
   font-weight: 500;
+  position: relative;
   transition:
     background 0.15s,
     color 0.15s;
@@ -211,18 +274,49 @@ body {
 
 .nav-item:hover {
   background: var(--sidebar-active);
-  color: #fff;
+  color: var(--text);
 }
 
+.nav-item:active {
+  transform: scale(var(--press));
+}
+
+/* Active state is a hairline amber indicator plus a raised surface, not a
+   solid amber slab. On a monolith palette a filled block reads as a button
+   you are meant to press again, and four of them would be the loudest thing
+   on screen. */
 .nav-item.is-active {
-  background: var(--accent);
-  color: #fff;
+  background: var(--sidebar-active);
+  color: var(--text);
 }
 
+.nav-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  translate: 0 -50%;
+  width: 2px;
+  height: 16px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
+
+.nav-item.is-active .nav-icon {
+  color: var(--accent);
+}
+
+/* Sized in ems so an icon tracks the label it sits beside. */
 .nav-icon {
-  font-size: 15px;
-  width: 18px;
-  text-align: center;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.nav-item:hover .nav-icon {
+  color: var(--text-muted);
 }
 
 .sidebar-footer {
@@ -232,14 +326,14 @@ body {
   gap: 8px;
   padding: 10px 8px 0;
   font-size: 11px;
-  color: #64748b;
+  color: var(--text-faint);
 }
 
 .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #22c55e;
+  background: var(--ok);
   flex-shrink: 0;
 }
 
@@ -313,7 +407,7 @@ h1 {
 .section-title {
   font-size: 12px;
   font-weight: 700;
-  color: #475569;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.6px;
   border-bottom: 2px solid var(--border);
@@ -361,7 +455,7 @@ h1 {
 }
 
 .health-tile.is-warn .health-value {
-  color: #b45309;
+  color: var(--warning-text);
 }
 
 .health-tile.is-bad .health-value {
@@ -388,13 +482,25 @@ h1 {
   transition:
     border-color 0.15s,
     box-shadow 0.15s,
-    transform 0.15s;
+    transform 0.12s ease-out;
 }
 
 .device-card:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 6px 18px rgb(15 23 42 / 8%);
+  border-color: var(--border-strong);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
   transform: translateY(-1px);
+}
+
+/* Presses flat rather than continuing to lift: the card is a link, and the
+   gesture should read as "going in", not "coming further out". */
+.device-card:active {
+  transform: scale(var(--press));
+  box-shadow: none;
+}
+
+.device-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .device-card-top {
@@ -404,8 +510,15 @@ h1 {
   margin-bottom: 10px;
 }
 
+/* The icon is a quiet marker, not a subject: muted until the card is hovered,
+   where it picks up the accent along with the border. */
 .device-icon {
-  font-size: 22px;
+  color: var(--text-faint);
+  transition: color 0.15s;
+}
+
+.device-card:hover .device-icon {
+  color: var(--accent);
 }
 
 .device-card h3 {
@@ -445,7 +558,9 @@ h1 {
 /* Pills, tags, banners --------------------------------------------------- */
 
 .pill {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 3px 10px;
   border-radius: 20px;
   font-size: 12px;
@@ -480,9 +595,9 @@ h1 {
 }
 
 .tag.is-custom {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-hover);
 }
 
 .banner {
@@ -552,15 +667,19 @@ h1 {
   cursor: pointer;
   border: 1px solid transparent;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   transition:
     background 0.15s,
-    border-color 0.15s;
+    border-color 0.15s,
+    transform 0.08s ease-out;
 }
 
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -574,7 +693,16 @@ h1 {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  border-color: #94a3b8;
+  border-color: var(--border-strong);
+}
+
+/* Tactile press. Fast in, so the surface feels like it meets the finger
+   rather than easing away from it. Scoped off :disabled — a control that will
+   not act must not answer as though it did. `--press` is 1 under
+   prefers-reduced-motion, which flattens this everywhere at once. */
+.btn-primary:active:not(:disabled),
+.btn-secondary:active:not(:disabled) {
+  transform: scale(var(--press));
 }
 
 .btn-primary:disabled,
@@ -589,6 +717,7 @@ h1 {
 .tab:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .btn-small {
@@ -669,7 +798,7 @@ h1 {
   margin-bottom: 11px;
   font-size: 12px;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-muted);
 }
 
 .supply-label {
@@ -685,29 +814,56 @@ h1 {
   flex: 1;
   min-width: 0;
   background: var(--border);
-  height: 12px;
-  border-radius: 6px;
+  height: 8px;
+  border-radius: 999px;
   overflow: hidden;
 }
 
+/* Rounded at both ends, and never thinner than its own corner radius — a
+   fill at 1% should read as a sliver of colour, not a clipped rectangle. */
 .supply-fill {
   height: 100%;
-  border-radius: 6px;
-  transition: width 0.3s ease;
+  border-radius: 999px;
+  min-width: 8px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* A device that reported no level gets a flat neutral bar rather than an
+   empty track, which would read as "empty" rather than "unknown". */
+.supply-fill.is-unknown {
+  width: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--border-strong) 0 6px,
+    transparent 6px 12px
+  );
+  min-width: 0;
+}
+
+/* Bright enough to read against the fill it labels. This is the number an
+   operator acts on, so it is the highest-contrast text in the row. */
 .supply-value {
-  width: 64px;
+  /* Wide enough for "Not reported" on one line. A wrapped value pushes its
+     own row taller than its neighbours and breaks the column's alignment. */
+  width: 84px;
   flex-shrink: 0;
   text-align: right;
-  font-size: 11px;
-  color: var(--text-muted);
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
 .supply-value.is-concerning {
   color: var(--danger);
   font-weight: 700;
+}
+
+/* Dimmed only when there is genuinely no reading to show. */
+.supply-value.is-muted {
+  color: var(--text-faint);
+  font-weight: 500;
 }
 
 /* Separated because its percentage means the opposite of the bars above. */
@@ -724,7 +880,7 @@ h1 {
   align-items: center;
   gap: 12px;
   padding: 11px 0;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border);
 }
 
 .paper-row:last-child {
@@ -736,7 +892,7 @@ h1 {
   height: 30px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: #cbd5e1;
+  background: var(--border-strong);
 }
 
 .paper-icon.is-empty {
@@ -793,7 +949,7 @@ th,
 td {
   padding: 11px 14px;
   text-align: left;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border);
   font-size: 13px;
   vertical-align: middle;
 }
@@ -828,7 +984,7 @@ td code {
   display: inline-block;
   padding: 3px 10px;
   border-radius: 12px;
-  color: #fff;
+  color: var(--accent-contrast);
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -886,6 +1042,9 @@ td code {
 }
 
 .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   padding: 9px 14px;
   text-decoration: none;
   color: var(--text-muted);
@@ -902,6 +1061,10 @@ td code {
 .tab.is-active {
   color: var(--accent);
   border-bottom-color: var(--accent);
+}
+
+.tab:active {
+  transform: scale(var(--press));
 }
 
 .field-grid {
@@ -1281,7 +1444,7 @@ td code {
     position: fixed;
     inset: 0;
     z-index: 30;
-    background: rgb(15 23 42 / 45%);
+    background: rgb(0 0 0 / 60%);
     cursor: pointer;
   }
 
@@ -1447,4 +1610,32 @@ td code {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/* Branding preview -------------------------------------------------------- */
+
+.logo-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+/* Painted with the sidebar's own background: a logo designed for a dark strip
+   looks fine on a card and wrong where it will actually live. */
+.logo-preview-frame {
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: inline-flex;
+  align-items: center;
+  min-width: 120px;
+  min-height: 48px;
+}
+
+.logo-preview-frame img {
+  max-width: 180px;
+  max-height: 34px;
+  object-fit: contain;
 }
