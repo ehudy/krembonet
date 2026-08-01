@@ -24,6 +24,8 @@ services:
       MEDIA_PACK_PATH: ${MEDIA_PACK_PATH:-}
       BACKGROUND_POLL_MINUTES: ${BACKGROUND_POLL_MINUTES:-60}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Optional. Left blank, one is generated on first boot and kept in the
+      # database, so sessions survive a restart with no configuration.
       SESSION_SECRET: ${SESSION_SECRET:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       # Optional. Left blank, the container generates a key on first boot and

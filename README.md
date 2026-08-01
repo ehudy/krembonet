@@ -165,20 +165,31 @@ Docker image installs it for you, which is why Docker is the recommended way to 
 ## Quick start
 
 ```bash
-cp .env.example .env
 docker compose up -d --build
 ```
+
+That is the whole thing. **No `.env` file is required** — every setting has a working
+default, and the two secrets that need to be stable across restarts (the encryption key
+for stored credentials, and the cookie signing secret) are generated on first boot and
+kept in `data/`.
 
 Open `http://localhost:8080`. A fresh install shows a short setup screen: pick an admin
 password and a name for the hub, and you are in. Then add devices from **Admin →
 Devices** — enter an address, press **Test connection**, and it will tell you what
 answered and what it can actually report before you save anything.
 
-Nothing needs to go in `.env` for this — `cp .env.example .env` and the defaults work. An
-encryption key for stored secrets is generated on first boot if you do not supply one; see
-[Secrets at rest](#secrets-at-rest) for when you should supply one instead.
-`PLOTTER_HOST` / `PLOTTER_IPP_URI` still work for seeding a device from the environment,
-and `ADMIN_PASSWORD` still works for automated deployments that cannot run a wizard.
+`.env` is entirely optional, and worth creating when you want to pin something rather
+than let it be generated:
+
+```bash
+cp .env.example .env   # only if you want to change something
+```
+
+The ones most likely to matter: `ENCRYPTION_KEY` to keep the key out of `data/` (see
+[Secrets at rest](#secrets-at-rest)), `TZ` so the poller's schedule matches your clock,
+`COOKIE_SECURE=true` behind HTTPS, and `ADMIN_PASSWORD` for deployments provisioned by a
+script that cannot run a wizard. `PLOTTER_HOST` / `PLOTTER_IPP_URI` still seed a device
+from the environment.
 
 Rather than typing addresses in, **Admin → Devices → Auto-discover** sweeps a subnet
 (`192.168.1.0/24`) for anything answering on IPP or SNMP, identifies each one with the
@@ -465,6 +476,13 @@ docker compose ps
 docker compose logs -f hub
 docker compose exec hub ipptool -tv "$PLOTTER_IPP_URI" server/test/fixtures/get-printer-attributes.test
 ```
+
+### What to back up
+
+Back up the whole `data/` directory, not just `krembonet.db`. Unless you set
+`ENCRYPTION_KEY` yourself, `data/encryption.key` is the only copy of the key that decrypts
+stored credentials, and a backup of the database without it cannot be read. The session
+signing secret lives inside the database and is restored with it.
 
 ### Data safety
 

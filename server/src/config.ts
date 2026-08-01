@@ -4,8 +4,6 @@
  * Fails fast at boot rather than surfacing an undefined halfway through a poll
  * cycle at 2am.
  */
-import { randomBytes } from 'node:crypto';
-
 function str(name: string, fallback?: string): string {
   const raw = process.env[name];
   // A present-but-empty value counts as unset. `.env` files habitually carry
@@ -130,11 +128,16 @@ export const config = {
      */
     password: optional('ADMIN_PASSWORD') ?? '',
     /**
-     * Signs the session cookie. A random value at boot is fine for dev; it
-     * just means restarting logs you out. Production must set it explicitly,
-     * which is enforced below.
+     * Signs the session cookie. Null means "not pinned by the environment",
+     * in which case a secret is generated once and kept in the database — see
+     * auth/session-secret.ts.
+     *
+     * This used to fall back to a fresh random value each boot, which quietly
+     * signed every admin out on restart. Reading it as optional here, and
+     * persisting it there, is what makes a restart survivable with no
+     * configuration at all.
      */
-    sessionSecret: str('SESSION_SECRET', randomBytes(32).toString('hex')),
+    sessionSecret: optional('SESSION_SECRET'),
     sessionHours: int('SESSION_HOURS', 12),
   },
 
@@ -172,14 +175,19 @@ export const config = {
   },
 } as const;
 
+/**
+ * The SESSION_SECRET requirement that used to live here is gone on purpose.
+ *
+ * It refused to boot in production without one, because a random per-boot
+ * secret invalidated every session on restart. That reasoning was right, but
+ * the check only fired when ADMIN_PASSWORD was also set — so the setup-wizard
+ * path, which is the default, never hit it and got the silent logout anyway.
+ *
+ * The secret is now persisted instead of randomised (auth/session-secret.ts),
+ * which fixes the actual problem for every path rather than refusing to start
+ * on one of them.
+ */
 if (config.isProduction && config.admin.password !== '') {
-  if ((process.env['SESSION_SECRET'] ?? '') === '') {
-    throw new Error(
-      'SESSION_SECRET must be set in production — without a stable secret every ' +
-        'restart invalidates admin sessions. Generate one with: ' +
-        "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
-    );
-  }
   if (config.admin.password.length < 8) {
     throw new Error('ADMIN_PASSWORD must be at least 8 characters.');
   }

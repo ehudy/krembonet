@@ -98,7 +98,13 @@ if (credential.action === 'seeded') {
   app.log.warn(`ADMIN_PASSWORD is set but ignored: ${credential.reason}`);
 }
 
-await registerAuth(app);
+// After migrations: the signing secret may live in the settings table.
+const sessionSecretSource = await registerAuth(app);
+if (sessionSecretSource === 'generated') {
+  app.log.info(
+    'generated a session signing secret and stored it; sessions now survive restarts',
+  );
+}
 await app.register(healthRoutes);
 await app.register(accessRoutes);
 await app.register(statusRoutes);

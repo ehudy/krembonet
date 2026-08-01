@@ -18,6 +18,7 @@ import { config } from '../config.js';
 import { getSettings } from '../settings/settings.js';
 import { decideAccess, type AccessDecision, type Viewer } from './access.js';
 import { checkAdminPassword, hasAdminCredential } from './credentials.js';
+import { resolveSessionSecret, type SessionSecretSource } from './session-secret.js';
 import { hasViewerPasscode } from './viewer.js';
 
 export const SESSION_COOKIE = 'krembonet_admin';
@@ -211,7 +212,19 @@ export async function requireViewer(
   return reply.code(403).send({ error: decision.message, reason: decision.reason });
 }
 
-export async function registerAuth(app: FastifyInstance): Promise<void> {
+/**
+ * Registers cookie support with the persisted signing secret.
+ *
+ * Must run after migrations, since the secret may live in the settings table.
+ * The source is returned so the caller can log it — an operator should be able
+ * to tell "using SESSION_SECRET" from "generated one on first boot" without
+ * reading the database.
+ */
+export async function registerAuth(app: FastifyInstance): Promise<SessionSecretSource> {
+  const { secret, source } = resolveSessionSecret();
+
   const cookie = await import('@fastify/cookie');
-  await app.register(cookie.default, { secret: config.admin.sessionSecret });
+  await app.register(cookie.default, { secret });
+
+  return source;
 }

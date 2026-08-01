@@ -30,6 +30,7 @@ import {
 } from '../crypto/secrets.js';
 import { parseStoredConfig, serializeConfig } from '../devices/config-io.js';
 import { getAdapter, hasAdapter } from '../devices/registry.js';
+import { SESSION_SECRET_KEY } from '../auth/session-secret.js';
 import { SECRET_KEYS } from '../settings/types.js';
 import { db } from './client.js';
 import { devices, settings, webhooks } from './schema.js';
@@ -41,6 +42,21 @@ export interface EncryptionSweepResult {
 }
 
 /**
+ * Settings rows holding a reversible secret.
+ *
+ * `SECRET_KEYS` covers the ones that are `AppSettings` fields; the session
+ * signing secret is not one (it is never editable from the settings form) but
+ * is encrypted the same way, so it is named explicitly rather than left out and
+ * silently skipped by both the sweep and the key check.
+ *
+ * Still excludes the scrypt hashes, which are not reversible secrets — see the
+ * note at the top of this file.
+ */
+function isEncryptedSettingKey(key: string): boolean {
+  return SECRET_KEYS.has(key as never) || key === SESSION_SECRET_KEY;
+}
+
+/**
  * Every stored secret, as `label -> ciphertext`, for the key check below.
  *
  * Labels are describing *where* a secret lives, never its value.
@@ -49,7 +65,7 @@ function encryptedValues(): { label: string; value: string }[] {
   const found: { label: string; value: string }[] = [];
 
   for (const row of db.select().from(settings).all()) {
-    if (SECRET_KEYS.has(row.key as never) && isEncrypted(row.value)) {
+    if (isEncryptedSettingKey(row.key) && isEncrypted(row.value)) {
       found.push({ label: `settings.${row.key}`, value: row.value as string });
     }
   }
@@ -139,14 +155,11 @@ const isPlaintext = (value: string | null): value is string =>
  * set on the password hashes — see the note at the top of this file.
  */
 function encryptSettings(): number {
-  const keys = [...SECRET_KEYS] as string[];
-  if (keys.length === 0) return 0;
-
   const rows = db
     .select({ key: settings.key, value: settings.value })
     .from(settings)
-    .where(inArray(settings.key, keys))
-    .all();
+    .all()
+    .filter((row) => isEncryptedSettingKey(row.key));
 
   let updated = 0;
 
