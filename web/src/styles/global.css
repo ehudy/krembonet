@@ -35,6 +35,10 @@
   --accent-soft: rgb(217 119 6 / 14%);
   --accent-ring: rgb(217 119 6 / 45%);
 
+  /* Hover fill for secondary/ghost controls. Semi-transparent so it works over
+     a card and over the canvas without needing a variant for each. */
+  --hover-surface: rgb(39 39 42 / 60%);
+
   /* Status. Grounded, not neon — these sit on black and must read as
      information rather than decoration. */
   --ok: #10b981;
@@ -57,8 +61,13 @@
   --sidebar-active: #18181b;
 
   --sidebar-width: 232px;
-  --radius: 10px;
-  --radius-sm: 7px;
+  /* Crisp rather than soft. Panels get 6px and controls 4px, which is enough
+     to avoid a hard pixel corner without the shape itself becoming a feature.
+     Deliberately not applied to the two places roundness carries meaning:
+     supply gauges stay fully round because they are progress bars, and the
+     status dot stays a circle. */
+  --radius: 6px;
+  --radius-sm: 4px;
 
   /* How far an interactive element depresses when pressed. A variable so the
      reduced-motion rule can flatten every one of them in a single place. */
@@ -86,6 +95,8 @@
   --error-text: #b91c1c;
   --warning-text: #92400e;
 
+  --hover-surface: rgb(228 228 231 / 60%);
+
   --sidebar-bg: #ffffff;
   --sidebar-text: #52525b;
   --sidebar-active: #f4f4f5;
@@ -110,6 +121,8 @@
     --ok-text: #047857;
     --error-text: #b91c1c;
     --warning-text: #92400e;
+
+    --hover-surface: rgb(228 228 231 / 60%);
 
     --sidebar-bg: #ffffff;
     --sidebar-text: #52525b;
@@ -255,14 +268,21 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Cancels the sidebar's left padding so a highlighted row runs to the panel
+     edge. The padding is given back on .nav-item, so labels stay aligned with
+     the brand and footer above and below. */
+  margin-left: -14px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 10px;
-  border-radius: var(--radius-sm);
+  padding: 9px 10px 9px 24px;
+  /* Square on the left, rounded on the right. A pill would curve away from the
+     indicator and leave a crescent of canvas between the two; this gives the
+     bar a straight edge to sit flush against. */
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   color: var(--sidebar-text);
   text-decoration: none;
   font-weight: 500;
@@ -277,8 +297,11 @@ body {
   color: var(--text);
 }
 
+/* Scaled from the left edge so the indicator stays pinned there while the row
+   depresses; a centre-origin scale would visibly peel it away. */
 .nav-item:active {
   transform: scale(var(--press));
+  transform-origin: left center;
 }
 
 /* Active state is a hairline amber indicator plus a raised surface, not a
@@ -290,15 +313,15 @@ body {
   color: var(--text);
 }
 
+/* Full height and square: a line down the edge of the row, not a floating
+   lozenge beside it. */
 .nav-item.is-active::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 50%;
-  translate: 0 -50%;
+  top: 0;
+  bottom: 0;
   width: 2px;
-  height: 16px;
-  border-radius: 0 2px 2px 0;
   background: var(--accent);
 }
 
@@ -370,10 +393,25 @@ body {
 .drawer-toggle {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 6px 10px;
   font-size: 16px;
   cursor: pointer;
+  color: var(--text-muted);
+  display: inline-flex;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    transform 0.08s ease-out;
+}
+
+.drawer-toggle:hover {
+  background: var(--hover-surface);
+  color: var(--text);
+}
+
+.drawer-toggle:active {
+  transform: scale(var(--press));
 }
 
 .drawer-scrim {
@@ -444,7 +482,7 @@ h1 {
 .health-tile {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
@@ -483,7 +521,7 @@ h1 {
   display: block;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 18px;
   text-decoration: none;
   color: inherit;
@@ -570,7 +608,7 @@ h1 {
   align-items: center;
   gap: 5px;
   padding: 3px 10px;
-  border-radius: 20px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   font-weight: 600;
   background: var(--border);
@@ -596,7 +634,7 @@ h1 {
 .tag {
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-sunken);
   border: 1px solid var(--border);
   color: var(--text-muted);
@@ -611,7 +649,7 @@ h1 {
 .banner {
   margin: 0 0 20px;
   padding: 12px 16px;
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
   font-size: 13px;
   line-height: 1.55;
 }
@@ -655,7 +693,7 @@ h1 {
   border-left: 4px solid var(--accent);
   padding: 14px 18px;
   margin-bottom: 22px;
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
   font-size: 13px;
 }
 
@@ -667,7 +705,7 @@ h1 {
 
 .btn-primary,
 .btn-secondary {
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 9px 16px;
   font-weight: 600;
   font-size: 13px;
@@ -700,7 +738,10 @@ h1 {
   color: var(--text);
 }
 
+/* Border alone was too quiet to register as a hover — a 1px edge changing
+   shade is easy to miss on a dark surface. The fill is what makes it read. */
 .btn-secondary:hover:not(:disabled) {
+  background: var(--hover-surface);
   border-color: var(--border-strong);
 }
 
@@ -739,7 +780,7 @@ h1 {
   margin-bottom: 22px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
 }
 
 .paused-screen h2 {
@@ -766,7 +807,7 @@ h1 {
   background: var(--surface);
   border: 1px solid var(--border);
   padding: 20px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   margin-bottom: 18px;
 }
 
@@ -939,7 +980,7 @@ h1 {
   color: var(--text-muted);
   background: var(--border);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 /* Tables ----------------------------------------------------------------- */
@@ -991,7 +1032,7 @@ td code {
 .status-pill {
   display: inline-block;
   padding: 3px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   color: var(--accent-contrast);
   font-size: 12px;
   font-weight: 600;
@@ -1014,7 +1055,7 @@ td code {
   background: var(--surface);
   border: 1px solid var(--border);
   border-top: none;
-  border-radius: 0 0 10px 10px;
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 
 .row-actions {
@@ -1100,7 +1141,7 @@ td code {
 .field input:not([type]) {
   padding: 9px 11px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 13px;
   background: var(--surface);
@@ -1195,7 +1236,7 @@ td code {
 .cell-input {
   padding: 6px 9px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 13px;
   width: 100%;
@@ -1207,7 +1248,7 @@ td code {
 .filter-input {
   padding: 7px 11px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 13px;
   min-width: 220px;
@@ -1239,7 +1280,7 @@ td code {
 .field select {
   padding: 9px 11px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 13px;
   background: var(--surface);
@@ -1319,7 +1360,7 @@ td code {
 .btn-danger {
   padding: 7px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--danger);
   font-family: inherit;
@@ -1349,7 +1390,7 @@ td code {
   gap: 12px;
   padding: 28px;
   border: 1px dashed var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: var(--surface-sunken);
   color: var(--text-muted);
 }
@@ -1369,7 +1410,7 @@ td code {
 .probe-row {
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--surface-sunken);
 }
 
@@ -1532,7 +1573,7 @@ td code {
 .gate-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 28px;
   width: 100%;
   max-width: 380px;
@@ -1562,7 +1603,7 @@ td code {
 .field select {
   padding: 9px 11px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 13px;
   background: var(--surface);
@@ -1573,7 +1614,7 @@ td code {
 .code-area {
   padding: 10px 11px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--surface-sunken);
   color: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -1696,7 +1737,7 @@ td code {
   align-items: center;
   gap: 4px;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--accent-soft);
   color: var(--accent-hover);
   border: 1px solid var(--accent-ring);
@@ -1812,6 +1853,7 @@ td code {
 }
 
 .icon-button:hover {
+  background: var(--hover-surface);
   color: var(--text);
   border-color: var(--border);
 }
@@ -1859,4 +1901,124 @@ td code {
   color: var(--text-muted);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Horizontal choice groups ------------------------------------------------
+
+   For small, mutually exclusive sets — access modes, themes — that were
+   previously a vertical stack. Side by side they read as one decision with N
+   options rather than N independent settings, and the card stops running the
+   length of the page.
+
+   `auto-fit` rather than a fixed count so they wrap to one per row on a phone
+   without a breakpoint. */
+
+.choice-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+/* Four options need less width each before wrapping, or a 4-up row breaks to
+   2+2 on screens where it would have fit. */
+.choice-row.is-four {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+/* The whole tile is the hit target, not just the radio. */
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.08s ease-out;
+}
+
+.choice:hover {
+  background: var(--hover-surface);
+  border-color: var(--border-strong);
+}
+
+.choice:active {
+  transform: scale(var(--press));
+}
+
+/* Selected is carried by the border and a tint, not by the radio alone — at a
+   glance the row should show which one is on without reading four small dots. */
+.choice.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* The label is focusable only through its input, so the ring goes on the tile
+   when that input has focus. */
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.choice input {
+  margin-top: 1px;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.choice > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+}
+
+.choice small {
+  font-weight: 400;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* Logo input ------------------------------------------------------------- */
+
+.logo-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.logo-input-row input[type='text'],
+.logo-input-row > input:not([type]) {
+  flex: 1;
+  min-width: 200px;
+}
+
+.logo-input-row input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* A label styled as a button, because a file input cannot be restyled and
+   still keep its native click and keyboard behaviour. */
+.logo-upload {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.field-error {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--error-text);
+  margin-top: 2px;
 }

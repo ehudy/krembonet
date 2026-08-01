@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { api } from '../../api.js';
+import { LogoPicker } from '../../components/LogoPicker.js';
 import { VersionBadge } from '../../components/VersionBadge.js';
 import { useBranding } from '../../hooks/useBranding.js';
 import type { AdminSettings as Settings } from '../../types.js';
@@ -214,19 +215,10 @@ export function AdminSettings() {
             </small>
           </label>
 
-          <label className="field field-wide">
-            <span>Logo URL</span>
-            <input
-              value={draft.logoUrl}
-              placeholder="/assets/logo.svg  ·  https://…  ·  data:image/svg+xml;base64,…"
-              onChange={(event) => update('logoUrl', event.target.value)}
-            />
-            <small className="field-hint">
-              Shown in place of the name and subtitle. A full URL, a path served by this
-              hub, or an inline <code>data:</code> image — the last needs no web server,
-              which is usually the easiest option on a LAN.
-            </small>
-          </label>
+          <LogoPicker
+            value={draft.logoUrl}
+            onChange={(next) => update('logoUrl', next)}
+          />
         </div>
 
         {draft.logoUrl !== '' && (
@@ -244,9 +236,12 @@ export function AdminSettings() {
       <section className="card">
         <h2 className="card-title">Dashboard access</h2>
 
-        <div className="radio-set">
+        <div className="choice-row">
           {ACCESS_MODES.map((mode) => (
-            <label key={mode.value} className="field-check">
+            <label
+              key={mode.value}
+              className={`choice${draft.accessMode === mode.value ? ' is-selected' : ''}`}
+            >
               <input
                 type="radio"
                 name="accessMode"
@@ -303,9 +298,12 @@ export function AdminSettings() {
       <section className="card">
         <h2 className="card-title">Appearance</h2>
 
-        <div className="radio-set">
+        <div className="choice-row is-four">
           {THEMES.map((theme) => (
-            <label key={theme.value} className="field-check">
+            <label
+              key={theme.value}
+              className={`choice${draft.theme === theme.value ? ' is-selected' : ''}`}
+            >
               <input
                 type="radio"
                 name="theme"
