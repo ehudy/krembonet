@@ -11,8 +11,10 @@ print queue — with email alerts when a supply crosses a threshold. Two adapter
 | `ipp`   | IPP via `ipptool`                    | supplies, media, **print queue** | Anything IPP, including large-format plotters      |
 | `snmp`  | SNMP v1/v2c/v3, RFC 3805 Printer MIB | supplies, media                  | HP, Xerox, Brother, Lexmark, Ricoh, Kyocera, Sharp |
 
-Runs as a single container with a SQLite file next to it. No cloud account, no agent on
-the device, nothing leaves your network.
+Runs as a single container with a SQLite file next to it. No cloud account and no agent
+on the device. The only outbound connection it makes on its own is a once-a-day check
+with GitHub for a newer release — no telemetry, nothing about your install, and it can
+be turned off. Everything else stays on your network.
 
 > **Status: early.** The SNMP adapter is written to the standard and tested against
 > fixtures encoding documented RFC 3805 behaviour, but it has been exercised against a
@@ -219,7 +221,7 @@ In production Fastify serves the built SPA itself, so there is no CORS surface.
 
 | Route                              | Returns                                                          |
 | ---------------------------------- | ---------------------------------------------------------------- |
-| `GET /api/health`                  | Liveness, used by the Docker healthcheck                         |
+| `GET /api/health`                  | Liveness and version, used by the Docker healthcheck             |
 | `GET /api/hub`                     | Hub name, theme, and custom CSS — the chrome the SPA needs first |
 | `GET /api/access`                  | Whether this browser may read the dashboard, and why not         |
 | `POST /api/access/unlock`          | Exchanges the viewer passcode for a viewer cookie                |
@@ -492,6 +494,28 @@ docker compose ps
 docker compose logs -f hub
 docker compose exec hub ipptool -tv "$PLOTTER_IPP_URI" server/test/fixtures/get-printer-attributes.test
 ```
+
+### Updates
+
+The running version is shown in the sidebar footer and under **Admin → Settings →
+About**. Once a day the hub asks GitHub whether a newer release exists; if there is one,
+an unobtrusive badge appears next to the version, and clicking it shows the release notes
+and the command to apply it:
+
+```bash
+docker compose up -d --build
+```
+
+The check is deliberately unremarkable when it fails. Offline, air-gapped, behind a proxy
+that blocks github.com, or rate-limited — all produce the same result as being up to
+date: no badge, no banner, no error, and nothing on the console. It has a 2-second
+timeout, runs in the background so it can never delay a page load, and the result is
+cached for 24 hours in the database, so restarting the container ten times in an
+afternoon still makes at most one request.
+
+It sends nothing about your install — no identifier, no device list, no telemetry. Turn
+it off entirely with the **Check for updates** switch on the same page; the version still
+shows, the hub just stops asking.
 
 ### What to back up
 

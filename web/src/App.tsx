@@ -141,6 +141,7 @@ export function App() {
       title={branding.title}
       subtitle={branding.subtitle}
       logoUrl={branding.logoUrl}
+      update={branding}
     >
       <Routes />
     </AppShell>

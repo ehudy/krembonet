@@ -86,6 +86,7 @@ const EDITABLE_KEYS: (keyof AppSettings)[] = [
   'alertRecipients',
   'backgroundPollMinutes',
   'alertsEnabled',
+  'updateCheckEnabled',
 ];
 
 function clampNumber(value: unknown, min: number, max: number): number | undefined {
@@ -443,7 +444,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
             break;
           }
           case 'smtpSecure':
-          case 'alertsEnabled': {
+          case 'alertsEnabled':
+          case 'updateCheckEnabled': {
             patch[key] = value === true || value === 'true';
             break;
           }

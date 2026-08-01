@@ -137,8 +137,26 @@ export type AccessMode = 'public' | 'passcode' | 'admin_only';
 
 export type ThemeName = 'system' | 'dark' | 'light' | 'kiosk';
 
+/**
+ * What the hub knows about its own version.
+ *
+ * Every field except `currentVersion` is null when the update check is off,
+ * has never succeeded, or could not reach GitHub — which are indistinguishable
+ * on purpose. `updateAvailable` false is the only safe default.
+ */
+export interface UpdateStatus {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string | null;
+  releaseName: string | null;
+  releaseNotes: string | null;
+  publishedAt: string | null;
+  checkedAt: string | null;
+}
+
 /** Chrome the shell needs before anything else, from the open `/api/hub`. */
-export interface HubBranding {
+export interface HubBranding extends UpdateStatus {
   title: string;
   /** Blank means "show nothing", not "show a default". */
   subtitle: string;
@@ -180,6 +198,7 @@ export interface AdminSettings {
   hysteresisPercent: number;
   backgroundPollMinutes: number;
   alertsEnabled: boolean;
+  updateCheckEnabled: boolean;
   /** Present when saving changed the submitted CSS, e.g. an @import was stripped. */
   warnings?: string[];
 }

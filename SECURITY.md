@@ -38,6 +38,9 @@ features, so:
 - **The viewer passcode is a shared secret** and grants read access to device status.
 - **An admin can make the server connect to arbitrary addresses** — that is what device
   probing and subnet discovery _are_. Both are admin-only for exactly this reason.
+- **The daily update check**, which contacts `api.github.com`. It sends no data about the
+  install beyond a `krembonet/<version>` user-agent, fails silently, and can be switched
+  off in the admin portal.
 - Denial of service from a device on the LAN answering slowly or maliciously. Timeouts
   and single-flight bound the damage; they do not eliminate it.
 

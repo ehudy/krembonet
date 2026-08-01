@@ -25,6 +25,16 @@ const STYLE_ELEMENT_ID = 'krembonet-custom-css';
 
 const DEFAULT_BRANDING: HubBranding = {
   title: DEFAULT_HUB_TITLE,
+  // Until the fetch resolves the hub has no opinion about its own version, and
+  // certainly none about updates.
+  currentVersion: '',
+  latestVersion: null,
+  updateAvailable: false,
+  releaseUrl: null,
+  releaseName: null,
+  releaseNotes: null,
+  publishedAt: null,
+  checkedAt: null,
   // Blank rather than the server's default string: this is what renders before
   // the fetch resolves, and a subtitle that appears and then vanishes on a hub
   // that has none is worse than one that arrives a moment late.
@@ -74,6 +84,7 @@ export function useBranding(): HubBranding {
       .getHub(controller.signal)
       .then((hub) => {
         setBranding({
+          ...hub,
           title: hub.title === '' ? DEFAULT_HUB_TITLE : hub.title,
           // Not defaulted: blank is the operator saying "no subtitle".
           subtitle: hub.subtitle ?? '',

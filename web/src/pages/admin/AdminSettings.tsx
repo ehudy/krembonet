@@ -9,6 +9,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { api } from '../../api.js';
+import { VersionBadge } from '../../components/VersionBadge.js';
+import { useBranding } from '../../hooks/useBranding.js';
 import type { AdminSettings as Settings } from '../../types.js';
 
 type Draft = Omit<
@@ -84,6 +86,10 @@ export function AdminSettings() {
   const [testFeedback, setTestFeedback] = useState<Feedback | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+
+  // Version and update state come from the same open endpoint the shell uses,
+  // so this page shows exactly what the sidebar shows.
+  const branding = useBranding();
 
   /** Theme and CSS as the page is currently wearing them; see `save`. */
   const appliedBranding = useRef<{ theme: Settings['theme']; customCss: string } | null>(
@@ -533,6 +539,43 @@ export function AdminSettings() {
             </span>
           </label>
         </div>
+      </section>
+
+      <section className="card">
+        <h2 className="card-title">About</h2>
+
+        <div className="about-row">
+          <span>
+            <strong>KremboNet</strong>
+            <small className="field-hint">
+              {branding.checkedAt === null
+                ? 'No update check has completed yet.'
+                : branding.latestVersion === null
+                  ? 'The last update check could not reach GitHub.'
+                  : `Latest release: ${branding.latestVersion}`}
+            </small>
+          </span>
+          {branding.currentVersion !== '' && (
+            <VersionBadge status={branding} variant="inline" />
+          )}
+        </div>
+
+        <label className="field field-check">
+          <input
+            type="checkbox"
+            checked={draft.updateCheckEnabled}
+            onChange={(event) => update('updateCheckEnabled', event.target.checked)}
+          />
+          <span>
+            Check for updates
+            <small>
+              Asks GitHub once a day whether a newer release exists. This is the only
+              outbound connection the hub makes on its own — it sends nothing about this
+              install, and it fails silently when blocked. Turn it off for an air-gapped
+              deployment.
+            </small>
+          </span>
+        </label>
       </section>
 
       <div className="form-footer">

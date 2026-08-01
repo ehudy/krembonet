@@ -12,9 +12,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Home, Menu, Plus, Printer, Settings, type LucideIcon } from 'lucide-react';
 
 import { api } from '../api.js';
+import { VersionBadge } from './VersionBadge.js';
 import { DEFAULT_HUB_TITLE } from '../hooks/useBranding.js';
 import { Link, matchPath, useRouter } from '../router.js';
-import type { DeviceSummary } from '../types.js';
+import type { DeviceSummary, UpdateStatus } from '../types.js';
 
 interface NavItem {
   to: string;
@@ -71,6 +72,8 @@ interface AppShellProps {
   subtitle?: string;
   /** Blank falls back to the text title. */
   logoUrl?: string;
+  /** Omitted until the branding fetch resolves. */
+  update?: UpdateStatus;
 }
 
 /**
@@ -113,6 +116,7 @@ export function AppShell({
   title = DEFAULT_HUB_TITLE,
   subtitle = '',
   logoUrl = '',
+  update,
 }: AppShellProps) {
   const { path } = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -164,8 +168,15 @@ export function AppShell({
         </nav>
 
         <div className="sidebar-footer">
-          <span className="dot" aria-hidden="true" />
-          Local network only
+          <span className="sidebar-status">
+            <span className="dot" aria-hidden="true" />
+            Local network only
+          </span>
+          {/* Rendered only once the version is known, so the footer does not
+              reflow from "vundefined" to a real number on load. */}
+          {update !== undefined && update.currentVersion !== '' && (
+            <VersionBadge status={update} />
+          )}
         </div>
       </aside>
 

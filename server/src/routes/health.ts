@@ -1,11 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 
 import { getSettings } from '../settings/settings.js';
+import { APP_VERSION } from '../update/appVersion.js';
+import { getUpdateStatus } from '../update/check.js';
 
 export async function healthRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/health', async () => ({
     ok: true,
     service: 'krembonet',
+    version: APP_VERSION,
     uptimeSeconds: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
   }));
@@ -21,6 +24,16 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
    */
   app.get('/api/hub', async () => {
     const { hubTitle, hubSubtitle, logoUrl, theme, customCss } = getSettings();
-    return { title: hubTitle, subtitle: hubSubtitle, logoUrl, theme, customCss };
+
+    return {
+      title: hubTitle,
+      subtitle: hubSubtitle,
+      logoUrl,
+      theme,
+      customCss,
+      // Cache read only — see update/check.ts. This never touches the network,
+      // so an unreachable GitHub cannot slow down the shell's first request.
+      ...getUpdateStatus(),
+    };
   });
 }

@@ -15,6 +15,8 @@ import { seedCredentialFromEnv } from './auth/credentials.js';
 import { registerBuiltinAdapters } from './devices/adapters/index.js';
 import { loggerOptions } from './lib/logger.js';
 import { startPoller, stopPoller } from './poller/scheduler.js';
+import { APP_VERSION } from './update/appVersion.js';
+import { startUpdateChecks, stopUpdateChecks } from './update/check.js';
 import { accessRoutes } from './routes/access.js';
 import { adminRoutes } from './routes/admin.js';
 import { deviceAdminRoutes } from './routes/devices.js';
@@ -140,6 +142,7 @@ async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, 'shutting down');
   try {
     stopPoller();
+    stopUpdateChecks();
     await app.close();
     closeDatabase();
     process.exit(0);
@@ -155,7 +158,11 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 
 try {
   await app.listen({ port: config.port, host: config.host });
+  app.log.info({ version: APP_VERSION }, 'krembonet started');
   startPoller(app.log);
+  // Background and best-effort: see update/check.ts. Started last because
+  // nothing else waits on it.
+  startUpdateChecks(app.log);
 } catch (error) {
   app.log.error({ error }, 'failed to start');
   process.exit(1);

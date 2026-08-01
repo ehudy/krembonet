@@ -92,6 +92,20 @@ export interface AppSettings {
    */
   backgroundPollMinutes: number;
   alertsEnabled: boolean;
+
+  /**
+   * Whether to ask GitHub, once a day, whether a newer release exists.
+   *
+   * The only outbound connection this hub makes on its own initiative. It
+   * sends nothing about the install — no identifier, no device list, no
+   * telemetry — but it is still a request to a third party from a tool whose
+   * whole premise is staying on the local network, so it is a documented,
+   * visible switch rather than something buried.
+   *
+   * On by default: an out-of-date self-hosted service is a security problem,
+   * and an update nobody hears about does not get applied.
+   */
+  updateCheckEnabled: boolean;
 }
 
 export const DEFAULT_HUB_TITLE = 'KremboNet';
@@ -118,6 +132,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
   backgroundPollMinutes: 60,
   alertsEnabled: true,
+  updateCheckEnabled: true,
 };
 
 /** Never leaves the server in an API response. */
