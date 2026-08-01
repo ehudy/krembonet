@@ -1,8 +1,11 @@
+import { useTranslation, type Translate } from '../i18n/i18n.js';
 import type { MediaSource } from '../types.js';
 
-function widthLabel(source: MediaSource): string | null {
+function widthLabel(source: MediaSource, t: Translate): string | null {
   if (source.widthInches === null) return null;
-  return source.type === 'roll' ? `${source.widthInches}in roll` : `${source.widthInches}in`;
+  return source.type === 'roll'
+    ? t('media.rollWidth', { inches: source.widthInches })
+    : t('media.sheetWidth', { inches: source.widthInches });
 }
 
 /**
@@ -11,7 +14,8 @@ function widthLabel(source: MediaSource): string | null {
  * paper name is worse than an unfamiliar one, because someone will plot on it.
  */
 function MediaRow({ source }: { source: MediaSource }) {
-  const width = widthLabel(source);
+  const { t } = useTranslation();
+  const width = widthLabel(source, t);
 
   if (!source.isLoaded) {
     return (
@@ -19,7 +23,7 @@ function MediaRow({ source }: { source: MediaSource }) {
         <div className="paper-icon is-empty" aria-hidden="true" />
         <div className="paper-details">
           <strong>{source.label}</strong>
-          <span className="muted">No media loaded</span>
+          <span className="muted">{t('media.notLoaded')}</span>
         </div>
       </div>
     );
@@ -33,11 +37,11 @@ function MediaRow({ source }: { source: MediaSource }) {
         {source.mediaTypeName !== null ? (
           <span>{source.mediaTypeName}</span>
         ) : source.mediaTypeCode !== null ? (
-          <span className="paper-unknown" title="No friendly name for this media code yet">
+          <span className="paper-unknown" title={t('media.unknownCode')}>
             <code>{source.mediaTypeCode}</code>
           </span>
         ) : (
-          <span className="muted">Loaded</span>
+          <span className="muted">{t('media.loaded')}</span>
         )}
         {width !== null && <span className="paper-width">{width}</span>}
       </div>
@@ -46,11 +50,13 @@ function MediaRow({ source }: { source: MediaSource }) {
 }
 
 export function PaperPanel({ media }: { media: MediaSource[] }) {
+  const { t } = useTranslation();
+
   return (
     <section className="card">
-      <h2 className="card-title">Loaded Media</h2>
+      <h2 className="card-title">{t('media.title')}</h2>
       {media.length === 0 ? (
-        <p className="muted">This device did not report any media sources.</p>
+        <p className="muted">{t('media.empty')}</p>
       ) : (
         media.map((source) => <MediaRow key={source.key} source={source} />)
       )}

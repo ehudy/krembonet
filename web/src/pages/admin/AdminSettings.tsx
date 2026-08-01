@@ -12,6 +12,7 @@ import { api } from '../../api.js';
 import { LogoPicker } from '../../components/LogoPicker.js';
 import { VersionBadge } from '../../components/VersionBadge.js';
 import { useBranding } from '../../hooks/useBranding.js';
+import { LANGUAGE_LABELS, useTranslation } from '../../i18n/i18n.js';
 import type { AdminSettings as Settings } from '../../types.js';
 
 type Draft = Omit<
@@ -46,36 +47,32 @@ interface Feedback {
   message: string;
 }
 
-const ACCESS_MODES: { value: Settings['accessMode']; label: string; hint: string }[] = [
-  {
-    value: 'public',
-    label: 'Public',
-    hint: 'Anyone who can reach the hub on the network sees device status.',
-  },
-  {
-    value: 'passcode',
-    label: 'Passcode',
-    hint: 'Viewers enter a shared passcode once per browser.',
-  },
-  {
-    value: 'admin_only',
-    label: 'Admins only',
-    hint: 'Only a signed-in administrator sees anything.',
-  },
+const ACCESS_MODES: { value: Settings['accessMode']; key: string }[] = [
+  { value: 'public', key: 'accessPublic' },
+  { value: 'passcode', key: 'accessPasscode' },
+  { value: 'admin_only', key: 'accessAdmin' },
 ];
 
-const THEMES: { value: Settings['theme']; label: string; hint: string }[] = [
-  { value: 'system', label: 'System', hint: 'Follows the browser’s light/dark setting.' },
-  { value: 'light', label: 'Light', hint: 'Always light.' },
-  { value: 'dark', label: 'Dark', hint: 'Always dark.' },
-  {
-    value: 'kiosk',
-    label: 'Kiosk',
-    hint: 'Dark, larger text, no sidebar — for a wall display.',
-  },
+const THEMES: { value: Settings['theme']; key: string }[] = [
+  { value: 'system', key: 'themeSystem' },
+  { value: 'light', key: 'themeLight' },
+  { value: 'dark', key: 'themeDark' },
+  { value: 'kiosk', key: 'themeKiosk' },
+];
+
+/**
+ * `system` is listed first and named in the operator's current language; the
+ * two real locales are named in themselves, because someone hunting for a
+ * language they can read is looking for the word they recognise.
+ */
+const LANGUAGE_OPTIONS: { value: Settings['language']; label: string | null }[] = [
+  { value: 'system', label: null },
+  { value: 'en', label: LANGUAGE_LABELS.en },
+  { value: 'es', label: LANGUAGE_LABELS.es },
 ];
 
 export function AdminSettings() {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [passwordSet, setPasswordSet] = useState(false);
   const [passcodeSet, setPasscodeSet] = useState(false);
@@ -138,7 +135,7 @@ export function AdminSettings() {
       });
       absorb(saved);
       setCssWarnings(saved.warnings ?? []);
-      setSaveFeedback({ kind: 'ok', message: 'Settings saved.' });
+      setSaveFeedback({ kind: 'ok', message: t('settings.saved') });
 
       // Branding is applied from /api/hub, which the shell fetches once on
       // load, so the page is still wearing whatever was in effect when it
@@ -170,7 +167,9 @@ export function AdminSettings() {
       const result = await api.sendTestEmail();
       setTestFeedback({
         kind: 'ok',
-        message: `Test email sent to ${result.recipients?.join(', ') ?? 'the configured recipients'}.`,
+        message: t('settings.testSent', {
+          recipients: result.recipients?.join(', ') ?? t('settings.testSentFallback'),
+        }),
       });
     } catch (cause) {
       setTestFeedback({
@@ -183,36 +182,32 @@ export function AdminSettings() {
   }
 
   if (loadError !== null) return <div className="banner is-error">{loadError}</div>;
-  if (draft === null) return <p className="muted">Loading settings…</p>;
+  if (draft === null) return <p className="muted">{t('settings.loading')}</p>;
 
   return (
     <form onSubmit={save}>
       <section className="card">
-        <h2 className="card-title">Hub</h2>
+        <h2 className="card-title">{t('settings.hub')}</h2>
 
         <div className="field-grid">
           <label className="field">
-            <span>Name</span>
+            <span>{t('settings.name')}</span>
             <input
               value={draft.hubTitle}
               placeholder="KremboNet"
               onChange={(event) => update('hubTitle', event.target.value)}
             />
-            <small className="field-hint">
-              Shown in the sidebar and used as the subject prefix on alert email.
-            </small>
+            <small className="field-hint">{t('settings.nameHint')}</small>
           </label>
 
           <label className="field">
-            <span>Subtitle</span>
+            <span>{t('settings.subtitleField')}</span>
             <input
               value={draft.hubSubtitle}
-              placeholder="Local device telemetry"
+              placeholder={t('nav.brandSubtitle')}
               onChange={(event) => update('hubSubtitle', event.target.value)}
             />
-            <small className="field-hint">
-              The line under the name. Leave blank to hide it entirely.
-            </small>
+            <small className="field-hint">{t('settings.subtitleHint')}</small>
           </label>
 
           <LogoPicker
@@ -223,7 +218,7 @@ export function AdminSettings() {
 
         {draft.logoUrl !== '' && (
           <div className="logo-preview">
-            <span className="field-hint">Preview</span>
+            <span className="field-hint">{t('common.preview')}</span>
             {/* Rendered against the sidebar colour, not the card, so what is
                 previewed is what will actually be seen. */}
             <div className="logo-preview-frame">
@@ -234,7 +229,7 @@ export function AdminSettings() {
       </section>
 
       <section className="card">
-        <h2 className="card-title">Dashboard access</h2>
+        <h2 className="card-title">{t('settings.access')}</h2>
 
         <div className="choice-row">
           {ACCESS_MODES.map((mode) => (
@@ -249,8 +244,8 @@ export function AdminSettings() {
                 onChange={() => update('accessMode', mode.value)}
               />
               <span>
-                {mode.label}
-                <small>{mode.hint}</small>
+                {t(`settings.${mode.key}`)}
+                <small>{t(`settings.${mode.key}Hint`)}</small>
               </span>
             </label>
           ))}
@@ -258,19 +253,23 @@ export function AdminSettings() {
 
         <div className="field-grid">
           <label className="field">
-            <span>Viewer passcode</span>
+            <span>{t('settings.viewerPasscode')}</span>
             <input
               type="password"
               value={draft.viewerPasscode}
               autoComplete="new-password"
               disabled={clearPasscode}
-              placeholder={passcodeSet ? '•••••••• (unchanged)' : 'Not set'}
+              placeholder={
+                passcodeSet
+                  ? t('settings.viewerPasscodeUnchanged')
+                  : t('settings.viewerPasscodeNotSet')
+              }
               onChange={(event) => update('viewerPasscode', event.target.value)}
             />
             <small className="field-hint">
               {passcodeSet
-                ? 'Leave blank to keep the stored passcode.'
-                : 'Shared with viewers. Not the admin password — it grants read access only.'}
+                ? t('settings.viewerPasscodeKeep')
+                : t('settings.viewerPasscodeNew')}
             </small>
           </label>
 
@@ -282,8 +281,8 @@ export function AdminSettings() {
                 onChange={(event) => setClearPasscode(event.target.checked)}
               />
               <span>
-                Remove the stored passcode
-                <small>Only available while access is public or admins-only.</small>
+                {t('settings.viewerPasscodeClear')}
+                <small>{t('settings.viewerPasscodeClearHint')}</small>
               </span>
             </label>
           )}
@@ -296,7 +295,7 @@ export function AdminSettings() {
       </section>
 
       <section className="card">
-        <h2 className="card-title">Appearance</h2>
+        <h2 className="card-title">{t('settings.appearance')}</h2>
 
         <div className="choice-row is-four">
           {THEMES.map((theme) => (
@@ -311,15 +310,41 @@ export function AdminSettings() {
                 onChange={() => update('theme', theme.value)}
               />
               <span>
-                {theme.label}
-                <small>{theme.hint}</small>
+                {t(`settings.${theme.key}`)}
+                <small>{t(`settings.${theme.key}Hint`)}</small>
               </span>
             </label>
           ))}
         </div>
 
+        <div className="field-grid">
+          <label className="field">
+            <span>{t('settings.language')}</span>
+            <select
+              value={draft.language}
+              onChange={(event) =>
+                update('language', event.target.value as Settings['language'])
+              }
+            >
+              {LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {/* Real locales are named in themselves; only the "system"
+                      row is translated, because it describes a behaviour
+                      rather than naming a language. */}
+                  {option.label ?? t('settings.languageSystem')}
+                </option>
+              ))}
+            </select>
+            <small className="field-hint">
+              {draft.language === 'system'
+                ? t('settings.languageSystemHint')
+                : t('settings.languageHint')}
+            </small>
+          </label>
+        </div>
+
         <label className="field field-wide">
-          <span>Custom CSS</span>
+          <span>{t('settings.customCss')}</span>
           <textarea
             className="code-area"
             rows={10}
@@ -338,7 +363,7 @@ export function AdminSettings() {
 
         {cssWarnings.length > 0 && (
           <div className="banner is-warning">
-            <strong>Your CSS was adjusted on save.</strong>
+            <strong>{t('settings.cssAdjusted')}</strong>
             <ul className="plain-list">
               {cssWarnings.map((warning) => (
                 <li key={warning}>{warning}</li>
@@ -349,11 +374,11 @@ export function AdminSettings() {
       </section>
 
       <section className="card">
-        <h2 className="card-title">SMTP server</h2>
+        <h2 className="card-title">{t('settings.smtp')}</h2>
 
         <div className="field-grid">
           <label className="field">
-            <span>Host</span>
+            <span>{t('settings.smtpHost')}</span>
             <input
               value={draft.smtpHost}
               placeholder="smtp.gmail.com"
@@ -362,7 +387,7 @@ export function AdminSettings() {
           </label>
 
           <label className="field field-narrow">
-            <span>Port</span>
+            <span>{t('settings.smtpPort')}</span>
             <input
               type="number"
               value={draft.smtpPort}
@@ -377,15 +402,13 @@ export function AdminSettings() {
               onChange={(event) => update('smtpSecure', event.target.checked)}
             />
             <span>
-              Implicit TLS
-              <small>
-                On for port 465. Leave off for 587, which upgrades via STARTTLS.
-              </small>
+              {t('settings.smtpTls')}
+              <small>{t('settings.smtpTlsHint')}</small>
             </span>
           </label>
 
           <label className="field">
-            <span>Username</span>
+            <span>{t('settings.smtpUser')}</span>
             <input
               value={draft.smtpUser}
               autoComplete="off"
@@ -394,29 +417,33 @@ export function AdminSettings() {
           </label>
 
           <label className="field">
-            <span>Password</span>
+            <span>{t('settings.smtpPassword')}</span>
             <input
               type="password"
               value={draft.smtpPassword}
               autoComplete="new-password"
-              placeholder={passwordSet ? '•••••••• (unchanged)' : 'Not set'}
+              placeholder={
+                passwordSet
+                  ? t('settings.smtpPasswordUnchanged')
+                  : t('settings.smtpPasswordNotSet')
+              }
               onChange={(event) => update('smtpPassword', event.target.value)}
             />
             <small className="field-hint">
               {passwordSet
-                ? 'Leave blank to keep the stored password.'
-                : 'For Google Workspace use an App Password, not the account password.'}
+                ? t('settings.smtpPasswordKeep')
+                : t('settings.smtpPasswordNew')}
             </small>
           </label>
         </div>
       </section>
 
       <section className="card">
-        <h2 className="card-title">Recipients</h2>
+        <h2 className="card-title">{t('settings.recipients')}</h2>
 
         <div className="field-grid">
           <label className="field">
-            <span>Sender address (From)</span>
+            <span>{t('settings.sender')}</span>
             <input
               value={draft.smtpFrom}
               placeholder="hub@example.com"
@@ -425,13 +452,13 @@ export function AdminSettings() {
           </label>
 
           <label className="field field-wide">
-            <span>Alert recipients (To)</span>
+            <span>{t('settings.alertRecipients')}</span>
             <input
               value={draft.alertRecipients}
               placeholder="it@example.com, facilities@example.com"
               onChange={(event) => update('alertRecipients', event.target.value)}
             />
-            <small className="field-hint">Separate multiple addresses with commas.</small>
+            <small className="field-hint">{t('settings.recipientsHint')}</small>
           </label>
         </div>
 
@@ -442,7 +469,7 @@ export function AdminSettings() {
             onClick={testEmail}
             disabled={isTesting}
           >
-            {isTesting ? 'Sending…' : 'Send test email'}
+            {isTesting ? t('settings.sending') : t('settings.sendTest')}
           </button>
           {testFeedback !== null && (
             <span
@@ -460,11 +487,11 @@ export function AdminSettings() {
       </section>
 
       <section className="card">
-        <h2 className="card-title">Alert thresholds</h2>
+        <h2 className="card-title">{t('settings.thresholds')}</h2>
 
         <div className="field-grid">
           <label className="field field-narrow">
-            <span>Low ink at or below</span>
+            <span>{t('settings.inkThreshold')}</span>
             <input
               type="number"
               min={0}
@@ -474,11 +501,11 @@ export function AdminSettings() {
                 update('inkThresholdPercent', Number(event.target.value))
               }
             />
-            <small className="field-hint">% remaining</small>
+            <small className="field-hint">{t('settings.inkThresholdHint')}</small>
           </label>
 
           <label className="field field-narrow">
-            <span>Maintenance tank at or above</span>
+            <span>{t('settings.wasteThreshold')}</span>
             <input
               type="number"
               min={0}
@@ -494,7 +521,7 @@ export function AdminSettings() {
           </label>
 
           <label className="field field-narrow">
-            <span>Recovery margin</span>
+            <span>{t('settings.hysteresis')}</span>
             <input
               type="number"
               min={0}
@@ -510,7 +537,7 @@ export function AdminSettings() {
           </label>
 
           <label className="field field-narrow">
-            <span>Background poll</span>
+            <span>{t('settings.pollInterval')}</span>
             <input
               type="number"
               min={5}
@@ -532,25 +559,25 @@ export function AdminSettings() {
               onChange={(event) => update('alertsEnabled', event.target.checked)}
             />
             <span>
-              Email alerts enabled
-              <small>Turn off to keep polling without sending any mail.</small>
+              {t('settings.alertsEnabled')}
+              <small>{t('settings.alertsEnabledHint')}</small>
             </span>
           </label>
         </div>
       </section>
 
       <section className="card">
-        <h2 className="card-title">About</h2>
+        <h2 className="card-title">{t('settings.about')}</h2>
 
         <div className="about-row">
           <span>
             <strong>KremboNet</strong>
             <small className="field-hint">
               {branding.checkedAt === null
-                ? 'No update check has completed yet.'
+                ? t('settings.noCheckYet')
                 : branding.latestVersion === null
-                  ? 'The last update check could not reach GitHub.'
-                  : `Latest release: ${branding.latestVersion}`}
+                  ? t('settings.checkFailed')
+                  : t('settings.latestRelease', { version: branding.latestVersion })}
             </small>
           </span>
           {branding.currentVersion !== '' && (
@@ -565,20 +592,15 @@ export function AdminSettings() {
             onChange={(event) => update('updateCheckEnabled', event.target.checked)}
           />
           <span>
-            Check for updates
-            <small>
-              Asks GitHub once a day whether a newer release exists. This is the only
-              outbound connection the hub makes on its own — it sends nothing about this
-              install, and it fails silently when blocked. Turn it off for an air-gapped
-              deployment.
-            </small>
+            {t('settings.updateCheck')}
+            <small>{t('settings.updateCheckHint')}</small>
           </span>
         </label>
       </section>
 
       <div className="form-footer">
         <button type="submit" className="btn-primary" disabled={isSaving}>
-          {isSaving ? 'Saving…' : 'Save settings'}
+          {isSaving ? t('common.saving') : t('settings.saveButton')}
         </button>
         {saveFeedback !== null && (
           <span

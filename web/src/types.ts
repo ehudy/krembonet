@@ -154,6 +154,8 @@ export type AccessMode = 'public' | 'passcode' | 'admin_only';
 
 export type ThemeName = 'system' | 'dark' | 'light' | 'kiosk';
 
+export type LanguageName = 'system' | 'en' | 'es';
+
 /**
  * What the hub knows about its own version.
  *
@@ -180,6 +182,7 @@ export interface HubBranding extends UpdateStatus {
   /** Blank means no logo; the text title is shown instead. */
   logoUrl: string;
   theme: ThemeName;
+  language: LanguageName;
   customCss: string;
 }
 
@@ -201,6 +204,7 @@ export interface AdminSettings {
   /** The passcode itself is never sent to the browser. */
   viewerPasscodeSet: boolean;
   theme: ThemeName;
+  language: LanguageName;
   customCss: string;
   smtpHost: string;
   smtpPort: number;

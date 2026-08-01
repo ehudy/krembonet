@@ -4,16 +4,17 @@
  * Unlike the prototype this does not try to close the tab — it just stops
  * polling and waits for a deliberate click.
  */
+import { useTranslation } from '../i18n/i18n.js';
+
 export function SyncPausedScreen({ onResume }: { onResume: () => void }) {
+  const { t } = useTranslation();
+
   return (
     <div className="paused-screen">
-      <h2>Live sync paused</h2>
-      <p>
-        Auto-refresh stopped after 10 minutes so idle dashboards don&apos;t keep
-        querying the plotter. The readings below are no longer updating.
-      </p>
+      <h2>{t('sync.pausedTitle')}</h2>
+      <p>{t('sync.pausedBody')}</p>
       <button type="button" className="btn-primary" onClick={onResume}>
-        Resume live sync
+        {t('sync.resume')}
       </button>
     </div>
   );

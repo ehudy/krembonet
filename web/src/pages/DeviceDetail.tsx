@@ -14,17 +14,11 @@ import { PaperPanel } from '../components/PaperPanel.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { SyncPausedScreen } from '../components/SyncPausedScreen.js';
 import { useLiveSync } from '../hooks/useLiveSync.js';
+import { useTranslation } from '../i18n/i18n.js';
 import { formatDuration, formatTime, relativeTime } from '../lib/format.js';
-import type { DeviceState } from '../types.js';
-
-const DEVICE_STATE_LABELS: Record<DeviceState, string> = {
-  idle: 'Ready',
-  processing: 'Printing',
-  stopped: 'Stopped',
-  unknown: 'Unknown',
-};
 
 export function DeviceDetail({ slug }: { slug: string }) {
+  const { t, locale } = useTranslation();
   const {
     data,
     error,
@@ -40,8 +34,8 @@ export function DeviceDetail({ slug }: { slug: string }) {
   if (isLoading && data === null) {
     return (
       <>
-        <PageHeader title="Device" />
-        <p className="muted">Loading device status…</p>
+        <PageHeader title={t('device.fallbackTitle')} />
+        <p className="muted">{t('device.loading')}</p>
       </>
     );
   }
@@ -49,12 +43,13 @@ export function DeviceDetail({ slug }: { slug: string }) {
   if (data === null) {
     return (
       <>
-        <PageHeader title="Device" />
+        <PageHeader title={t('device.fallbackTitle')} />
         <div className="banner is-error">
-          Could not reach the hub server{error !== null && `: ${error}`}
+          {t('device.unreachableBanner')}
+          {error !== null && `: ${error}`}
         </div>
         <button type="button" className="btn-primary" onClick={refreshNow}>
-          Try again
+          {t('common.tryAgain')}
         </button>
       </>
     );
@@ -64,10 +59,12 @@ export function DeviceDetail({ slug }: { slug: string }) {
     <>
       <PageHeader
         title={data.displayName}
-        subtitle={`${data.model ?? 'Unknown model'} · ${data.host}`}
+        subtitle={`${data.model ?? t('overview.unknownModel')} · ${data.host}`}
         actions={
           <span className={`pill ${data.isOnline ? 'is-good' : 'is-bad'}`}>
-            {data.isOnline ? DEVICE_STATE_LABELS[data.state] : 'Unreachable'}
+            {data.isOnline
+              ? t(`device.states.${data.state}`)
+              : t('device.unreachablePill')}
           </span>
         }
       />
@@ -76,22 +73,23 @@ export function DeviceDetail({ slug }: { slug: string }) {
           reading stays visible, clearly marked as stale. */}
       {!data.isOnline && (
         <div className="banner is-warning">
-          <strong>Showing last known data.</strong> The device has not responded
-          for {data.consecutiveFailures}{' '}
-          {data.consecutiveFailures === 1 ? 'attempt' : 'attempts'}. Last
-          successful reading: {formatTime(data.lastSuccessAt)}.
+          <strong>{t('device.staleTitle')}</strong>{' '}
+          {t('device.staleBody', { count: data.consecutiveFailures })}{' '}
+          {t('device.lastSuccess', {
+            time: formatTime(data.lastSuccessAt, locale, t),
+          })}
           {data.lastError !== null && <span className="detail">{data.lastError}</span>}
         </div>
       )}
 
       {data.isOnline && data.stateReasons.length > 0 && (
         <div className="banner is-warning">
-          Device reports: {data.stateReasons.join(', ')}
+          {t('device.reports', { reasons: data.stateReasons.join(', ') })}
         </div>
       )}
 
       {error !== null && data.isOnline && (
-        <div className="banner is-warning">Could not refresh: {error}</div>
+        <div className="banner is-warning">{t('device.refreshFailed', { error })}</div>
       )}
 
       {isPaused ? (
@@ -99,11 +97,14 @@ export function DeviceDetail({ slug }: { slug: string }) {
       ) : (
         <div className="sync-bar">
           <div>
-            <strong>Queue updated:</strong> {formatTime(lastFetchedAt?.toISOString())}
+            <strong>{t('sync.queueUpdated')}</strong>{' '}
+            {formatTime(lastFetchedAt?.toISOString(), locale, t)}
             <br />
             <small>
-              Queue refreshes every 60s · pausing in {formatDuration(remainingMs)} ·
-              supplies read {relativeTime(data.suppliesUpdatedAt)}
+              {t('sync.cadence', {
+                remaining: formatDuration(remainingMs),
+                age: relativeTime(data.suppliesUpdatedAt, t),
+              })}
             </small>
           </div>
           <button
@@ -112,7 +113,7 @@ export function DeviceDetail({ slug }: { slug: string }) {
             onClick={refreshNow}
             disabled={isRefreshing}
           >
-            {isRefreshing ? 'Refreshing…' : 'Refresh all'}
+            {isRefreshing ? t('sync.refreshing') : t('sync.refreshAll')}
           </button>
         </div>
       )}
@@ -124,10 +125,13 @@ export function DeviceDetail({ slug }: { slug: string }) {
 
       {data.capabilities.includes('jobs') && (
         <>
-          <h2 className="section-title">Print Queue</h2>
+          <h2 className="section-title">{t('device.printQueue')}</h2>
           {/* While unreachable the cached state is stale — don't let the queue
               assert what the device "is doing" right now. */}
-          <JobTable jobs={data.jobs} deviceState={data.isOnline ? data.state : 'unknown'} />
+          <JobTable
+            jobs={data.jobs}
+            deviceState={data.isOnline ? data.state : 'unknown'}
+          />
         </>
       )}
     </>

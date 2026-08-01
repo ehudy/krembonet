@@ -53,7 +53,9 @@ import {
   ACCESS_MODES,
   DEFAULT_HUB_TITLE,
   isAccessMode,
+  isLanguageName,
   isThemeName,
+  LANGUAGES,
   THEMES,
 } from '../settings/types.js';
 import {
@@ -76,6 +78,7 @@ const EDITABLE_KEYS: (keyof AppSettings)[] = [
   'logoUrl',
   'accessMode',
   'theme',
+  'language',
   'customCss',
   'smtpHost',
   'smtpPort',
@@ -490,6 +493,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
               errors.push(`Theme must be one of: ${THEMES.join(', ')}.`);
             } else {
               patch.theme = value;
+            }
+            break;
+          }
+          case 'language': {
+            if (!isLanguageName(value)) {
+              errors.push(`Language must be one of: ${LANGUAGES.join(', ')}.`);
+            } else {
+              patch.language = value;
             }
             break;
           }

@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../../api.js';
+import { useTranslation } from '../../i18n/i18n.js';
 import type { MediaType } from '../../types.js';
 
 interface Feedback {
@@ -17,6 +18,7 @@ interface Feedback {
 }
 
 export function AdminPaperTypes() {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<MediaType[]>([]);
   const [filter, setFilter] = useState('');
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -67,7 +69,7 @@ export function AdminPaperTypes() {
         return next;
       });
       await load();
-      setFeedback({ kind: 'ok', message: `Saved ${code}.` });
+      setFeedback({ kind: 'ok', message: t('paperTypes.savedCode', { code }) });
     } catch (cause) {
       setFeedback({
         kind: 'error',
@@ -100,43 +102,40 @@ export function AdminPaperTypes() {
       )}
 
       <section className="card">
-        <h2 className="card-title">Add or override a code</h2>
+        <h2 className="card-title">{t('paperTypes.addTitle')}</h2>
         <form className="inline-form" onSubmit={addRow}>
           <label className="field">
-            <span>Media code</span>
+            <span>{t('paperTypes.mediaCode')}</span>
             <input
               value={newCode}
-              placeholder="com.example-015f"
+              placeholder={t('paperTypes.codePlaceholder')}
               onChange={(event) => setNewCode(event.target.value)}
             />
           </label>
           <label className="field field-wide">
-            <span>Friendly name</span>
+            <span>{t('paperTypes.friendlyName')}</span>
             <input
               value={newName}
-              placeholder="Premium Matte Paper"
+              placeholder={t('paperTypes.namePlaceholder')}
               onChange={(event) => setNewName(event.target.value)}
             />
           </label>
           <button type="submit" className="btn-primary">
-            Save
+            {t('common.save')}
           </button>
         </form>
-        <p className="field-hint">
-          Unmapped codes appear on the plotter page as the raw code plus roll width,
-          never as a guessed name.
-        </p>
+        <p className="field-hint">{t('paperTypes.unmappedHint')}</p>
       </section>
 
       <section className="card">
         <div className="card-head">
           <h2 className="card-title">
-            Known codes <span className="count">{rows.length}</span>
+            {t('paperTypes.knownCodes')} <span className="count">{rows.length}</span>
           </h2>
           <input
             className="filter-input"
             value={filter}
-            placeholder="Filter by code or name…"
+            placeholder={t('paperTypes.filterPlaceholder')}
             onChange={(event) => setFilter(event.target.value)}
           />
         </div>
@@ -145,9 +144,9 @@ export function AdminPaperTypes() {
           <table>
             <thead>
               <tr>
-                <th scope="col">Code</th>
-                <th scope="col">Friendly name</th>
-                <th scope="col">Source</th>
+                <th scope="col">{t('paperTypes.code')}</th>
+                <th scope="col">{t('paperTypes.friendlyName')}</th>
+                <th scope="col">{t('paperTypes.source')}</th>
                 <th scope="col" />
               </tr>
             </thead>
@@ -175,7 +174,9 @@ export function AdminPaperTypes() {
                     </td>
                     <td>
                       <span className={`tag${row.isSeeded ? '' : ' is-custom'}`}>
-                        {row.isSeeded ? 'From driver' : 'Edited'}
+                        {row.isSeeded
+                          ? t('paperTypes.fromDriver')
+                          : t('paperTypes.edited')}
                       </span>
                     </td>
                     <td className="row-actions">
@@ -185,7 +186,7 @@ export function AdminPaperTypes() {
                         disabled={!isDirty || savingCode === row.code}
                         onClick={() => void saveRow(row.code, value)}
                       >
-                        {savingCode === row.code ? 'Saving…' : 'Save'}
+                        {savingCode === row.code ? t('common.saving') : t('common.save')}
                       </button>
                     </td>
                   </tr>
@@ -195,7 +196,7 @@ export function AdminPaperTypes() {
           </table>
         </div>
 
-        {visible.length === 0 && <p className="muted">No codes match that filter.</p>}
+        {visible.length === 0 && <p className="muted">{t('paperTypes.noMatch')}</p>}
       </section>
     </>
   );

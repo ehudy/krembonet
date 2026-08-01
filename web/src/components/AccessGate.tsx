@@ -10,6 +10,7 @@
 import { useState } from 'react';
 
 import { api } from '../api.js';
+import { useTranslation } from '../i18n/i18n.js';
 import type { AccessStatus } from '../types.js';
 
 interface AccessGateProps {
@@ -20,6 +21,7 @@ interface AccessGateProps {
 }
 
 export function AccessGate({ status, hubTitle, onUnlocked }: AccessGateProps) {
+  const { t } = useTranslation();
   const [passcode, setPasscode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,11 +51,11 @@ export function AccessGate({ status, hubTitle, onUnlocked }: AccessGateProps) {
           <h1>{hubTitle}</h1>
           <p className="muted">
             {status.mode === 'admin_only'
-              ? 'This dashboard is restricted to administrators.'
-              : 'Dashboard access is restricted, but no viewer passcode has been set.'}
+              ? t('accessGate.restrictedAdmin')
+              : t('accessGate.restrictedNoPasscode')}
           </p>
           <a className="btn-primary" href="/admin">
-            Sign in
+            {t('accessGate.signIn')}
           </a>
         </div>
       </div>
@@ -64,10 +66,10 @@ export function AccessGate({ status, hubTitle, onUnlocked }: AccessGateProps) {
     <div className="gate">
       <form className="gate-card" onSubmit={submit}>
         <h1>{hubTitle}</h1>
-        <p className="muted">Enter the viewer passcode to see device status.</p>
+        <p className="muted">{t('accessGate.prompt')}</p>
 
         <label className="field">
-          <span>Passcode</span>
+          <span>{t('accessGate.passcode')}</span>
           <input
             type="password"
             value={passcode}
@@ -80,11 +82,13 @@ export function AccessGate({ status, hubTitle, onUnlocked }: AccessGateProps) {
         {error !== null && <div className="banner is-error">{error}</div>}
 
         <button type="submit" className="btn-primary" disabled={isSubmitting}>
-          {isSubmitting ? 'Checking…' : 'Unlock'}
+          {isSubmitting ? t('accessGate.checking') : t('accessGate.unlock')}
         </button>
 
         <p className="field-hint">
-          An administrator can sign in at <a href="/admin">/admin</a> instead.
+          {t('accessGate.adminHint').split('<admin>')[0]}
+          <a href="/admin">/admin</a>
+          {t('accessGate.adminHint').split('<admin>')[1]}
         </p>
       </form>
     </div>

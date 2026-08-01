@@ -16,6 +16,7 @@ import {
 
 import { ApiError, api } from '../../api.js';
 import { PageHeader } from '../../components/PageHeader.js';
+import { useTranslation } from '../../i18n/i18n.js';
 import { Link, matchPath, useRouter } from '../../router.js';
 import { AdminAlerts } from './AdminAlerts.js';
 import { AdminDevices } from './AdminDevices.js';
@@ -24,21 +25,23 @@ import { AdminPaperTypes } from './AdminPaperTypes.js';
 import { AdminSettings } from './AdminSettings.js';
 import { AdminWebhooks } from './AdminWebhooks.js';
 
-const TABS: { to: string; label: string; icon: LucideIcon }[] = [
-  { to: '/admin', label: 'Settings', icon: SlidersHorizontal },
-  { to: '/admin/devices', label: 'Devices', icon: HardDrive },
-  { to: '/admin/paper-types', label: 'Paper types', icon: FileStack },
-  { to: '/admin/alerts', label: 'Alerts', icon: Bell },
+/** Labels are dictionary keys, resolved at render so a language switch applies. */
+const TABS: { to: string; key: string; icon: LucideIcon }[] = [
+  { to: '/admin', key: 'settings', icon: SlidersHorizontal },
+  { to: '/admin/devices', key: 'devices', icon: HardDrive },
+  { to: '/admin/paper-types', key: 'paperTypes', icon: FileStack },
+  { to: '/admin/alerts', key: 'alerts', icon: Bell },
 ];
 
 /** Sections under the Alerts tab. */
 const ALERT_TABS = [
-  { to: '/admin/alerts', label: 'History' },
-  { to: '/admin/alerts/webhooks', label: 'Webhooks' },
+  { to: '/admin/alerts', key: 'history' },
+  { to: '/admin/alerts/webhooks', key: 'webhooks' },
 ];
 
 export function AdminPortal() {
   const { path, navigate } = useRouter();
+  const { t } = useTranslation();
   const [state, setState] = useState<'loading' | 'in' | 'out' | 'disabled'>('loading');
 
   const check = useCallback(async (signal?: AbortSignal): Promise<void> => {
@@ -75,17 +78,26 @@ export function AdminPortal() {
     navigate('/admin');
   }
 
-  if (state === 'loading') return <p className="muted">Checking session…</p>;
+  if (state === 'loading') return <p className="muted">{t('admin.checkingSession')}</p>;
 
   if (state === 'disabled') {
     return (
       <>
-        <PageHeader title="Admin" />
+        <PageHeader title={t('admin.title')} />
         <div className="banner is-warning">
-          <strong>The admin portal is disabled.</strong> No admin password is set. Either
-          complete first-run setup at <code>/setup</code>, or set{' '}
-          <code>ADMIN_PASSWORD</code> in <code>.env</code> and restart. A blank password
-          disables the portal rather than leaving it open.
+          <strong>{t('admin.disabledTitle')}</strong>{' '}
+          {/* Split on the placeholders so the code elements survive translation
+              rather than being flattened into the sentence. */}
+          {t('admin.disabledBody')
+            .split(/<setup>|<env>|<file>/)
+            .map((part, index) => (
+              <span key={index}>
+                {part}
+                {index === 0 && <code>/setup</code>}
+                {index === 1 && <code>ADMIN_PASSWORD</code>}
+                {index === 2 && <code>.env</code>}
+              </span>
+            ))}
         </div>
       </>
     );
@@ -104,16 +116,16 @@ export function AdminPortal() {
   return (
     <>
       <PageHeader
-        title="Admin"
-        subtitle="Devices, access, alerts, appearance, and paper code mapping"
+        title={t('admin.title')}
+        subtitle={t('admin.subtitle')}
         actions={
           <button type="button" className="btn-secondary" onClick={() => void logout()}>
-            Sign out
+            {t('admin.signOut')}
           </button>
         }
       />
 
-      <nav className="tabs" aria-label="Admin sections">
+      <nav className="tabs" aria-label={t('admin.sections')}>
         {TABS.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -131,14 +143,14 @@ export function AdminPortal() {
               }`}
             >
               <Icon size={15} strokeWidth={1.75} aria-hidden="true" />
-              {tab.label}
+              {t(`admin.tabs.${tab.key}`)}
             </Link>
           );
         })}
       </nav>
 
       {isAlerts && (
-        <nav className="tabs is-sub" aria-label="Alert sections">
+        <nav className="tabs is-sub" aria-label={t('admin.alertSections')}>
           {ALERT_TABS.map((tab) => (
             <Link
               key={tab.to}
@@ -147,7 +159,7 @@ export function AdminPortal() {
                 (tab.to === '/admin/alerts/webhooks') === isWebhooks ? ' is-active' : ''
               }`}
             >
-              {tab.label}
+              {t(`admin.tabs.${tab.key}`)}
             </Link>
           ))}
         </nav>

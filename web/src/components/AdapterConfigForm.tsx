@@ -5,6 +5,7 @@
  * what SNMP or IPP is; it knows about field types, conditional visibility, and
  * that secret values are never sent to the browser.
  */
+import { useTranslation } from '../i18n/i18n.js';
 import type { ConfigField } from '../types.js';
 
 export type ConfigValues = Record<string, unknown>;
@@ -48,10 +49,12 @@ interface Props {
 }
 
 export function AdapterConfigForm({ schema, values, secretsSet = [], onChange }: Props) {
+  const { t } = useTranslation();
+
   const visible = schema.filter((field) => isVisible(field, values));
 
   if (visible.length === 0) {
-    return <p className="muted">This adapter needs no configuration.</p>;
+    return <p className="muted">{t('devices.noConfig')}</p>;
   }
 
   return (
@@ -90,7 +93,9 @@ export function AdapterConfigForm({ schema, values, secretsSet = [], onChange }:
                   </option>
                 ))}
               </select>
-              {field.help !== undefined && <small className="field-hint">{field.help}</small>}
+              {field.help !== undefined && (
+                <small className="field-hint">{field.help}</small>
+              )}
             </label>
           );
         }
@@ -102,7 +107,13 @@ export function AdapterConfigForm({ schema, values, secretsSet = [], onChange }:
               {field.required === true && <em className="field-required"> *</em>}
             </span>
             <input
-              type={field.secret === true ? 'password' : field.type === 'number' ? 'number' : 'text'}
+              type={
+                field.secret === true
+                  ? 'password'
+                  : field.type === 'number'
+                    ? 'number'
+                    : 'text'
+              }
               value={String(value ?? '')}
               autoComplete={field.secret === true ? 'new-password' : 'off'}
               placeholder={
@@ -122,9 +133,11 @@ export function AdapterConfigForm({ schema, values, secretsSet = [], onChange }:
               }
             />
             {field.secret === true && stored ? (
-              <small className="field-hint">Leave blank to keep the stored value.</small>
+              <small className="field-hint">{t('devices.secretStored')}</small>
             ) : (
-              field.help !== undefined && <small className="field-hint">{field.help}</small>
+              field.help !== undefined && (
+                <small className="field-hint">{field.help}</small>
+              )
             )}
           </label>
         );

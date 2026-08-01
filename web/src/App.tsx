@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { AccessGate } from './components/AccessGate.js';
 import { AppShell } from './components/AppShell.js';
 import { useBranding } from './hooks/useBranding.js';
+import { I18nProvider, useTranslation } from './i18n/i18n.js';
 import { Overview } from './pages/Overview.js';
 import { DeviceDetail } from './pages/DeviceDetail.js';
 import { Setup } from './pages/Setup.js';
@@ -12,14 +13,20 @@ import { Link, matchPath, useRouter } from './router.js';
 import type { AccessStatus } from './types.js';
 
 function NotFound({ path }: { path: string }) {
+  const { t } = useTranslation();
+
   return (
     <>
-      <h1>Page not found</h1>
+      <h1>{t('notFound.title')}</h1>
       <p className="muted">
-        Nothing is routed at <code>{path}</code>.
+        {/* Split around the path rather than interpolated, so the code element
+            survives translation instead of being flattened into the string. */}
+        {t('notFound.body').split('<path>')[0]}
+        <code>{path}</code>
+        {t('notFound.body').split('<path>')[1]}
       </p>
       <Link to="/" className="btn-primary">
-        Back to Overview
+        {t('notFound.back')}
       </Link>
     </>
   );
@@ -112,38 +119,37 @@ export function App() {
   // setup wizard — or a passcode prompt — on load.
   if (needsSetup === null || access === null) return null;
 
-  if (needsSetup) {
-    return (
-      <Setup
-        onComplete={() => {
-          setNeedsSetup(false);
-          navigate('/admin/devices');
-        }}
-      />
-    );
-  }
-
-  // The admin portal stays reachable whatever the access mode. Gating it would
-  // make `admin_only` unrecoverable: the only way back in is the sign-in page
-  // the gate would be covering.
-  if (!access.allowed && !ALWAYS_OPEN(path)) {
-    return (
-      <AccessGate
-        status={access}
-        hubTitle={branding.title}
-        onUnlocked={() => void checkAccess()}
-      />
-    );
-  }
-
+  // Wraps every branch, not just the shell: the wizard and the passcode gate
+  // are the two screens a first-time or locked-out visitor sees, and they are
+  // the last places that should be stuck in English.
   return (
-    <AppShell
-      title={branding.title}
-      subtitle={branding.subtitle}
-      logoUrl={branding.logoUrl}
-      update={branding}
-    >
-      <Routes />
-    </AppShell>
+    <I18nProvider preference={branding.language}>
+      {needsSetup ? (
+        <Setup
+          onComplete={() => {
+            setNeedsSetup(false);
+            navigate('/admin/devices');
+          }}
+        />
+      ) : !access.allowed && !ALWAYS_OPEN(path) ? (
+        // The admin portal stays reachable whatever the access mode. Gating it
+        // would make `admin_only` unrecoverable: the only way back in is the
+        // sign-in page the gate would be covering.
+        <AccessGate
+          status={access}
+          hubTitle={branding.title}
+          onUnlocked={() => void checkAccess()}
+        />
+      ) : (
+        <AppShell
+          title={branding.title}
+          subtitle={branding.subtitle}
+          logoUrl={branding.logoUrl}
+          update={branding}
+        >
+          <Routes />
+        </AppShell>
+      )}
+    </I18nProvider>
   );
 }

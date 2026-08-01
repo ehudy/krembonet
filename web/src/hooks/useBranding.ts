@@ -17,6 +17,7 @@
 import { useEffect, useState } from 'react';
 
 import { api } from '../api.js';
+import { readCachedLocale } from '../i18n/i18n.js';
 import type { HubBranding, ThemeName } from '../types.js';
 
 export const DEFAULT_HUB_TITLE = 'KremboNet';
@@ -41,6 +42,10 @@ const DEFAULT_BRANDING: HubBranding = {
   subtitle: '',
   logoUrl: '',
   theme: 'system',
+  // Seeded from the last resolved locale so the first paint is already in the
+  // right language. Without it the whole shell renders in English and then
+  // flips, which is worse for a Spanish operator than a brief delay would be.
+  language: readCachedLocale() ?? 'system',
   customCss: '',
 };
 

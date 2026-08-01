@@ -12,10 +12,12 @@
 import { useState, type FormEvent } from 'react';
 
 import { api } from '../api.js';
+import { useTranslation } from '../i18n/i18n.js';
 
 const MIN_PASSWORD_LENGTH = 8;
 
 export function Setup({ onComplete }: { onComplete: () => void }) {
+  const { t } = useTranslation();
   const [hubTitle, setHubTitle] = useState('KremboNet');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -25,7 +27,9 @@ export function Setup({ onComplete }: { onComplete: () => void }) {
   const tooShort = password !== '' && password.length < MIN_PASSWORD_LENGTH;
   const mismatch = confirmPassword !== '' && password !== confirmPassword;
   const canSubmit =
-    password.length >= MIN_PASSWORD_LENGTH && password === confirmPassword && !isSubmitting;
+    password.length >= MIN_PASSWORD_LENGTH &&
+    password === confirmPassword &&
+    !isSubmitting;
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -45,27 +49,23 @@ export function Setup({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="setup-wrap">
       <form className="card setup-card" onSubmit={(event) => void submit(event)}>
-        <h1 className="setup-title">Welcome to KremboNet</h1>
-        <p className="muted">
-          Two things to set up, then you are done. You can change both later.
-        </p>
+        <h1 className="setup-title">{t('setup.title')}</h1>
+        <p className="muted">{t('setup.intro')}</p>
 
         {error !== null && <div className="banner is-error">{error}</div>}
 
         <label className="field">
-          <span>Hub name</span>
+          <span>{t('setup.hubName')}</span>
           <input
             value={hubTitle}
             maxLength={60}
             onChange={(event) => setHubTitle(event.target.value)}
           />
-          <small className="field-hint">
-            Shown in the sidebar and used as the subject prefix on alert email.
-          </small>
+          <small className="field-hint">{t('setup.hubNameHint')}</small>
         </label>
 
         <label className="field">
-          <span>Admin password</span>
+          <span>{t('setup.adminPassword')}</span>
           <input
             type="password"
             value={password}
@@ -74,31 +74,28 @@ export function Setup({ onComplete }: { onComplete: () => void }) {
             onChange={(event) => setPassword(event.target.value)}
           />
           <small className={`field-hint${tooShort ? ' is-error' : ''}`}>
-            At least {MIN_PASSWORD_LENGTH} characters. This is a single shared password
-            for everyone who administers the hub — there are no user accounts.
+            {t('setup.passwordHint', { count: MIN_PASSWORD_LENGTH })}
           </small>
         </label>
 
         <label className="field">
-          <span>Confirm password</span>
+          <span>{t('setup.confirmPassword')}</span>
           <input
             type="password"
             value={confirmPassword}
             autoComplete="new-password"
             onChange={(event) => setConfirmPassword(event.target.value)}
           />
-          {mismatch && <small className="field-hint is-error">Passwords do not match.</small>}
+          {mismatch && (
+            <small className="field-hint is-error">{t('setup.mismatch')}</small>
+          )}
         </label>
 
         <button type="submit" className="btn-primary" disabled={!canSubmit}>
-          {isSubmitting ? 'Setting up…' : 'Finish setup'}
+          {isSubmitting ? t('setup.finishing') : t('setup.finish')}
         </button>
 
-        <p className="muted setup-footnote">
-          Add your printers from the admin portal once you are in. Nothing leaves your
-          network — this hub talks to devices on your LAN and stores everything in a
-          local file.
-        </p>
+        <p className="muted setup-footnote">{t('setup.footnote')}</p>
       </form>
     </div>
   );

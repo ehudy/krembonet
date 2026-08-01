@@ -16,6 +16,8 @@
 import { useId, useRef, useState } from 'react';
 import { Upload, X } from 'lucide-react';
 
+import { useTranslation } from '../i18n/i18n.js';
+
 /**
  * 128KB of encoded output, roughly 96KB of source image.
  *
@@ -55,6 +57,7 @@ interface LogoPickerProps {
 }
 
 export function LogoPicker({ value, onChange }: LogoPickerProps) {
+  const { t } = useTranslation();
   const inputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +76,7 @@ export function LogoPicker({ value, onChange }: LogoPickerProps) {
     // through: some systems report an empty type for .svg, and refusing a
     // legitimate file on that basis is worse than letting the img tag decide.
     if (file.type !== '' && !ACCEPTED.includes(file.type)) {
-      setError(`${file.type} is not an image format this accepts.`);
+      setError(t('settings.logoWrongType', { type: file.type }));
       return;
     }
 
@@ -82,17 +85,18 @@ export function LogoPicker({ value, onChange }: LogoPickerProps) {
 
       if (dataUrl.length > MAX_ENCODED_BYTES) {
         setError(
-          `That image encodes to ${Math.round(dataUrl.length / 1024)}KB, over the ${
-            MAX_ENCODED_BYTES / 1024
-          }KB limit. Export it smaller — an SVG or a trimmed PNG is usually a few KB.`,
+          t('settings.logoTooBig', {
+            size: Math.round(dataUrl.length / 1024),
+            limit: MAX_ENCODED_BYTES / 1024,
+          }),
         );
         return;
       }
 
       setFileName(file.name);
       onChange(dataUrl);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+    } catch {
+      setError(t('settings.logoUnreadable'));
     }
   }
 
@@ -109,13 +113,13 @@ export function LogoPicker({ value, onChange }: LogoPickerProps) {
 
   return (
     <div className="field field-wide">
-      <span>Logo</span>
+      <span>{t('settings.logo')}</span>
 
       <div className="logo-input-row">
         <input
           value={isInlined ? '' : value}
           placeholder="/assets/logo.svg  ·  https://…"
-          aria-label="Logo URL"
+          aria-label={t('settings.logoUrlLabel')}
           disabled={isInlined}
           onChange={(event) => onChange(event.target.value)}
         />
@@ -133,7 +137,7 @@ export function LogoPicker({ value, onChange }: LogoPickerProps) {
             behaviour intact. */}
         <label htmlFor={inputId} className="btn-secondary logo-upload">
           <Upload size={14} strokeWidth={2} aria-hidden="true" />
-          Upload logo file
+          {t('settings.logoUpload')}
         </label>
 
         {value !== '' && (
@@ -141,8 +145,8 @@ export function LogoPicker({ value, onChange }: LogoPickerProps) {
             type="button"
             className="btn-secondary"
             onClick={clear}
-            aria-label="Remove logo"
-            title="Remove logo"
+            aria-label={t('settings.logoRemove')}
+            title={t('settings.logoRemove')}
           >
             <X size={14} strokeWidth={2} aria-hidden="true" />
           </button>
@@ -151,17 +155,15 @@ export function LogoPicker({ value, onChange }: LogoPickerProps) {
 
       {isInlined && (
         <small className="field-hint">
-          <strong>Embedded image</strong>
-          {fileName !== null && ` · ${fileName}`} · {describeSize(value)} stored in the
-          database. Remove it to go back to a URL.
+          <strong>{t('settings.logoEmbedded')}</strong>
+          {fileName !== null && ` · ${fileName}`} ·{' '}
+          {t('settings.logoEmbeddedHint', { size: describeSize(value) })}
         </small>
       )}
 
       {!isInlined && (
         <small className="field-hint">
-          Shown in place of the name and subtitle. Paste a URL, or upload a file to embed
-          it — embedding needs no web server, which is usually the easiest option on a
-          LAN. SVG, PNG, JPG, WebP or GIF, up to {MAX_ENCODED_BYTES / 1024}KB encoded.
+          {t('settings.logoHint', { limit: MAX_ENCODED_BYTES / 1024 })}
         </small>
       )}
 

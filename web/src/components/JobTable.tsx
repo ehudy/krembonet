@@ -1,15 +1,20 @@
+import { useTranslation, type Translate } from '../i18n/i18n.js';
 import type { DeviceState, Job, JobState } from '../types.js';
 
-/** Colours follow the prototype's palette so the page stays familiar. */
-const STATE_STYLES: Record<JobState, { label: string; color: string }> = {
-  pending: { label: 'Pending', color: '#f39c12' },
-  'pending-held': { label: 'Held', color: '#e67e22' },
-  processing: { label: 'Printing', color: '#27ae60' },
-  'processing-stopped': { label: 'Stopped', color: '#c0392b' },
-  canceled: { label: 'Canceled', color: '#7f8c8d' },
-  aborted: { label: 'Aborted', color: '#e74c3c' },
-  completed: { label: 'Completed', color: '#2980b9' },
-  unknown: { label: 'Unknown', color: '#94a3b8' },
+/**
+ * Colour per job state. The label lives in the dictionary under the same key,
+ * so a new state needs one entry here and one per locale rather than a label
+ * that silently stays English.
+ */
+const STATE_COLORS: Record<JobState, string> = {
+  pending: '#f39c12',
+  'pending-held': '#e67e22',
+  processing: '#27ae60',
+  'processing-stopped': '#c0392b',
+  canceled: '#7f8c8d',
+  aborted: '#e74c3c',
+  completed: '#2980b9',
+  unknown: '#94a3b8',
 };
 
 /**
@@ -17,16 +22,16 @@ const STATE_STYLES: Record<JobState, { label: string; color: string }> = {
  * "the device is idle" while the badge reads "Printing" is a contradiction the
  * viewer has to resolve themselves.
  */
-function emptyMessage(deviceState: DeviceState): string {
+function emptyMessage(deviceState: DeviceState, t: Translate): string {
   switch (deviceState) {
     case 'processing':
-      return 'No jobs in the queue, but the device reports it is printing — it is most likely finishing the last one.';
+      return t('queue.emptyProcessing');
     case 'stopped':
-      return 'No jobs in the queue. The device is stopped and needs attention.';
+      return t('queue.emptyStopped');
     case 'idle':
-      return 'No active print jobs. The device is idle.';
+      return t('queue.emptyIdle');
     default:
-      return 'No active print jobs.';
+      return t('queue.empty');
   }
 }
 
@@ -37,8 +42,10 @@ export function JobTable({
   jobs: Job[];
   deviceState: DeviceState;
 }) {
+  const { t } = useTranslation();
+
   if (jobs.length === 0) {
-    return <div className="empty-queue">{emptyMessage(deviceState)}</div>;
+    return <div className="empty-queue">{emptyMessage(deviceState, t)}</div>;
   }
 
   return (
@@ -46,23 +53,25 @@ export function JobTable({
       <table>
         <thead>
           <tr>
-            <th scope="col">Job</th>
-            <th scope="col">Document</th>
-            <th scope="col">Submitted by</th>
-            <th scope="col">Status</th>
+            <th scope="col">{t('queue.job')}</th>
+            <th scope="col">{t('queue.document')}</th>
+            <th scope="col">{t('queue.submittedBy')}</th>
+            <th scope="col">{t('queue.status')}</th>
           </tr>
         </thead>
         <tbody>
           {jobs.map((job) => {
-            const style = STATE_STYLES[job.state];
             return (
               <tr key={job.jobId}>
                 <td className="job-id">#{job.jobId}</td>
                 <td className="job-name">{job.name}</td>
                 <td>{job.user}</td>
                 <td>
-                  <span className="status-pill" style={{ backgroundColor: style.color }}>
-                    {style.label}
+                  <span
+                    className="status-pill"
+                    style={{ backgroundColor: STATE_COLORS[job.state] }}
+                  >
+                    {t(`queue.states.${job.state}`)}
                   </span>
                   {job.stateReasons !== null && (
                     <span className="state-reason">{job.stateReasons}</span>

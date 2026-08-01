@@ -29,6 +29,21 @@ export function isAccessMode(value: unknown): value is AccessMode {
  */
 export type ThemeName = 'system' | 'dark' | 'light' | 'kiosk';
 
+/**
+ * UI language. `system` follows each visitor's browser.
+ *
+ * A hub setting rather than a per-browser one, for the same reason the theme
+ * is: a shared appliance on a wall or a shop floor should read the same to
+ * everyone who walks up to it. `system` is the escape hatch for a mixed office.
+ */
+export type LanguageName = 'system' | 'en' | 'es';
+
+export const LANGUAGES: readonly LanguageName[] = ['system', 'en', 'es'];
+
+export function isLanguageName(value: unknown): value is LanguageName {
+  return LANGUAGES.includes(value as LanguageName);
+}
+
 export const THEMES: readonly ThemeName[] = ['system', 'dark', 'light', 'kiosk'];
 
 export function isThemeName(value: unknown): value is ThemeName {
@@ -65,6 +80,7 @@ export interface AppSettings {
   accessMode: AccessMode;
 
   theme: ThemeName;
+  language: LanguageName;
   /**
    * Operator CSS appended to the SPA's own stylesheet.
    *
@@ -120,6 +136,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   accessMode: 'public',
 
   theme: 'system',
+  language: 'system',
   customCss: '',
 
   smtpHost: '',
@@ -153,6 +170,7 @@ export const UNION_GUARDS: {
 } = {
   accessMode: isAccessMode,
   theme: isThemeName,
+  language: isLanguageName,
 };
 
 /** Settings safe to send to the browser, with secrets reduced to a flag. */

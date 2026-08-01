@@ -15,6 +15,7 @@
 import { useRef, useState } from 'react';
 
 import { api } from '../../api.js';
+import { useTranslation } from '../../i18n/i18n.js';
 import type { DiscoveredDevice, DiscoveryResponse } from '../../types.js';
 
 const PORT_LABELS: Record<number, string> = { 631: 'IPP', 161: 'SNMP' };
@@ -37,6 +38,7 @@ interface AutoDiscoverProps {
 }
 
 export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [subnet, setSubnet] = useState('192.168.1.0/24');
   const [community, setCommunity] = useState('');
@@ -111,15 +113,12 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
     return (
       <section className="card">
         <div className="card-head">
-          <h2 className="card-title">Auto-discover</h2>
+          <h2 className="card-title">{t('discover.title')}</h2>
           <button type="button" className="btn-secondary" onClick={() => setIsOpen(true)}>
-            Scan a subnet
+            {t('discover.open')}
           </button>
         </div>
-        <p className="muted">
-          Sweeps a range of addresses for printers answering on IPP or SNMP and identifies
-          what it finds.
-        </p>
+        <p className="muted">{t('discover.intro')}</p>
       </section>
     );
   }
@@ -127,7 +126,7 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
   return (
     <section className="card">
       <div className="card-head">
-        <h2 className="card-title">Auto-discover</h2>
+        <h2 className="card-title">{t('discover.title')}</h2>
         <button
           type="button"
           className="btn-secondary"
@@ -136,54 +135,53 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
             setIsOpen(false);
           }}
         >
-          Close
+          {t('common.close')}
         </button>
       </div>
 
       <form onSubmit={scan}>
         <div className="field-grid">
           <label className="field">
-            <span>Subnet</span>
+            <span>{t('discover.subnet')}</span>
             <input
               value={subnet}
               placeholder="192.168.1.0/24"
               onChange={(event) => setSubnet(event.target.value)}
             />
             <small className="field-hint">
-              CIDR notation, /20 or smaller. Any address on the network works —{' '}
-              <code>192.168.1.34/24</code> scans the whole /24 it sits on.
+              {t('discover.subnetHint')
+                .split('<example>')
+                .map((part, index) => (
+                  <span key={index}>
+                    {part}
+                    {index === 0 && <code>192.168.1.34/24</code>}
+                  </span>
+                ))}
             </small>
           </label>
 
           <label className="field">
-            <span>SNMP community</span>
+            <span>{t('discover.community')}</span>
             <input
               value={community}
               placeholder="public"
               autoComplete="off"
               onChange={(event) => setCommunity(event.target.value)}
             />
-            <small className="field-hint">
-              Only used to detect SNMP devices during the sweep. Devices using a different
-              community will not answer and will not be found.
-            </small>
+            <small className="field-hint">{t('discover.communityHint')}</small>
           </label>
         </div>
 
         <div className="inline-actions">
           <button type="submit" className="btn-primary" disabled={isScanning}>
-            {isScanning ? 'Scanning…' : 'Start scan'}
+            {isScanning ? t('discover.scanning') : t('discover.start')}
           </button>
           {isScanning && (
             <button type="button" className="btn-secondary" onClick={cancel}>
-              Cancel
+              {t('common.cancel')}
             </button>
           )}
-          {isScanning && (
-            <span className="muted">
-              Connecting to every address in the range. This takes a few seconds.
-            </span>
-          )}
+          {isScanning && <span className="muted">{t('discover.inProgress')}</span>}
         </div>
       </form>
 
@@ -192,40 +190,35 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
       {result !== null && (
         <>
           <p className="field-hint">
-            Swept {result.subnet} — {result.scanned} of {result.hostCount} addresses in{' '}
-            {(result.elapsedMs / 1000).toFixed(1)}s. {result.responsive} answered.
+            {t('discover.summary', {
+              subnet: result.subnet,
+              scanned: result.scanned,
+              total: result.hostCount,
+              seconds: (result.elapsedMs / 1000).toFixed(1),
+              responsive: result.responsive,
+            })}
           </p>
 
           {result.timedOut && (
-            <div className="banner is-warning">
-              The scan hit its time limit, so this list may be incomplete. Try a smaller
-              range.
-            </div>
+            <div className="banner is-warning">{t('discover.timedOut')}</div>
           )}
           {result.truncated && (
-            <div className="banner is-warning">
-              More addresses answered than could be identified in one pass. The rest are
-              not shown — add these, then scan again.
-            </div>
+            <div className="banner is-warning">{t('discover.truncated')}</div>
           )}
 
           {result.devices.length === 0 ? (
-            <p className="muted">
-              Nothing answered on IPP (631) or SNMP (161). If you expected a device here,
-              check that it is powered on, and that SNMP is enabled with the community
-              string above.
-            </p>
+            <p className="muted">{t('discover.nothingFound')}</p>
           ) : (
             <div className="table-scroll">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th scope="col">Address</th>
-                    <th scope="col">Identified as</th>
-                    <th scope="col">Answers on</th>
-                    <th scope="col">Reports</th>
+                    <th scope="col">{t('devices.address')}</th>
+                    <th scope="col">{t('discover.identifiedAs')}</th>
+                    <th scope="col">{t('discover.answersOn')}</th>
+                    <th scope="col">{t('devices.reports')}</th>
                     <th scope="col">
-                      <span className="visually-hidden">Actions</span>
+                      <span className="visually-hidden">{t('common.actions')}</span>
                     </th>
                   </tr>
                 </thead>
@@ -240,7 +233,9 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
                           <code>{device.host}</code>
                         </td>
                         <td>
-                          {identity ?? <span className="muted">Not identified</span>}
+                          {identity ?? (
+                            <span className="muted">{t('discover.notIdentified')}</span>
+                          )}
                           {device.adapterLabel !== null && (
                             <small className="muted"> · {device.adapterLabel}</small>
                           )}
@@ -255,19 +250,18 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
                         <td className="muted">
                           {device.capabilities
                             .filter((capability) => capability !== 'reachability')
-                            .join(', ') || '—'}
+                            .join(', ') || t('common.none')}
                         </td>
                         <td className="row-actions">
                           {isAdded ? (
                             <span className="pill is-good">
-                              {device.alreadyAdded ? 'Already added' : 'Added'}
+                              {device.alreadyAdded
+                                ? t('discover.alreadyAdded')
+                                : t('discover.addedLabel')}
                             </span>
                           ) : device.adapter === null ? (
-                            <span
-                              className="muted"
-                              title="Nothing here identified itself as a supported device. Add it by hand if you know what it is."
-                            >
-                              Add by hand
+                            <span className="muted" title={t('discover.addByHandTitle')}>
+                              {t('discover.addByHand')}
                             </span>
                           ) : (
                             <button
@@ -276,7 +270,9 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
                               disabled={addingHost === device.host}
                               onClick={() => void add(device)}
                             >
-                              {addingHost === device.host ? 'Adding…' : 'Add'}
+                              {addingHost === device.host
+                                ? t('discover.adding')
+                                : t('common.add')}
                             </button>
                           )}
                         </td>

@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 import { api } from '../../api.js';
+import { useTranslation } from '../../i18n/i18n.js';
 import {
   AdapterConfigForm,
   defaultsFor,
@@ -135,6 +136,7 @@ function ProbeReport({
 }
 
 export function AdminDevices() {
+  const { t } = useTranslation();
   const [devices, setDevices] = useState<AdminDevice[] | null>(null);
   const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -236,7 +238,7 @@ export function AdminDevices() {
       if (draft.id === null) await api.createDevice(payload);
       else await api.updateDevice(draft.id, payload);
 
-      setNotice(draft.id === null ? 'Device added.' : 'Device updated.');
+      setNotice(draft.id === null ? t('devices.added') : t('devices.updated'));
       setDraft(null);
       setProbe(null);
       await load();
@@ -249,17 +251,13 @@ export function AdminDevices() {
 
   async function remove(device: AdminDevice): Promise<void> {
     // Deleting a device drops its supply history, which cannot be re-read.
-    if (
-      !window.confirm(
-        `Delete "${device.displayName}"? Its readings and supply history are removed too, and that history cannot be recovered.`,
-      )
-    ) {
+    if (!window.confirm(t('devices.confirmDelete', { name: device.displayName }))) {
       return;
     }
 
     try {
       await api.deleteDevice(device.id);
-      setNotice(`Deleted ${device.displayName}.`);
+      setNotice(t('devices.deleted', { name: device.displayName }));
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -267,7 +265,7 @@ export function AdminDevices() {
   }
 
   if (devices === null && error === null)
-    return <p className="muted">Loading devices…</p>;
+    return <p className="muted">{t('devices.loading')}</p>;
 
   return (
     <>
@@ -275,7 +273,7 @@ export function AdminDevices() {
       {notice !== null && <div className="banner is-good">{notice}</div>}
 
       {adapters.length === 0 && (
-        <div className="banner is-warning">No device adapters are registered.</div>
+        <div className="banner is-warning">{t('devices.noAdapters')}</div>
       )}
 
       {/* Above the list: finding devices is the first thing someone does on a
@@ -283,7 +281,7 @@ export function AdminDevices() {
       {adapters.length > 0 && (
         <AutoDiscover
           onAdded={async () => {
-            setNotice('Device added from discovery.');
+            setNotice(t('devices.addedFromDiscovery'));
             await load();
           }}
         />
@@ -291,7 +289,7 @@ export function AdminDevices() {
 
       <section className="card">
         <div className="card-head">
-          <h2 className="card-title">Devices</h2>
+          <h2 className="card-title">{t('devices.title')}</h2>
           {draft === null && adapters.length > 0 && (
             <button
               type="button"
@@ -302,21 +300,21 @@ export function AdminDevices() {
                 setNotice(null);
               }}
             >
-              Add device
+              {t('devices.addDevice')}
             </button>
           )}
         </div>
 
         {devices !== null && devices.length === 0 ? (
-          <p className="muted">No devices yet. Add one to start collecting readings.</p>
+          <p className="muted">{t('devices.empty')}</p>
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Address</th>
-                <th>Adapter</th>
-                <th>Reports</th>
+                <th>{t('devices.name')}</th>
+                <th>{t('devices.address')}</th>
+                <th>{t('devices.adapter')}</th>
+                <th>{t('devices.reports')}</th>
                 <th />
               </tr>
             </thead>
@@ -331,7 +329,9 @@ export function AdminDevices() {
                     {device.model !== null && (
                       <small className="muted"> · {device.model}</small>
                     )}
-                    {!device.enabled && <span className="pill is-warn">Disabled</span>}
+                    {!device.enabled && (
+                      <span className="pill is-warn">{t('devices.disabled')}</span>
+                    )}
                   </td>
                   <td>
                     <code>{device.host}</code>
@@ -341,16 +341,16 @@ export function AdminDevices() {
                     {!device.adapterKnown && (
                       <span
                         className="pill is-bad"
-                        title="No adapter is registered under this id"
+                        title={t('devices.unknownAdapterTitle')}
                       >
-                        unknown
+                        {t('devices.unknownAdapter')}
                       </span>
                     )}
                   </td>
                   <td className="muted">
                     {(device.capabilities ?? [])
                       .filter((capability) => capability !== 'reachability')
-                      .join(', ') || '—'}
+                      .join(', ') || t('common.none')}
                   </td>
                   <td className="row-actions">
                     <button
@@ -362,7 +362,7 @@ export function AdminDevices() {
                         setNotice(null);
                       }}
                     >
-                      Edit
+                      {t('common.edit')}
                     </button>
                     <button
                       type="button"
@@ -388,7 +388,8 @@ export function AdminDevices() {
           <div className="field-grid">
             <label className="field">
               <span>
-                Display name<em className="field-required"> *</em>
+                {t('devices.displayName')}
+                <em className="field-required">{t('devices.required')}</em>
               </span>
               <input
                 value={draft.displayName}
@@ -400,21 +401,22 @@ export function AdminDevices() {
             </label>
 
             <label className="field">
-              <span>Location</span>
+              <span>{t('devices.location')}</span>
               <input
                 value={draft.location}
-                placeholder="e.g. Second floor"
+                placeholder={t('devices.locationPlaceholder')}
                 onChange={(event) => setDraft({ ...draft, location: event.target.value })}
               />
             </label>
 
             <label className="field">
               <span>
-                Address<em className="field-required"> *</em>
+                {t('devices.address')}
+                <em className="field-required">{t('devices.required')}</em>
               </span>
               <input
                 value={draft.host}
-                placeholder="printer.example or 192.0.2.10"
+                placeholder={t('devices.addressPlaceholder')}
                 onChange={(event) => {
                   setDraft({ ...draft, host: event.target.value });
                   setProbe(null);
@@ -423,7 +425,7 @@ export function AdminDevices() {
             </label>
 
             <label className="field">
-              <span>Adapter</span>
+              <span>{t('devices.adapter')}</span>
               <select
                 value={draft.adapter}
                 onChange={(event) => switchAdapter(event.target.value)}
@@ -445,13 +447,13 @@ export function AdminDevices() {
                 }
               />
               <span>
-                Enabled
-                <small>Disabled devices are kept but never polled.</small>
+                {t('devices.enabled')}
+                <small>{t('devices.enabledHint')}</small>
               </span>
             </label>
           </div>
 
-          <h3 className="card-subtitle">Connection</h3>
+          <h3 className="card-subtitle">{t('devices.connection')}</h3>
           <AdapterConfigForm
             schema={schema}
             values={draft.config}
@@ -466,10 +468,14 @@ export function AdminDevices() {
               onClick={() => void runProbe()}
               disabled={isProbing || draft.host.trim() === ''}
             >
-              {isProbing ? 'Testing…' : 'Test connection'}
+              {isProbing ? t('devices.probing') : t('devices.testConnection')}
             </button>
             <button type="submit" className="btn-primary" disabled={isSaving}>
-              {isSaving ? 'Saving…' : draft.id === null ? 'Add device' : 'Save changes'}
+              {isSaving
+                ? t('common.saving')
+                : draft.id === null
+                  ? t('devices.addDevice')
+                  : t('devices.saveChanges')}
             </button>
             <button
               type="button"
@@ -479,23 +485,24 @@ export function AdminDevices() {
                 setProbe(null);
               }}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
 
           {probe !== null && (
             <>
-              <h3 className="card-subtitle">What answered at {probe.host}</h3>
+              <h3 className="card-subtitle">
+                {t('devices.whatAnswered', { host: probe.host })}
+              </h3>
               {probe.suggested !== null && probe.suggested !== draft.adapter && (
                 <div className="banner is-warning">
-                  <strong>{probe.suggested}</strong> looks like a better match than the
-                  selected adapter.{' '}
+                  <strong>{probe.suggested}</strong> {t('devices.betterMatch')}{' '}
                   <button
                     type="button"
                     className="btn-link"
                     onClick={() => switchAdapter(probe.suggested as string)}
                   >
-                    Switch to it
+                    {t('devices.switchToIt')}
                   </button>
                 </div>
               )}

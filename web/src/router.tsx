@@ -104,10 +104,7 @@ export function Link({ to, className, children, onClick }: LinkProps) {
  * Matches a pattern like `/printers/:slug` against the current path.
  * Returns the extracted params, or null when it does not match.
  */
-export function matchPath(
-  pattern: string,
-  path: string,
-): Record<string, string> | null {
+export function matchPath(pattern: string, path: string): Record<string, string> | null {
   const patternParts = pattern.split('/').filter(Boolean);
   const pathParts = path.split('/').filter(Boolean);
 

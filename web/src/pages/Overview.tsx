@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { api } from '../api.js';
+import { useTranslation, type Translate } from '../i18n/i18n.js';
 import { Link } from '../router.js';
 import type { DeviceListResponse, DeviceSummary } from '../types.js';
 import { PageHeader } from '../components/PageHeader.js';
@@ -32,21 +33,39 @@ const PILL_ICON = { size: 13, strokeWidth: 2, 'aria-hidden': true } as const;
  * with plenty of ink used to show "Healthy" because only the last two were
  * ever checked.
  */
+/**
+ * The server sends English condition labels; they are looked up here so the
+ * classification stays in one place server-side and only the wording is
+ * localised. An unmapped label falls through to itself, which is readable.
+ */
+function attentionText(device: DeviceSummary, t: Translate): string {
+  const [first, ...rest] = device.attentionReasons;
+  if (first === undefined) return t('overview.needsAttention');
+
+  const label = t(`attention.${first}`);
+  return rest.length === 0 ? label : t('attention.more', { label, count: rest.length });
+}
+
 function StatusPill({ device }: { device: DeviceSummary }) {
+  const { t } = useTranslation();
+
   if (!device.isOnline) {
     return (
       <span className="pill is-bad">
         <WifiOff {...PILL_ICON} />
-        Unreachable
+        {t('overview.unreachable')}
       </span>
     );
   }
 
   if (device.attention === 'error') {
     return (
-      <span className="pill is-bad" title={device.attentionReasons.join(', ')}>
+      <span
+        className="pill is-bad"
+        title={device.attentionReasons.map((r) => t(`attention.${r}`)).join(', ')}
+      >
         <CircleAlert {...PILL_ICON} />
-        {device.attentionSummary ?? 'Needs attention'}
+        {attentionText(device, t)}
       </span>
     );
   }
@@ -55,16 +74,19 @@ function StatusPill({ device }: { device: DeviceSummary }) {
     return (
       <span className="pill is-warn">
         <TriangleAlert {...PILL_ICON} />
-        {device.lowSupplies} suppl{device.lowSupplies === 1 ? 'y' : 'ies'} low
+        {t('overview.suppliesLowPill', { count: device.lowSupplies })}
       </span>
     );
   }
 
   if (device.attention === 'warning') {
     return (
-      <span className="pill is-warn" title={device.attentionReasons.join(', ')}>
+      <span
+        className="pill is-warn"
+        title={device.attentionReasons.map((r) => t(`attention.${r}`)).join(', ')}
+      >
         <TriangleAlert {...PILL_ICON} />
-        {device.attentionSummary ?? 'Check device'}
+        {attentionText(device, t)}
       </span>
     );
   }
@@ -72,12 +94,14 @@ function StatusPill({ device }: { device: DeviceSummary }) {
   return (
     <span className="pill is-good">
       <CircleCheck {...PILL_ICON} />
-      Healthy
+      {t('overview.healthy')}
     </span>
   );
 }
 
 function DeviceCard({ device }: { device: DeviceSummary }) {
+  const { t } = useTranslation();
+
   return (
     <Link to={`/devices/${device.slug}`} className="device-card">
       <div className="device-card-top">
@@ -92,21 +116,23 @@ function DeviceCard({ device }: { device: DeviceSummary }) {
 
       <h3>{device.displayName}</h3>
       <p className="device-meta">
-        {device.model ?? 'Unknown model'} · {device.host}
+        {device.model ?? t('overview.unknownModel')} · {device.host}
       </p>
 
       <dl className="device-stats">
         <div>
-          <dt>State</dt>
-          <dd>{device.isOnline ? device.state : '—'}</dd>
+          <dt>{t('overview.state')}</dt>
+          <dd>
+            {device.isOnline ? t(`device.states.${device.state}`) : t('common.none')}
+          </dd>
         </div>
         <div>
-          <dt>Queue</dt>
+          <dt>{t('overview.queue')}</dt>
           <dd>{device.activeJobs}</dd>
         </div>
         <div>
-          <dt>Last read</dt>
-          <dd>{relativeTime(device.lastSuccessAt)}</dd>
+          <dt>{t('overview.lastRead')}</dt>
+          <dd>{relativeTime(device.lastSuccessAt, t)}</dd>
         </div>
       </dl>
     </Link>
@@ -114,6 +140,7 @@ function DeviceCard({ device }: { device: DeviceSummary }) {
 }
 
 export function Overview() {
+  const { t } = useTranslation();
   const [data, setData] = useState<DeviceListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -152,40 +179,44 @@ export function Overview() {
 
   return (
     <>
-      <PageHeader title="Overview" subtitle="Monitored devices and hub health" />
+      <PageHeader title={t('overview.title')} subtitle={t('overview.subtitle')} />
 
       {error !== null && <div className="banner is-error">{error}</div>}
 
       <section className="health-row">
         <div className="health-tile">
           <span className="health-value">{devices.length}</span>
-          <span className="health-label">Devices monitored</span>
+          <span className="health-label">{t('overview.devicesMonitored')}</span>
         </div>
         <div className={`health-tile${offline > 0 ? ' is-bad' : ''}`}>
           <span className="health-value">{offline}</span>
-          <span className="health-label">Unreachable</span>
+          <span className="health-label">{t('overview.unreachable')}</span>
         </div>
         <div className={`health-tile${needAttention > 0 ? ' is-bad' : ''}`}>
           <span className="health-value">{needAttention}</span>
-          <span className="health-label">Need attention</span>
+          <span className="health-label">{t('overview.needAttention')}</span>
         </div>
         <div className={`health-tile${lowSupplies > 0 ? ' is-warn' : ''}`}>
           <span className="health-value">{lowSupplies}</span>
           {/* Renamed from "Supplies need attention" so it cannot be confused
               with the device-level tile beside it. */}
-          <span className="health-label">Supplies low</span>
+          <span className="health-label">{t('overview.suppliesLow')}</span>
         </div>
         <div className="health-tile">
           <span className="health-value">
-            {data === null ? '—' : `${data.backgroundPollMinutes}m`}
+            {data === null
+              ? t('common.none')
+              : t('overview.pollMinutes', { minutes: data.backgroundPollMinutes })}
           </span>
-          <span className="health-label">Background poll</span>
+          <span className="health-label">{t('overview.backgroundPoll')}</span>
         </div>
       </section>
 
-      <h2 className="section-title">Devices</h2>
+      <h2 className="section-title">{t('overview.devices')}</h2>
 
-      {data === null && error === null && <p className="muted">Loading devices…</p>}
+      {data === null && error === null && (
+        <p className="muted">{t('overview.loadingDevices')}</p>
+      )}
 
       <div className="device-grid">
         {devices.map((device) => (
@@ -195,10 +226,10 @@ export function Overview() {
 
       {data !== null && devices.length === 0 && (
         <div className="empty-state">
-          <p>No devices are being monitored yet.</p>
+          <p>{t('overview.emptyTitle')}</p>
           <Link to="/admin/devices" className="btn-primary">
             <Plus size={15} strokeWidth={2} aria-hidden="true" />
-            Add your first device
+            {t('overview.addFirstDevice')}
           </Link>
         </div>
       )}

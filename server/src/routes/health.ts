@@ -23,13 +23,14 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
    * says anything about a device.
    */
   app.get('/api/hub', async () => {
-    const { hubTitle, hubSubtitle, logoUrl, theme, customCss } = getSettings();
+    const { hubTitle, hubSubtitle, logoUrl, theme, language, customCss } = getSettings();
 
     return {
       title: hubTitle,
       subtitle: hubSubtitle,
       logoUrl,
       theme,
+      language,
       customCss,
       // Cache read only — see update/check.ts. This never touches the network,
       // so an unreachable GitHub cannot slow down the shell's first request.

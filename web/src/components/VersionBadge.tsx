@@ -14,22 +14,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpCircle, X } from 'lucide-react';
 
+import { useTranslation } from '../i18n/i18n.js';
+import { formatDate } from '../lib/format.js';
 import type { UpdateStatus } from '../types.js';
 
 const REBUILD_COMMAND = 'docker compose up -d --build';
 
-function formatDate(iso: string | null): string | null {
-  if (iso === null) return null;
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
 function UpdateModal({ status, onClose }: { status: UpdateStatus; onClose: () => void }) {
+  const { t, locale } = useTranslation();
   const closeRef = useRef<HTMLButtonElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -57,7 +49,7 @@ function UpdateModal({ status, onClose }: { status: UpdateStatus; onClose: () =>
     }
   }
 
-  const published = formatDate(status.publishedAt);
+  const published = formatDate(status.publishedAt, locale);
 
   return (
     <div className="modal-scrim" onClick={onClose}>
@@ -72,18 +64,19 @@ function UpdateModal({ status, onClose }: { status: UpdateStatus; onClose: () =>
         <div className="modal-head">
           <div>
             <h2 id="update-modal-title">
-              {status.releaseName ?? `Version ${status.latestVersion}`}
+              {status.releaseName ??
+                t('version.versionFallback', { version: status.latestVersion ?? '' })}
             </h2>
             <p className="muted">
-              You are running {status.currentVersion}
-              {published !== null && ` · released ${published}`}
+              {t('version.running', { version: status.currentVersion })}
+              {published !== null && ` · ${t('version.released', { date: published })}`}
             </p>
           </div>
           <button
             ref={closeRef}
             type="button"
             className="icon-button"
-            aria-label="Close"
+            aria-label={t('common.close')}
             onClick={onClose}
           >
             <X size={16} strokeWidth={2} aria-hidden="true" />
@@ -91,7 +84,7 @@ function UpdateModal({ status, onClose }: { status: UpdateStatus; onClose: () =>
         </div>
 
         <div className="modal-body">
-          <h3 className="modal-section">To update</h3>
+          <h3 className="modal-section">{t('version.toUpdate')}</h3>
           <div className="command-row">
             <code>{REBUILD_COMMAND}</code>
             <button
@@ -99,17 +92,24 @@ function UpdateModal({ status, onClose }: { status: UpdateStatus; onClose: () =>
               className="btn-secondary btn-small"
               onClick={() => void copyCommand()}
             >
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? t('common.copied') : t('common.copy')}
             </button>
           </div>
           <p className="field-hint">
-            Run it where <code>docker-compose.yml</code> lives, after pulling the new
-            source. Your <code>data/</code> directory is untouched.
+            {t('version.commandHint')
+              .split(/<file>|<data>/)
+              .map((part, index) => (
+                <span key={index}>
+                  {part}
+                  {index === 0 && <code>docker-compose.yml</code>}
+                  {index === 1 && <code>data/</code>}
+                </span>
+              ))}
           </p>
 
-          <h3 className="modal-section">Release notes</h3>
+          <h3 className="modal-section">{t('version.releaseNotes')}</h3>
           {status.releaseNotes === null || status.releaseNotes.trim() === '' ? (
-            <p className="muted">This release has no notes.</p>
+            <p className="muted">{t('version.noNotes')}</p>
           ) : (
             <pre className="release-notes">{status.releaseNotes}</pre>
           )}
@@ -125,7 +125,7 @@ function UpdateModal({ status, onClose }: { status: UpdateStatus; onClose: () =>
               // to learn which hub linked to it.
               rel="noopener noreferrer"
             >
-              View on GitHub
+              {t('version.viewOnGitHub')}
             </a>
           </div>
         )}
@@ -141,6 +141,7 @@ interface VersionBadgeProps {
 }
 
 export function VersionBadge({ status, variant = 'footer' }: VersionBadgeProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   const version = `v${status.currentVersion}`;
@@ -157,12 +158,12 @@ export function VersionBadge({ status, variant = 'footer' }: VersionBadgeProps) 
         type="button"
         className={`version version-${variant} is-actionable`}
         onClick={() => setIsOpen(true)}
-        title={`Version ${status.latestVersion} is available`}
+        title={t('version.availableTitle', { version: status.latestVersion ?? '' })}
       >
         {version}
         <span className="update-badge">
           <ArrowUpCircle size={12} strokeWidth={2.25} aria-hidden="true" />
-          Update available
+          {t('version.updateAvailable')}
         </span>
       </button>
 

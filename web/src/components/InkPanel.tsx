@@ -5,24 +5,35 @@
  * rules, not recomputed here. This panel used to carry its own 15%/85%
  * constants, which meant a bar could turn red at a level that sent no mail.
  */
+import { useTranslation, type Translate } from '../i18n/i18n.js';
 import { fillColor } from '../lib/supplyColor.js';
 import type { Supply, SupplyLevel } from '../types.js';
 
-/** What to show on the right of the bar, given a level that may have no number. */
-function levelText(supply: Supply): string {
-  const suffix = supply.kind === 'receptacle' ? ' full' : '';
+/**
+ * What to show on the right of the bar, given a level that may have no number.
+ *
+ * "85%" and "85% full" are separate keys rather than a percentage with a
+ * suffix appended: Spanish puts a space before the sign, and word order after
+ * it is not something a concatenation can express.
+ */
+function levelText(supply: Supply, t: Translate): string {
+  const full = supply.kind === 'receptacle';
 
   switch (supply.level.kind) {
     case 'percent':
-      return `${supply.level.percent}%${suffix}`;
+      return t(full ? 'supplies.percentFull' : 'supplies.percent', {
+        percent: supply.level.percent,
+      });
     case 'absolute':
       return supply.percent === null
-        ? `${supply.level.value} of ${supply.level.max}`
-        : `${supply.percent}%${suffix}`;
+        ? t('supplies.absolute', { value: supply.level.value, max: supply.level.max })
+        : t(full ? 'supplies.percentFull' : 'supplies.percent', {
+            percent: supply.percent,
+          });
     case 'binary':
-      return supply.level.state === 'attention' ? 'Low' : 'OK';
+      return supply.level.state === 'attention' ? t('supplies.low') : t('supplies.ok');
     case 'unknown':
-      return 'Not reported';
+      return t('supplies.notReported');
   }
 }
 
@@ -38,6 +49,7 @@ function fillWidth(level: SupplyLevel, percent: number | null): string | null {
 }
 
 function SupplyRow({ supply }: { supply: Supply }) {
+  const { t } = useTranslation();
   const width = fillWidth(supply.level, supply.percent);
 
   return (
@@ -54,14 +66,11 @@ function SupplyRow({ supply }: { supply: Supply }) {
         aria-valuemin={0}
         aria-valuemax={100}
         {...(supply.percent !== null ? { 'aria-valuenow': supply.percent } : {})}
-        aria-valuetext={levelText(supply)}
+        aria-valuetext={levelText(supply, t)}
         aria-label={supply.label}
       >
         {width === null ? (
-          <div
-            className="supply-fill is-unknown"
-            title="This device did not report a level"
-          />
+          <div className="supply-fill is-unknown" title={t('supplies.unknownTitle')} />
         ) : (
           <div
             className="supply-fill"
@@ -74,21 +83,22 @@ function SupplyRow({ supply }: { supply: Supply }) {
           supply.percent === null && supply.level.kind !== 'binary' ? ' is-muted' : ''
         }`}
       >
-        {levelText(supply)}
+        {levelText(supply, t)}
       </div>
     </div>
   );
 }
 
 export function InkPanel({ supplies }: { supplies: Supply[] }) {
+  const { t } = useTranslation();
   const consumables = supplies.filter((supply) => supply.kind === 'consumable');
   const receptacles = supplies.filter((supply) => supply.kind === 'receptacle');
 
   return (
     <section className="card">
-      <h2 className="card-title">Supply Levels</h2>
+      <h2 className="card-title">{t('supplies.title')}</h2>
 
-      {consumables.length === 0 && <p className="muted">No supply data reported.</p>}
+      {consumables.length === 0 && <p className="muted">{t('supplies.empty')}</p>}
       {consumables.map((supply) => (
         <SupplyRow key={supply.index} supply={supply} />
       ))}

@@ -14,6 +14,7 @@ import { Home, Menu, Plus, Printer, Settings, type LucideIcon } from 'lucide-rea
 import { api } from '../api.js';
 import { VersionBadge } from './VersionBadge.js';
 import { DEFAULT_HUB_TITLE } from '../hooks/useBranding.js';
+import { useTranslation, type Translate } from '../i18n/i18n.js';
 import { Link, matchPath, useRouter } from '../router.js';
 import type { DeviceSummary, UpdateStatus } from '../types.js';
 
@@ -25,23 +26,15 @@ interface NavItem {
   match?: string[];
 }
 
-const OVERVIEW: NavItem = { to: '/', label: 'Overview', icon: Home };
-const ADMIN: NavItem = {
-  to: '/admin',
-  label: 'Admin',
-  icon: Settings,
-  match: ['/admin/:page'],
-};
-
 /**
  * Builds the sidebar from the devices the hub actually has.
  *
  * This used to be a hardcoded link to one device's slug, which is the single
  * assumption that made the app a one-printer tool.
  */
-function navFor(devices: DeviceSummary[]): NavItem[] {
+function navFor(devices: DeviceSummary[], t: Translate): NavItem[] {
   return [
-    OVERVIEW,
+    { to: '/', label: t('nav.overview'), icon: Home },
     ...devices.map((device) => ({
       to: `/devices/${device.slug}`,
       label: device.displayName,
@@ -53,9 +46,9 @@ function navFor(devices: DeviceSummary[]): NavItem[] {
     // With no devices the sidebar would be Overview and Admin only, which
     // reads as a broken install rather than an empty one.
     ...(devices.length === 0
-      ? [{ to: '/admin/devices', label: 'Add a device', icon: Plus }]
+      ? [{ to: '/admin/devices', label: t('nav.addDevice'), icon: Plus }]
       : []),
-    ADMIN,
+    { to: '/admin', label: t('nav.admin'), icon: Settings, match: ['/admin/:page'] },
   ];
 }
 
@@ -119,6 +112,7 @@ export function AppShell({
   update,
 }: AppShellProps) {
   const { path } = useRouter();
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
 
@@ -137,14 +131,14 @@ export function AppShell({
     return () => controller.abort();
   }, [path]);
 
-  const nav = navFor(devices);
+  const nav = navFor(devices, t);
 
   return (
     <div className={`shell${isOpen ? ' is-drawer-open' : ''}`}>
       <aside className="sidebar">
         <Brand title={title} subtitle={subtitle} logoUrl={logoUrl} />
 
-        <nav className="nav" aria-label="Main">
+        <nav className="nav" aria-label={t('nav.main')}>
           {nav.map((item) => {
             const Icon = item.icon;
             return (
@@ -170,7 +164,7 @@ export function AppShell({
         <div className="sidebar-footer">
           <span className="sidebar-status">
             <span className="dot" aria-hidden="true" />
-            Local network only
+            {t('nav.localOnly')}
           </span>
           {/* Rendered only once the version is known, so the footer does not
               reflow from "vundefined" to a real number on load. */}
@@ -184,7 +178,7 @@ export function AppShell({
       <button
         type="button"
         className="drawer-scrim"
-        aria-label="Close navigation"
+        aria-label={t('nav.closeNav')}
         tabIndex={isOpen ? 0 : -1}
         onClick={() => setIsOpen(false)}
       />
@@ -194,7 +188,7 @@ export function AppShell({
           <button
             type="button"
             className="drawer-toggle"
-            aria-label="Toggle navigation"
+            aria-label={t('nav.toggle')}
             aria-expanded={isOpen}
             onClick={() => setIsOpen((open) => !open)}
           >
