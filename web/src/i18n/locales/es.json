@@ -233,8 +233,7 @@
       "alerts": "Alertas",
       "history": "Historial",
       "webhooks": "Webhooks"
-    },
-    "activeBadge": "Administrador activo"
+    }
   },
   "settings": {
     "saved": "Ajustes guardados.",
@@ -592,10 +591,6 @@
   },
   "floor": {
     "yourDevices": "Tus impresoras",
-    "allDevices": "Todas las impresoras",
-    "device": "Impresora",
-    "state": "Estado",
-    "queue": "Cola",
     "paper": "Papel cargado",
     "noPaper": "Sin papel cargado",
     "ready": "Lista",
@@ -609,11 +604,11 @@
       "other": "{{count}} trabajos en cola"
     },
     "queueRead": "Cola consultada {{time}}",
-    "nothingPinned": "Todavía no hay impresoras fijadas. Marca con una estrella las que uses y aparecerán aquí.",
-    "pinFromDevices": "Elegir impresoras",
+    "nothingPinned": "Todavía no hay impresoras fijadas. Marca con una estrella tus impresoras diarias desde la página Dispositivos para seguir la cola rápidamente.",
+    "pinFromDevices": "Ir a Dispositivos",
     "morePinned": {
-      "one": "Hay {{count}} impresora fijada más en la lista de abajo.",
-      "other": "Hay {{count}} impresoras fijadas más en la lista de abajo."
+      "one": "Hay {{count}} impresora fijada más que no se muestra. Quita alguna fijación para verla aquí.",
+      "other": "Hay {{count}} impresoras fijadas más que no se muestran. Quita algunas fijaciones para verlas aquí."
     }
   },
   "standardMedia": {

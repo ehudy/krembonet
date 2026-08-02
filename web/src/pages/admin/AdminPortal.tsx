@@ -1,9 +1,11 @@
 /**
- * Admin area: auth gate, sub-navigation, logout.
+ * Admin area: auth gate and sub-navigation.
  *
  * Session state is checked once on mount. Any admin request that comes back
  * 401 flips this back to the login form, so an expired cookie surfaces as a
- * sign-in prompt rather than a page full of errors.
+ * sign-in prompt rather than a page full of errors. Signing out is the
+ * sidebar's job, shared across every page — this portal only reflects the
+ * result, flipping to its login gate when the shared auth state loses admin.
  */
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -41,9 +43,9 @@ const ALERT_TABS = [
 ];
 
 export function AdminPortal() {
-  const { path, navigate } = useRouter();
+  const { path } = useRouter();
   const { t } = useTranslation();
-  const { isAdmin, refresh, signOut } = useAuth();
+  const { isAdmin, refresh } = useAuth();
   const [state, setState] = useState<'loading' | 'in' | 'out' | 'disabled'>('loading');
 
   const check = useCallback(async (signal?: AbortSignal): Promise<void> => {
@@ -82,14 +84,6 @@ export function AdminPortal() {
     window.addEventListener('unhandledrejection', onRejection);
     return () => window.removeEventListener('unhandledrejection', onRejection);
   }, []);
-
-  async function logout(): Promise<void> {
-    // The shared sign-out clears the cookie and refreshes access, so the
-    // sidebar indicator and the nav fall back to viewer mode with this.
-    await signOut();
-    setState('out');
-    navigate('/admin');
-  }
 
   if (state === 'loading') return <p className="muted">{t('admin.checkingSession')}</p>;
 
@@ -138,15 +132,9 @@ export function AdminPortal() {
 
   return (
     <>
-      <PageHeader
-        title={t('admin.title')}
-        subtitle={t('admin.subtitle')}
-        actions={
-          <button type="button" className="btn-secondary" onClick={() => void logout()}>
-            {t('admin.signOut')}
-          </button>
-        }
-      />
+      {/* No sign-out here: the sidebar's is the single one, so the session is
+          ended the same way from every page rather than twice from this one. */}
+      <PageHeader title={t('admin.title')} subtitle={t('admin.subtitle')} />
 
       <nav className="tabs" aria-label={t('admin.sections')}>
         {TABS.map((tab) => {

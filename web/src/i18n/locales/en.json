@@ -233,8 +233,7 @@
       "alerts": "Alerts",
       "history": "History",
       "webhooks": "Webhooks"
-    },
-    "activeBadge": "Admin active"
+    }
   },
   "settings": {
     "saved": "Settings saved.",
@@ -592,10 +591,6 @@
   },
   "floor": {
     "yourDevices": "Your printers",
-    "allDevices": "All printers",
-    "device": "Printer",
-    "state": "Status",
-    "queue": "Queue",
     "paper": "Loaded paper",
     "noPaper": "Nothing loaded",
     "ready": "Ready",
@@ -609,11 +604,11 @@
       "other": "{{count}} jobs queued"
     },
     "queueRead": "Queue checked {{time}}",
-    "nothingPinned": "No printers are pinned yet. Star the ones you use and they appear here.",
-    "pinFromDevices": "Choose printers",
+    "nothingPinned": "No pinned printers yet. Star your daily printers from the Devices page for fast queue tracking.",
+    "pinFromDevices": "Go to Devices",
     "morePinned": {
-      "one": "{{count}} more pinned printer is in the list below.",
-      "other": "{{count}} more pinned printers are in the list below."
+      "one": "{{count}} more pinned printer is not shown. Unpin one to see it here.",
+      "other": "{{count}} more pinned printers are not shown. Unpin some to see them here."
     }
   },
   "standardMedia": {

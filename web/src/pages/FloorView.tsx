@@ -1,22 +1,22 @@
 /**
  * The Overview as someone standing at a printer needs it.
  *
- * Everything on this page answers one of three questions: is the machine free,
- * what paper is in it, and will it run out mid-job. The error list, the
- * critical-supplies buying view and the event log are all deliberately absent —
- * not because an operator should not know a printer is broken, but because
- * "broken" reaches them here as *"you cannot print on this one"*, which is the
- * form they can act on. The incident view is a mode away.
+ * Strictly the printers this person pinned — their daily machines — as a grid
+ * of cards, each answering one of three questions: is it free, what paper is in
+ * it, and will it run out mid-job. The error list, the critical-supplies buying
+ * view and the event log are all deliberately absent; "broken" reaches an
+ * operator here as *"you cannot print on this one"*, which is the form they can
+ * act on. The incident view is a mode away.
  *
- * Data comes from two places, for a reason worth stating. The fleet list reads
- * the cached device and media endpoints, which cost the printers nothing. The
- * pinned cards additionally pull each device's own status with a jobs refresh,
- * because a queue is the one reading that is worthless when stale — a card
- * claiming "Ready" from a poll two hours ago sends someone to a busy machine.
- * That is bounded by the fact that pins are chosen by hand, and capped besides.
+ * There is deliberately no whole-fleet table beneath the cards. This view is a
+ * curated board, not a directory — the searchable list of every printer is what
+ * /devices is for. A card pulls its own status with a jobs refresh, because a
+ * queue is the one reading that is worthless when stale: a card claiming "Ready"
+ * from a poll two hours ago sends someone to a busy machine. That cost is
+ * bounded by pins being chosen by hand, and capped besides.
  */
 import { useCallback } from 'react';
-import { Layers, Printer } from 'lucide-react';
+import { Layers, Star } from 'lucide-react';
 
 import { api } from '../api.js';
 import { PinButton } from '../components/PinButton.js';
@@ -28,7 +28,7 @@ import { resolveMediaLabel } from '../lib/mediaLabel.js';
 import { queueStatus, type QueueStatus } from '../lib/queueStatus.js';
 import { fillColor } from '../lib/supplyColor.js';
 import { Link } from '../router.js';
-import type { DeviceSummary, MediaSource, MediaCatalogResponse } from '../types.js';
+import type { DeviceSummary, MediaSource } from '../types.js';
 
 /**
  * How often a pinned card re-reads its queue.
@@ -195,86 +195,6 @@ function PinnedCard({ slug }: { slug: string }) {
   );
 }
 
-/** The queue-focused fleet table, built from the two cached endpoints. */
-function FleetList({
-  devices,
-  media,
-}: {
-  devices: readonly DeviceSummary[];
-  media: MediaCatalogResponse | null;
-}) {
-  const { t } = useTranslation();
-
-  const paperBySlug = new Map(
-    (media?.devices ?? []).map((device) => [device.slug, device.media]),
-  );
-
-  return (
-    <div className="table-scroll">
-      <table className="data-table">
-        <thead>
-          <tr>
-            {/* No visible header: the column is a row of icon toggles, and any
-                word over them would be wider than the control itself. */}
-            <th scope="col" className="pin-column">
-              <span className="visually-hidden">{t('pins.column')}</span>
-            </th>
-            <th scope="col">{t('floor.device')}</th>
-            <th scope="col">{t('floor.state')}</th>
-            <th scope="col">{t('floor.queue')}</th>
-            <th scope="col">{t('floor.paper')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {devices.map((device) => {
-            const status = queueStatus({
-              isOnline: device.isOnline,
-              state: device.state,
-              attention: device.attention,
-              attentionReason: device.attentionReasons[0] ?? null,
-              totalJobs: device.activeJobs,
-              // The list only has a total, so `queueStatus` infers how many are
-              // waiting. Stated as null rather than guessed here, so the
-              // inference lives in one place.
-              waitingJobs: null,
-            });
-
-            const paper = paperSummary(paperBySlug.get(device.slug) ?? [], t);
-
-            return (
-              <tr key={device.slug}>
-                <td className="pin-column">
-                  <PinButton slug={device.slug} name={device.displayName} />
-                </td>
-                <td>
-                  <Link to={`/devices/${device.slug}`} className="device-link">
-                    <Printer size={15} strokeWidth={1.75} aria-hidden="true" />
-                    <span>
-                      <strong>{device.displayName}</strong>
-                      {device.location !== null && (
-                        <small className="muted">{device.location}</small>
-                      )}
-                    </span>
-                  </Link>
-                </td>
-                <td>
-                  <span className={`queue-pill is-${status.tone}`}>
-                    {statusText(status, t)}
-                  </span>
-                </td>
-                <td className="muted queue-depth">{device.activeJobs}</td>
-                <td className="muted">
-                  {paper ?? <span className="muted">{t('floor.noPaper')}</span>}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export function FloorView({
   devices,
   isLoading,
@@ -285,51 +205,46 @@ export function FloorView({
   const { t } = useTranslation();
   const { pinned } = usePinnedDevices();
 
-  const loadMedia = useCallback((signal: AbortSignal) => api.listMedia(signal), []);
-  const { data: media } = usePolled(loadMedia);
-
   // Only pins that still resolve to a device get a card; a pin left behind by a
   // deleted printer would otherwise render a tile that never loads.
   const known = new Set(devices.map((device) => device.slug));
-  const cards = pinned.filter((slug) => known.has(slug)).slice(0, FLOOR_CARD_LIMIT);
-  const hiddenPins = pinned.filter((slug) => known.has(slug)).length - cards.length;
+  const resolved = pinned.filter((slug) => known.has(slug));
+  const cards = resolved.slice(0, FLOOR_CARD_LIMIT);
+  const hiddenPins = resolved.length - cards.length;
+
+  // Held back until the fleet has loaded: before then `known` is empty, so no
+  // pin resolves and the empty state would flash up over the cards about to
+  // appear.
+  if (!isLoading && cards.length === 0) {
+    return (
+      <div className="empty-state floor-empty">
+        <Star size={22} strokeWidth={1.75} aria-hidden="true" />
+        <p>{t('floor.nothingPinned')}</p>
+        <Link to="/devices" className="btn-primary">
+          {t('floor.pinFromDevices')}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <>
-      {cards.length > 0 && (
-        <>
-          <h2 className="section-title">{t('floor.yourDevices')}</h2>
-          <div className="floor-grid">
-            {cards.map((slug) => (
-              <PinnedCard key={slug} slug={slug} />
-            ))}
-          </div>
-          {hiddenPins > 0 && (
-            <p className="muted list-footnote">
-              {t('floor.morePinned', { count: hiddenPins })}
-            </p>
-          )}
-        </>
-      )}
+      <h2 className="section-title">{t('floor.yourDevices')}</h2>
 
-      {/* The hint is shown only when nothing is pinned, and only once the fleet
-          has loaded — otherwise it flashes up on every page load before the
-          cards appear. */}
-      {cards.length === 0 && !isLoading && devices.length > 0 && (
-        <div className="empty-state">
-          <p>{t('floor.nothingPinned')}</p>
-          <Link to="/devices" className="btn-primary">
-            {t('floor.pinFromDevices')}
-          </Link>
+      {isLoading && cards.length === 0 ? (
+        <p className="muted">{t('overview.loadingDevices')}</p>
+      ) : (
+        <div className="floor-grid">
+          {cards.map((slug) => (
+            <PinnedCard key={slug} slug={slug} />
+          ))}
         </div>
       )}
 
-      <h2 className="section-title">{t('floor.allDevices')}</h2>
-
-      {isLoading ? (
-        <p className="muted">{t('overview.loadingDevices')}</p>
-      ) : (
-        <FleetList devices={devices} media={media} />
+      {hiddenPins > 0 && (
+        <p className="muted list-footnote">
+          {t('floor.morePinned', { count: hiddenPins })}
+        </p>
       )}
     </>
   );

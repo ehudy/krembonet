@@ -18,7 +18,6 @@ import {
   Menu,
   Printer,
   Settings,
-  ShieldCheck,
   Star,
   type LucideIcon,
 } from 'lucide-react';
@@ -194,36 +193,27 @@ function PinnedNav({ path }: { path: string }) {
 }
 
 /**
- * The "admin is signed in here" indicator, with a way out.
+ * Ending the admin session, one click from any page.
  *
  * Shown only while a session is live, and only to the browser that holds it.
- * Deliberately quiet — a signed-in admin is the normal state on a hub someone
- * is configuring, not an alarm — but always present, so ending the session is
- * one click from any page rather than a trip back to the portal.
+ * Sits just above the Admin link as a quiet compact link rather than a badge —
+ * a signed-in admin on a hub someone is configuring is the normal state, not
+ * something to announce with a boxed indicator; the presence of the link is
+ * announcement enough.
  *
  * Sign-out goes through the shared context, so the sidebar, the route guards,
  * and the Overview default all fall back to viewer mode together, without a
  * reload.
  */
-function AdminSession() {
+function SidebarSignOut() {
   const { t } = useTranslation();
   const { signOut } = useAuth();
 
   return (
-    <div className="admin-session">
-      <span className="admin-session-badge">
-        <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
-        {t('admin.activeBadge')}
-      </span>
-      <button
-        type="button"
-        className="admin-signout"
-        onClick={() => void signOut()}
-      >
-        <LogOut size={13} strokeWidth={2} aria-hidden="true" />
-        {t('admin.signOut')}
-      </button>
-    </div>
+    <button type="button" className="nav-signout" onClick={() => void signOut()}>
+      <LogOut className="nav-icon" size={15} strokeWidth={1.75} aria-hidden="true" />
+      {t('admin.signOut')}
+    </button>
   );
 }
 
@@ -284,9 +274,9 @@ export function AppShell({
             way — but always in the same place. */}
         <div className="sidebar-spacer" />
 
-        {isAdmin && <AdminSession />}
-
         <nav className="nav nav-secondary" aria-label={t('nav.admin')}>
+          {isAdmin && <SidebarSignOut />}
+
           <Link
             to={ADMIN_NAV.to}
             className={`nav-item${isActive(ADMIN_NAV, path) ? ' is-active' : ''}`}

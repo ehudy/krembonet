@@ -2061,66 +2061,73 @@ td code {
   margin-bottom: 4px;
 }
 
-/* Admin session indicator ------------------------------------------------- */
+/* Sidebar sign-out -------------------------------------------------------- */
 
-/* Sits just above the Admin link. Quiet — a signed-in admin on a hub being
-   configured is the normal state, not an alert — but a hairline box marks it
-   as a distinct region rather than more nav. */
-.admin-session {
+/* A compact link sitting just above the Admin item, sharing its geometry so the
+   two icons line up in one column. Lighter than a nav item — smaller, fainter —
+   because ending the session is a deliberate but secondary action, not a
+   destination competing with the nav. */
+.nav-signout {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0 6px 8px;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
-}
-
-.admin-session-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-/* The one place a green is right: it reads as "a session is live", the same as
-   the status dot elsewhere. */
-.admin-session-badge svg {
-  color: var(--ok);
-}
-
-/* A quiet link, not a button-shaped control — ending the session is deliberate
-   but not a primary action competing with the nav for attention. */
-.admin-signout {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px 8px 24px;
   border: 0;
+  /* Square on the left, rounded on the right, exactly like a nav item, so it
+     sits flush in the same column. */
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   background: none;
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  color: var(--text-faint);
   font: inherit;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
   cursor: pointer;
   transition:
     background 0.15s,
     color 0.15s;
 }
 
-.admin-signout:hover {
-  background: var(--hover-surface);
+.nav-signout:hover {
+  background: var(--sidebar-active);
   color: var(--text);
 }
 
-.admin-signout:focus-visible {
+.nav-signout .nav-icon {
+  color: var(--text-faint);
+}
+
+.nav-signout:hover .nav-icon {
+  color: var(--text-muted);
+}
+
+.nav-signout:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: -2px;
+}
+
+/* Floor & Queue empty state ---------------------------------------------- */
+
+/* When nothing is pinned this is the whole page, so it is centred and given
+   room rather than left-aligned in a corner — a clean card that reads as an
+   invitation, not an error. */
+.floor-empty {
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  max-width: 440px;
+  margin: 48px auto;
+  padding: 40px 28px;
+}
+
+.floor-empty > svg {
+  color: var(--text-faint);
+}
+
+.floor-empty p {
+  margin: 0;
+  max-width: 36ch;
 }
 
 /* List controls ----------------------------------------------------------- */
