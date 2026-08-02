@@ -22,6 +22,7 @@ import {
 } from '../alerts/webhook-format.js';
 import { decryptSecret, encryptSecret } from '../crypto/secrets.js';
 import { db } from '../db/client.js';
+import { collectDiscoveredMediaCodes } from '../db/media-discovery.js';
 import { mediaTypes, webhooks } from '../db/schema.js';
 import {
   clearLoginFailures,
@@ -594,6 +595,20 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
     return { mediaTypes: rows };
   });
+
+  /**
+   * Codes the printers are actually reporting, mapped or not.
+   *
+   * A separate endpoint from the mapping table above because it answers a
+   * different question — "what is out there" rather than "what has been named" —
+   * and the two lists are shown side by side. Reads the poller's persisted media
+   * rows, so it reflects what is loaded now.
+   */
+  app.get(
+    '/api/admin/media-types/discovered',
+    { preHandler: requireAdmin },
+    async () => ({ discovered: collectDiscoveredMediaCodes() }),
+  );
 
   app.put<{ Params: { code: string }; Body: { friendlyName?: string } }>(
     '/api/admin/media-types/:code',

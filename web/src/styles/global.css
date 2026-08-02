@@ -2890,9 +2890,12 @@ td code {
   color: var(--accent);
 }
 
-.floor-pin {
-  color: var(--accent);
+/* The pin toggle sits in the card's top-right. Pulled out to the padding edge
+   so its 28px hit area does not push the title's baseline down, and nudged up
+   to line its centre up with the title rather than the title's cap height. */
+.floor-card-head .pin-button {
   flex-shrink: 0;
+  margin: -4px -4px 0 0;
 }
 
 .floor-location {
@@ -3029,4 +3032,42 @@ td code {
 
 .queue-depth {
   font-variant-numeric: tabular-nums;
+}
+
+/* Discovered paper codes -------------------------------------------------- */
+
+/* The inline map control: a name field and its confirm button reading as one
+   unit, sized to sit inside a table cell without stretching the row. */
+.map-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-form .cell-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.map-form .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* An unmapped row is the one an admin is here to act on, so its code is given
+   the weight the eye is looking for — just enough to find it in a long list,
+   not so much that a mapped fleet looks alarming. */
+.is-unmapped code {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* A code that already has a name: the name, then a quiet confirmation tag. */
+.mapped-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }

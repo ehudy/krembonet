@@ -16,9 +16,10 @@
  * That is bounded by the fact that pins are chosen by hand, and capped besides.
  */
 import { useCallback } from 'react';
-import { Layers, Printer, Star } from 'lucide-react';
+import { Layers, Printer } from 'lucide-react';
 
 import { api } from '../api.js';
+import { PinButton } from '../components/PinButton.js';
 import { usePinnedDevices } from '../hooks/usePinnedDevices.js';
 import { usePolled } from '../hooks/usePolled.js';
 import { useTranslation, type Translate } from '../i18n/i18n.js';
@@ -99,7 +100,13 @@ function PinnedCard({ slug }: { slug: string }) {
   if (data === null) {
     return (
       <section className="floor-card is-blocked">
-        <h3>{slug}</h3>
+        <header className="floor-card-head">
+          <h3>{slug}</h3>
+          {/* Still unpinnable even when the device will not answer — a printer
+              that has gone dark is exactly one someone wants off their board.
+              The slug stands in for the name the card never got to load. */}
+          <PinButton slug={slug} name={slug} />
+        </header>
         <p className="muted">{error ?? t('device.unreachablePill')}</p>
       </section>
     );
@@ -125,7 +132,10 @@ function PinnedCard({ slug }: { slug: string }) {
         <h3>
           <Link to={`/devices/${slug}`}>{data.displayName}</Link>
         </h3>
-        <Star className="floor-pin" size={14} strokeWidth={2} fill="currentColor" aria-hidden="true" />
+        {/* Clicking it unpins, which removes the card from the grid — the star
+            is filled here because everything on this grid is, by definition,
+            pinned. */}
+        <PinButton slug={slug} name={data.displayName} />
       </header>
 
       {data.location !== null && <p className="floor-location muted">{data.location}</p>}
@@ -202,6 +212,11 @@ function FleetList({
       <table className="data-table">
         <thead>
           <tr>
+            {/* No visible header: the column is a row of icon toggles, and any
+                word over them would be wider than the control itself. */}
+            <th scope="col" className="pin-column">
+              <span className="visually-hidden">{t('pins.column')}</span>
+            </th>
             <th scope="col">{t('floor.device')}</th>
             <th scope="col">{t('floor.state')}</th>
             <th scope="col">{t('floor.queue')}</th>
@@ -226,6 +241,9 @@ function FleetList({
 
             return (
               <tr key={device.slug}>
+                <td className="pin-column">
+                  <PinButton slug={device.slug} name={device.displayName} />
+                </td>
                 <td>
                   <Link to={`/devices/${device.slug}`} className="device-link">
                     <Printer size={15} strokeWidth={1.75} aria-hidden="true" />

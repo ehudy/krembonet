@@ -13,6 +13,7 @@ import type {
   AdminSettings,
   AlertLogRow,
   AlertStateRow,
+  DiscoveredMediaCode,
   HubBranding,
   MediaCatalogResponse,
   MediaType,
@@ -154,6 +155,13 @@ export const api = {
 
   listMediaTypes: (signal?: AbortSignal) =>
     request<{ mediaTypes: MediaType[] }>('/api/admin/media-types', { signal }),
+
+  /** Raw paper codes the printers are reporting, so unnamed ones can be found. */
+  discoveredMediaCodes: (signal?: AbortSignal) =>
+    request<{ discovered: DiscoveredMediaCode[] }>(
+      '/api/admin/media-types/discovered',
+      { signal },
+    ),
 
   saveMediaType: (code: string, friendlyName: string) =>
     request<{ ok: true }>(`/api/admin/media-types/${encodeURIComponent(code)}`, {

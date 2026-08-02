@@ -426,7 +426,18 @@
     "codePlaceholder": "com.ejemplo-015f",
     "namePlaceholder": "Papel mate premium",
     "fromDriver": "Del controlador",
-    "edited": "Editado"
+    "edited": "Editado",
+    "discoveredTitle": "Detectados en las impresoras",
+    "discoveredHint": "Códigos que tus impresoras están informando ahora mismo. Los que no tienen nombre aparecen primero: asígnale un nombre descriptivo a cada uno y aparecerá en todos los lugares donde estaba el código.",
+    "discoveredEmpty": "Todavía no se ha informado de ningún código de papel. Aparecen aquí en cuanto se consulta una impresora con soporte codificado cargado.",
+    "reportedBy": "Informado por",
+    "mapCode": "Asignar código",
+    "mapped": "Asignado",
+    "mapAria": "Nombre descriptivo para {{code}}",
+    "unmappedCount": {
+      "one": "{{count}} sin asignar",
+      "other": "{{count}} sin asignar"
+    }
   },
   "alerts": {
     "activeTitle": "Alertas activas",

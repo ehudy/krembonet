@@ -426,7 +426,18 @@
     "codePlaceholder": "com.example-015f",
     "namePlaceholder": "Premium Matte Paper",
     "fromDriver": "From driver",
-    "edited": "Edited"
+    "edited": "Edited",
+    "discoveredTitle": "Discovered from printers",
+    "discoveredHint": "Codes your printers are reporting right now. Unmapped ones are listed first — give each a friendly name and it appears everywhere the code did.",
+    "discoveredEmpty": "No paper codes have been reported yet. They appear here once a printer that loads coded media has been polled.",
+    "reportedBy": "Reported by",
+    "mapCode": "Map code",
+    "mapped": "Mapped",
+    "mapAria": "Friendly name for {{code}}",
+    "unmappedCount": {
+      "one": "{{count}} unmapped",
+      "other": "{{count}} unmapped"
+    }
   },
   "alerts": {
     "activeTitle": "Currently alerting",

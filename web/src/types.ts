@@ -312,6 +312,16 @@ export interface MediaType {
   updatedAt: string | number;
 }
 
+/** A raw paper code seen in a printer's telemetry, and whether it is named yet. */
+export interface DiscoveredMediaCode {
+  code: string;
+  /** Null when no operator has named this code yet. */
+  friendlyName: string | null;
+  isMapped: boolean;
+  /** Every device currently reporting the code. */
+  devices: { slug: string; displayName: string }[];
+}
+
 export interface AlertStateRow {
   ruleKey: string;
   isActive: boolean;
