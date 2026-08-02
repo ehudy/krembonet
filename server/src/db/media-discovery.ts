@@ -14,7 +14,7 @@
  * is by definition the current picture rather than a historical one — a roll
  * swapped out last week is not here, and a roll loaded this morning is.
  */
-import { eq, isNotNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 
 import { db } from './client.js';
 import { devices, mediaSources, mediaTypes } from './schema.js';
@@ -22,7 +22,15 @@ import { devices, mediaSources, mediaTypes } from './schema.js';
 /** One vendor code seen in telemetry, with where it was seen and its mapping. */
 export interface DiscoveredMediaCode {
   code: string;
-  /** The mapped name, or null when no operator has named this code yet. */
+  /**
+   * The *global* mapped name, or null when no global mapping names it.
+   *
+   * Global only, on purpose: this list answers "does the fleet have a name for
+   * this code", and a per-device override is a refinement of that answer shown
+   * in the Known Codes table, not a reason to call the code handled everywhere.
+   * A code left null here may still resolve on the client via the standard
+   * dictionary — that check is client-side, so the "unmapped" badge is too.
+   */
   friendlyName: string | null;
   /** Convenience mirror of `friendlyName !== null`, for the UI's filter. */
   isMapped: boolean;
@@ -50,8 +58,16 @@ export function collectDiscoveredMediaCodes(): DiscoveredMediaCode[] {
     .from(mediaSources)
     .innerJoin(devices, eq(mediaSources.deviceId, devices.id))
     // Left, not inner: an unmapped code has no row in media_types, and those
-    // are precisely the ones this list exists to surface.
-    .leftJoin(mediaTypes, eq(mediaSources.mediaTypeCode, mediaTypes.code))
+    // are precisely the ones this list exists to surface. Scoped to the global
+    // mapping (device_id IS NULL) so a per-device override does not leak in as
+    // this code's fleet-wide name.
+    .leftJoin(
+      mediaTypes,
+      and(
+        eq(mediaSources.mediaTypeCode, mediaTypes.code),
+        isNull(mediaTypes.deviceId),
+      ),
+    )
     .where(isNotNull(mediaSources.mediaTypeCode))
     .all();
 

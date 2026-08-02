@@ -199,20 +199,53 @@ export const mediaSources = sqliteTable(
  * Vendor media code to friendly name.
  *
  * Devices report codes like `com.canon-012f`, and neither IPP nor SNMP exposes
- * a human label (docs/canon-tz32000-field-notes.md §7). No codes ship with the
- * project — an optional media pack can supply them (see db/media-pack.ts).
- * Unknown codes fall back to showing the raw code and are correctable from the
- * admin portal.
+ * a human label (docs/canon-tz32000-field-notes.md §7). No vendor codes ship
+ * with the project — an optional media pack can supply them (see
+ * db/media-pack.ts), and the built-in standard dictionary (web's
+ * standardMedia.ts) already names the PWG/IPP keywords without a row here.
+ * Anything neither standard nor mapped falls back to the raw code and is
+ * correctable from the admin portal.
+ *
+ * A mapping is scoped by `deviceId`:
+ *  - null   — global, the name for this code on every device.
+ *  - set    — an override for one device, which wins over the global name.
+ *
+ * The code can therefore repeat across rows (one global, one per overriding
+ * device), so it can no longer be the primary key; an `id` carries that and two
+ * partial unique indexes keep each scope singular. They are partial because
+ * SQLite treats NULLs as *distinct* in a plain unique index, which would let two
+ * global rows claim the same code — the one thing the constraint has to stop.
  */
-export const mediaTypes = sqliteTable('media_types', {
-  code: text('code').primaryKey(),
-  friendlyName: text('friendly_name').notNull(),
-  /** Free-form vendor tag for grouping. Null when the source did not say. */
-  vendor: text('vendor'),
-  /** False once an operator edits it, so re-seeding never clobbers their fix. */
-  isSeeded: integer('is_seeded', { mode: 'boolean' }).notNull().default(true),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now),
-});
+export const mediaTypes = sqliteTable(
+  'media_types',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /**
+     * The device this override applies to, or null for the global mapping.
+     * Cascades: a device's overrides are meaningless once it is gone.
+     */
+    deviceId: integer('device_id').references(() => devices.id, {
+      onDelete: 'cascade',
+    }),
+    code: text('code').notNull(),
+    friendlyName: text('friendly_name').notNull(),
+    /** Free-form vendor tag for grouping. Null when the source did not say. */
+    vendor: text('vendor'),
+    /** False once an operator edits it, so re-seeding never clobbers their fix. */
+    isSeeded: integer('is_seeded', { mode: 'boolean' }).notNull().default(true),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now),
+  },
+  (table) => [
+    // One global name per code.
+    uniqueIndex('media_types_global_code_idx')
+      .on(table.code)
+      .where(sql`${table.deviceId} is null`),
+    // One override per (device, code).
+    uniqueIndex('media_types_device_code_idx')
+      .on(table.deviceId, table.code)
+      .where(sql`${table.deviceId} is not null`),
+  ],
+);
 
 /**
  * Print queue. Retains jobs after they leave the device's own queue so the

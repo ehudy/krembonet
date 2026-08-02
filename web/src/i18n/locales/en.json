@@ -437,7 +437,11 @@
     "unmappedCount": {
       "one": "{{count}} unmapped",
       "other": "{{count}} unmapped"
-    }
+    },
+    "appliesTo": "Applies to",
+    "scopeGlobal": "Global",
+    "scopeGlobalOption": "All printers (global)",
+    "standard": "Standard"
   },
   "alerts": {
     "activeTitle": "Currently alerting",
@@ -610,5 +614,30 @@
       "one": "{{count}} more pinned printer is in the list below.",
       "other": "{{count}} more pinned printers are in the list below."
     }
+  },
+  "standardMedia": {
+    "plain": "Plain Paper",
+    "letterhead": "Letterhead",
+    "preprinted": "Preprinted",
+    "prepunched": "Pre-punched",
+    "bond": "Bond Paper",
+    "inkjet": "Inkjet Paper",
+    "photo": "Photo Paper",
+    "glossy": "Glossy Photo Paper",
+    "highGloss": "High-Gloss Photo Paper",
+    "matte": "Matte Photo Paper",
+    "satin": "Satin Photo Paper",
+    "semiGloss": "Semi-Gloss Photo Paper",
+    "film": "Photographic Film",
+    "heavyweight": "Heavyweight Paper",
+    "lightweight": "Lightweight Paper",
+    "cardstock": "Cardstock",
+    "envelope": "Envelope",
+    "windowEnvelope": "Window Envelope",
+    "transparency": "Transparency",
+    "labels": "Labels",
+    "tabStock": "Tab Stock",
+    "continuous": "Continuous",
+    "disc": "Disc"
   }
 }

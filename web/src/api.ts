@@ -163,14 +163,19 @@ export const api = {
       { signal },
     ),
 
-  saveMediaType: (code: string, friendlyName: string) =>
+  /**
+   * Names a code. `deviceId` scopes it: null (or omitted) is the global name,
+   * a device id is an override that wins for that device only.
+   */
+  saveMediaType: (code: string, friendlyName: string, deviceId: number | null = null) =>
     request<{ ok: true }>(`/api/admin/media-types/${encodeURIComponent(code)}`, {
       method: 'PUT',
-      body: JSON.stringify({ friendlyName }),
+      body: JSON.stringify({ friendlyName, deviceId }),
     }),
 
-  deleteMediaType: (code: string) =>
-    request<{ ok: true }>(`/api/admin/media-types/${encodeURIComponent(code)}`, {
+  /** Deletes one mapping by its row id — a code can name several scopes at once. */
+  deleteMediaType: (id: number) =>
+    request<{ ok: true }>(`/api/admin/media-types/${id}`, {
       method: 'DELETE',
     }),
 

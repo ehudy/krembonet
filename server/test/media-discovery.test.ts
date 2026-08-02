@@ -85,6 +85,22 @@ describe('collectDiscoveredMediaCodes', () => {
     assert.equal(entry?.friendlyName, 'Premium Matte');
   });
 
+  it('reports the global name, not a per-device override', () => {
+    reset();
+    const id = addDevice('plotter', 'Studio Plotter');
+    addSource(id, 'roll-1', 'com.canon-012f');
+    // Only a device-specific override exists — no global row. The discovered
+    // list answers "does the fleet have a name for this", so this stays
+    // unmapped; the override is a refinement shown in the Known Codes table.
+    db.insert(mediaTypes)
+      .values({ deviceId: id, code: 'com.canon-012f', friendlyName: 'Plotter Only' })
+      .run();
+
+    const [entry] = collectDiscoveredMediaCodes();
+    assert.equal(entry?.isMapped, false);
+    assert.equal(entry?.friendlyName, null);
+  });
+
   it('lists unmapped codes before mapped ones', () => {
     reset();
     const id = addDevice('plotter', 'Studio Plotter');

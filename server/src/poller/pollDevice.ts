@@ -15,7 +15,7 @@ import { and, eq, inArray, isNull, not } from 'drizzle-orm';
 
 import { db } from '../db/client.js';
 import { levelFromColumns, levelsDiffer, levelToColumns } from '../db/levels.js';
-import { getMediaTypeNames } from '../db/seed.js';
+import { buildMediaResolver } from '../db/media-resolve.js';
 import {
   devices,
   deviceStatus,
@@ -124,17 +124,19 @@ function parseConfigFor(device: DeviceRow): { adapterId: string; config: never }
   return { adapterId: adapter.id, config: adapter.parseConfig(raw) };
 }
 
-function resolveMedia(sources: MediaSource[]): ResolvedMediaSource[] {
-  const names = getMediaTypeNames();
+function resolveMedia(sources: MediaSource[], deviceId: number): ResolvedMediaSource[] {
+  const resolver = buildMediaResolver(deviceId);
 
   return sortMediaBySlot(
     sources.map((source) => ({
       ...source,
-      // Deliberately null rather than a guess when the code is unknown — the
-      // UI shows the raw code so an operator can name it, instead of a
-      // plausible fiction someone might plot on.
+      // Device override, then global. Null when neither names the code: the
+      // client then tries the standard dictionary, and failing that shows the
+      // raw code rather than a plausible fiction someone might plot on.
       mediaTypeName:
-        source.mediaTypeCode === null ? null : (names.get(source.mediaTypeCode) ?? null),
+        source.mediaTypeCode === null
+          ? null
+          : resolver.resolve(source.mediaTypeCode),
     })),
   );
 }
@@ -380,7 +382,7 @@ async function readSections(
         state: reading.state,
         stateReasons: reading.stateReasons,
         ...(reading.supplies === undefined ? {} : { supplies: reading.supplies }),
-        ...(reading.media === undefined ? {} : { media: resolveMedia(reading.media) }),
+        ...(reading.media === undefined ? {} : { media: resolveMedia(reading.media, device.id) }),
         ...(reading.jobs === undefined ? {} : { jobs: reading.jobs }),
         isOnline: true,
         lastError: null,
@@ -567,6 +569,7 @@ export function hydrateDeviceView(device: DeviceRow): DeviceView {
         lengthRemainingMm: row.lengthRemainingMm,
         level: levelFromColumns(row),
       })),
+      device.id,
     ),
     jobs: jobRows.map((row) => ({
       jobId: row.jobId,

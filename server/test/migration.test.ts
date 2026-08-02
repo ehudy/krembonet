@@ -81,6 +81,10 @@ function seededLegacyDb(): Database.Database {
 
     INSERT INTO alert_logs (id, rule_key, printer_id, subject, recipients, status)
     VALUES (1, 'printer:plotter:supply:MBK:low', 1, 'Matte Black needs attention', 'it@example.com', 'sent');
+
+    INSERT INTO media_types (code, friendly_name, vendor, is_seeded)
+    VALUES ('com.canon-012f', 'Premium Matte Paper', 'canon', 1),
+           ('stationery', 'Plain Paper', NULL, 0);
   `);
 
   return db;
@@ -176,6 +180,32 @@ describe('migrating a populated pre-M1 database', () => {
 
   it('leaves no dangling foreign keys', () => {
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  });
+
+  it('preserves media mappings as global entries under the new surrogate key', () => {
+    // The 0005 recreate moved this table off a `code` primary key. Existing
+    // rows have to survive as global mappings (device_id NULL) with the names
+    // and is_seeded flags they had, or a re-seed would clobber an operator's
+    // edits and every named roll would revert to a raw code.
+    assert.deepEqual(
+      all(
+        'SELECT device_id, code, friendly_name, is_seeded FROM media_types ORDER BY code',
+      ),
+      [
+        {
+          device_id: null,
+          code: 'com.canon-012f',
+          friendly_name: 'Premium Matte Paper',
+          is_seeded: 1,
+        },
+        { device_id: null, code: 'stationery', friendly_name: 'Plain Paper', is_seeded: 0 },
+      ],
+    );
+    // Each got a real surrogate id rather than a null or a collision.
+    assert.equal(
+      one<{ c: number }>('SELECT count(DISTINCT id) c FROM media_types').c,
+      2,
+    );
   });
 
   it('cascades cleanly, proving the rewritten keys are real constraints', () => {

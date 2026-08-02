@@ -4,7 +4,7 @@
  * Everything under /api/admin (except the login/session endpoints) is behind
  * `requireAdmin`.
  */
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 
 import { activeAlerts, recentAlertLogs } from '../alerts/engine.js';
@@ -23,7 +23,7 @@ import {
 import { decryptSecret, encryptSecret } from '../crypto/secrets.js';
 import { db } from '../db/client.js';
 import { collectDiscoveredMediaCodes } from '../db/media-discovery.js';
-import { mediaTypes, webhooks } from '../db/schema.js';
+import { devices, mediaTypes, webhooks } from '../db/schema.js';
 import {
   clearLoginFailures,
   clearSession,
@@ -591,7 +591,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // --- paper type mapping ----------------------------------------------
 
   app.get('/api/admin/media-types', { preHandler: requireAdmin }, async () => {
-    const rows = db.select().from(mediaTypes).orderBy(mediaTypes.code).all();
+    // Code, then scope: SQLite sorts NULL first, so the global row for a code
+    // lands above its per-device overrides, which is how the table reads best.
+    const rows = db
+      .select()
+      .from(mediaTypes)
+      .orderBy(mediaTypes.code, mediaTypes.deviceId)
+      .all();
 
     return { mediaTypes: rows };
   });
@@ -610,7 +616,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     async () => ({ discovered: collectDiscoveredMediaCodes() }),
   );
 
-  app.put<{ Params: { code: string }; Body: { friendlyName?: string } }>(
+  app.put<{
+    Params: { code: string };
+    Body: { friendlyName?: string; deviceId?: number | null };
+  }>(
     '/api/admin/media-types/:code',
     { preHandler: requireAdmin },
     async (request, reply) => {
@@ -622,32 +631,78 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: 'A friendly name is required.' });
       }
 
-      db.insert(mediaTypes)
-        .values({
-          code,
-          friendlyName,
-          // Left null: a name typed by an operator carries no vendor claim.
-          vendor: null,
-          // Marks the row operator-owned so re-seeding from a media pack
-          // never overwrites a correction someone made by hand.
-          isSeeded: false,
-          updatedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: mediaTypes.code,
-          set: { friendlyName, isSeeded: false, updatedAt: new Date() },
-        })
-        .run();
+      // Scope: absent or null is the global mapping; a number scopes it to one
+      // device, which must exist — a mapping pointing at no device would be a
+      // row nobody can ever reach or clean up.
+      const rawDeviceId = request.body?.deviceId;
+      let deviceId: number | null = null;
+      if (rawDeviceId !== undefined && rawDeviceId !== null) {
+        if (typeof rawDeviceId !== 'number' || !Number.isInteger(rawDeviceId)) {
+          return reply
+            .code(400)
+            .send({ error: 'deviceId must be a device id or null.' });
+        }
+        const exists = db
+          .select({ id: devices.id })
+          .from(devices)
+          .where(eq(devices.id, rawDeviceId))
+          .all()[0];
+        if (exists === undefined) {
+          return reply.code(400).send({ error: 'No such device.' });
+        }
+        deviceId = rawDeviceId;
+      }
 
-      return { ok: true, code, friendlyName };
+      // Upsert within the scope by hand rather than ON CONFLICT: the uniqueness
+      // that identifies "the same mapping" is partial (global vs per-device),
+      // and select-then-write is clearer than steering drizzle at a partial
+      // index — this is a rare admin action, not a hot path.
+      const scope =
+        deviceId === null
+          ? isNull(mediaTypes.deviceId)
+          : eq(mediaTypes.deviceId, deviceId);
+      const existing = db
+        .select({ id: mediaTypes.id })
+        .from(mediaTypes)
+        .where(and(eq(mediaTypes.code, code), scope))
+        .all()[0];
+
+      if (existing === undefined) {
+        db.insert(mediaTypes)
+          .values({
+            deviceId,
+            code,
+            friendlyName,
+            // Left null: a name typed by an operator carries no vendor claim.
+            vendor: null,
+            // Marks the row operator-owned so re-seeding from a media pack
+            // never overwrites a correction someone made by hand.
+            isSeeded: false,
+            updatedAt: new Date(),
+          })
+          .run();
+      } else {
+        db.update(mediaTypes)
+          .set({ friendlyName, isSeeded: false, updatedAt: new Date() })
+          .where(eq(mediaTypes.id, existing.id))
+          .run();
+      }
+
+      return { ok: true, code, friendlyName, deviceId };
     },
   );
 
-  app.delete<{ Params: { code: string } }>(
-    '/api/admin/media-types/:code',
+  app.delete<{ Params: { id: string } }>(
+    '/api/admin/media-types/:id',
     { preHandler: requireAdmin },
     async (request) => {
-      db.delete(mediaTypes).where(eq(mediaTypes.code, request.params.code)).run();
+      // By surrogate id now, not code: a code can name a global row and several
+      // per-device overrides at once, and deleting "the mapping for a code"
+      // would be ambiguous about which scope it meant.
+      const id = Number.parseInt(request.params.id, 10);
+      if (Number.isFinite(id)) {
+        db.delete(mediaTypes).where(eq(mediaTypes.id, id)).run();
+      }
       return { ok: true };
     },
   );

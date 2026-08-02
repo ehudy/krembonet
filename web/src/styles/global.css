@@ -3057,6 +3057,26 @@ td code {
   flex-shrink: 0;
 }
 
+/* The scope picker, matched to the text inputs beside it so a row of controls
+   reads as one. Sized to its content and allowed to shrink, since the device
+   names it holds vary in length. */
+.scope-select {
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+  flex-shrink: 0;
+  max-width: 180px;
+}
+
+.map-form .scope-select {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
 /* An unmapped row is the one an admin is here to act on, so its code is given
    the weight the eye is looking for — just enough to find it in a long list,
    not so much that a mapped fleet looks alarming. */

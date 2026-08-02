@@ -437,7 +437,11 @@
     "unmappedCount": {
       "one": "{{count}} sin asignar",
       "other": "{{count}} sin asignar"
-    }
+    },
+    "appliesTo": "Se aplica a",
+    "scopeGlobal": "Global",
+    "scopeGlobalOption": "Todas las impresoras (global)",
+    "standard": "Estándar"
   },
   "alerts": {
     "activeTitle": "Alertas activas",
@@ -610,5 +614,30 @@
       "one": "Hay {{count}} impresora fijada más en la lista de abajo.",
       "other": "Hay {{count}} impresoras fijadas más en la lista de abajo."
     }
+  },
+  "standardMedia": {
+    "plain": "Papel normal",
+    "letterhead": "Membrete",
+    "preprinted": "Preimpreso",
+    "prepunched": "Preperforado",
+    "bond": "Papel bond",
+    "inkjet": "Papel para inyección de tinta",
+    "photo": "Papel fotográfico",
+    "glossy": "Papel fotográfico brillante",
+    "highGloss": "Papel fotográfico alto brillo",
+    "matte": "Papel fotográfico mate",
+    "satin": "Papel fotográfico satinado",
+    "semiGloss": "Papel fotográfico semibrillante",
+    "film": "Película fotográfica",
+    "heavyweight": "Papel de gramaje alto",
+    "lightweight": "Papel de gramaje bajo",
+    "cardstock": "Cartulina",
+    "envelope": "Sobre",
+    "windowEnvelope": "Sobre con ventana",
+    "transparency": "Transparencia",
+    "labels": "Etiquetas",
+    "tabStock": "Papel con pestañas",
+    "continuous": "Papel continuo",
+    "disc": "Disco"
   }
 }

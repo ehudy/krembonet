@@ -24,6 +24,7 @@ import { usePinnedDevices } from '../hooks/usePinnedDevices.js';
 import { usePolled } from '../hooks/usePolled.js';
 import { useTranslation, type Translate } from '../i18n/i18n.js';
 import { relativeTime } from '../lib/format.js';
+import { resolveMediaLabel } from '../lib/mediaLabel.js';
 import { queueStatus, type QueueStatus } from '../lib/queueStatus.js';
 import { fillColor } from '../lib/supplyColor.js';
 import { Link } from '../router.js';
@@ -60,9 +61,10 @@ function paperSummary(media: readonly MediaSource[], t: Translate): string | nul
 
   return loaded
     .map((source) => {
-      // The friendly name when there is one, the raw code when there is not.
-      // Never a guess: someone will plot a job on whatever this says.
-      const name = source.mediaTypeName ?? source.mediaTypeCode;
+      // Resolved through all four tiers; the raw code only when nothing names
+      // it. Never a guess — someone will plot a job on whatever this says.
+      const label = resolveMediaLabel(source, t);
+      const name = label.name ?? label.code;
       const width =
         source.widthInches === null
           ? null

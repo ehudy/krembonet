@@ -305,6 +305,9 @@ export interface Webhook {
 }
 
 export interface MediaType {
+  id: number;
+  /** Null for a global mapping; a device id for a per-device override. */
+  deviceId: number | null;
   code: string;
   friendlyName: string;
   vendor: string | null;

@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 
 import { config } from '../config.js';
 import { db } from './client.js';
@@ -67,31 +67,34 @@ export function seedDatabase(): void {
       .run();
 
     for (const entry of pack) {
-      tx.insert(mediaTypes)
-        .values({
-          code: entry.code,
-          friendlyName: entry.friendlyName,
-          vendor: entry.vendor ?? null,
-          isSeeded: true,
-        })
-        .onConflictDoUpdate({
-          target: mediaTypes.code,
-          set: { friendlyName: entry.friendlyName, updatedAt: new Date() },
-          where: eq(mediaTypes.isSeeded, true),
-        })
-        .run();
+      // A pack is always global. Written by hand rather than ON CONFLICT because
+      // the global-code uniqueness is a partial index (device_id IS NULL), and
+      // the refresh has to skip rows an operator has edited so a redeploy never
+      // reverts their correction.
+      const existing = tx
+        .select({ id: mediaTypes.id, isSeeded: mediaTypes.isSeeded })
+        .from(mediaTypes)
+        .where(and(eq(mediaTypes.code, entry.code), isNull(mediaTypes.deviceId)))
+        .all()[0];
+
+      if (existing === undefined) {
+        tx.insert(mediaTypes)
+          .values({
+            deviceId: null,
+            code: entry.code,
+            friendlyName: entry.friendlyName,
+            vendor: entry.vendor ?? null,
+            isSeeded: true,
+          })
+          .run();
+      } else if (existing.isSeeded) {
+        tx.update(mediaTypes)
+          .set({ friendlyName: entry.friendlyName, updatedAt: new Date() })
+          .where(eq(mediaTypes.id, existing.id))
+          .run();
+      }
     }
   });
-}
-
-/** Resolves vendor media codes to friendly names. */
-export function getMediaTypeNames(): Map<string, string> {
-  const rows = db
-    .select({ code: mediaTypes.code, friendlyName: mediaTypes.friendlyName })
-    .from(mediaTypes)
-    .all();
-
-  return new Map(rows.map((row) => [row.code, row.friendlyName]));
 }
 
 export function countMediaTypes(): number {

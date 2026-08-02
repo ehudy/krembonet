@@ -18,6 +18,7 @@ import { api } from '../api.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { usePolled } from '../hooks/usePolled.js';
 import { useTranslation, type Translate } from '../i18n/i18n.js';
+import { resolveMediaLabel, type MediaLabel } from '../lib/mediaLabel.js';
 import { Link } from '../router.js';
 import type { FleetMediaDevice, MediaSource } from '../types.js';
 
@@ -35,14 +36,15 @@ interface Loaded {
 /**
  * How a media source is identified when grouping.
  *
- * The friendly name when there is one, the raw code when there is not, and a
- * width-only bucket for devices that report a size but no code at all — which
- * is common enough over SNMP to deserve its own group rather than being lumped
- * in with "unknown".
+ * The resolved name when there is one — which now includes standard keywords,
+ * so every printer loading `stationery` groups under one "Plain Paper" rather
+ * than scattering by raw code — then the raw code for a genuinely unknown one,
+ * then a width-only bucket for a source that reports a size but no code, common
+ * enough over SNMP to deserve its own group rather than "unknown".
  */
-function stockKey(source: MediaSource): string {
-  if (source.mediaTypeName !== null) return source.mediaTypeName;
-  if (source.mediaTypeCode !== null) return source.mediaTypeCode;
+function stockKey(label: MediaLabel, source: MediaSource): string {
+  if (label.name !== null) return label.name;
+  if (label.code !== null) return label.code;
   return source.widthInches === null ? '' : `${source.widthInches}`;
 }
 
@@ -70,18 +72,21 @@ function flattenLoaded(devices: readonly FleetMediaDevice[]): Loaded[] {
 }
 
 /** Groups loaded media by what it is, commonest stock first. */
-function groupByStock(loaded: readonly Loaded[]): StockGroup[] {
+function groupByStock(loaded: readonly Loaded[], t: Translate): StockGroup[] {
   const groups = new Map<string, StockGroup>();
 
   for (const entry of loaded) {
-    const key = stockKey(entry.source);
+    const label = resolveMediaLabel(entry.source, t);
+    const key = stockKey(label, entry.source);
     const existing = groups.get(key);
 
     if (existing === undefined) {
       groups.set(key, {
         key,
-        name: entry.source.mediaTypeName,
-        code: entry.source.mediaTypeName === null ? entry.source.mediaTypeCode : null,
+        name: label.name,
+        // Only a genuinely unmapped code is carried as a code to flag; a
+        // standard keyword resolved to a name, so it is named, not flagged.
+        code: label.isUnmapped ? label.code : null,
         widths: entry.source.widthInches === null ? [] : [entry.source.widthInches],
         entries: [entry],
       });
@@ -135,7 +140,9 @@ export function Media() {
 
   const devices = useMemo(() => data?.devices ?? [], [data]);
   const loaded = useMemo(() => flattenLoaded(devices), [devices]);
-  const stock = useMemo(() => groupByStock(loaded), [loaded]);
+  // `t` is a dep because the grouping now resolves standard names, which are
+  // localised — the groups re-form when the language changes.
+  const stock = useMemo(() => groupByStock(loaded, t), [loaded, t]);
 
   const reporting = devices.filter((device) => device.media.length > 0);
   const emptySlots = devices.reduce(
@@ -268,17 +275,22 @@ export function Media() {
                 )}
               </div>
 
-              {device.media.map((source) =>
-                source.isLoaded ? (
+              {device.media.map((source) => {
+                if (!source.isLoaded) {
+                  return <EmptySlot key={source.key} source={source} />;
+                }
+
+                const label = resolveMediaLabel(source, t);
+                return (
                   <div key={source.key} className="paper-row">
                     <div className="paper-icon" aria-hidden="true" />
                     <div className="paper-details">
                       <strong>{source.label}</strong>
-                      {source.mediaTypeName !== null ? (
-                        <span>{source.mediaTypeName}</span>
-                      ) : source.mediaTypeCode !== null ? (
+                      {label.name !== null ? (
+                        <span>{label.name}</span>
+                      ) : label.isUnmapped ? (
                         <span className="paper-unknown" title={t('media.unknownCode')}>
-                          <code>{source.mediaTypeCode}</code>
+                          <code>{label.code}</code>
                         </span>
                       ) : (
                         <span className="muted">{t('media.loaded')}</span>
@@ -288,10 +300,8 @@ export function Media() {
                       )}
                     </div>
                   </div>
-                ) : (
-                  <EmptySlot key={source.key} source={source} />
-                ),
-              )}
+                );
+              })}
             </section>
           ))}
         </div>
