@@ -225,6 +225,80 @@
   color: var(--text);
 }
 
+/* Custom checkbox --------------------------------------------------------- */
+
+/* The native checkbox is the one control `accent-color` cannot fully tame — its
+   box, corners, and check are the platform's, so it looks pasted on next to the
+   custom inputs around it. Drawn here instead: a rounded box that fills with the
+   brand amber and shows a white tick when checked. The tick is an embedded SVG
+   rather than a glyph so it stays crisp at any zoom and needs no icon font. */
+input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background-color: var(--surface);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+input[type='checkbox']:checked {
+  background-color: var(--accent);
+  border-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 0.8rem;
+}
+
+input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input[type='checkbox']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Custom select ----------------------------------------------------------- */
+
+/* Native selects carry the OS's own dropdown chrome, which looks nothing like
+   the text inputs beside them. Reset to a text-input shell with a chevron drawn
+   in `--text-muted` — the one colour identical in both themes, so a single
+   embedded SVG reads on the light surface and the dark one alike. The option
+   list itself is left to the platform, where `color-scheme` keeps it legible in
+   either theme. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 9px 2rem 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  background-color: var(--surface);
+  color: var(--text);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: calc(100% - 0.6rem) center;
+  background-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -1082,8 +1156,14 @@ td code {
   border-radius: 0 0 var(--radius) var(--radius);
 }
 
+/* Right-aligned in a row with a gap, so a cell with two buttons — Edit and
+   Delete — does not run them together. Flex rather than text-align so the gap
+   is real spacing between the controls, not just their inline whitespace. */
 .row-actions {
-  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
   white-space: nowrap;
 }
 
@@ -1194,9 +1274,10 @@ td code {
 }
 
 .field-check input {
-  margin-top: 2px;
-  width: 16px;
-  height: 16px;
+  /* Size and appearance come from the global checkbox rule; here only the
+     top nudge that lines the box up with the first line of the label text,
+     and the guard against a flex row squashing it. */
+  margin-top: 1px;
   flex-shrink: 0;
 }
 
@@ -1299,23 +1380,10 @@ td code {
   margin-bottom: 18px;
 }
 
-/* Select, matching the text inputs ---------------------------------------- */
-
+/* The base look — reset, chevron, focus — comes from the global `select` rule;
+   inside a field it only needs to fill the column. */
 .field select {
-  padding: 9px 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 13px;
-  background: var(--surface);
-  color: var(--text);
   width: 100%;
-}
-
-.field select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-  border-color: var(--accent);
 }
 
 .field-required {
@@ -1624,17 +1692,6 @@ td code {
   margin-bottom: 18px;
 }
 
-.field select {
-  padding: 9px 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 13px;
-  background: var(--surface);
-  color: var(--text);
-  width: 100%;
-}
-
 .code-area {
   padding: 10px 11px;
   border: 1px solid var(--border);
@@ -1648,8 +1705,7 @@ td code {
   resize: vertical;
 }
 
-.code-area:focus-visible,
-.field select:focus-visible {
+.code-area:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
   border-color: var(--accent);
@@ -1697,6 +1753,7 @@ td code {
 /* Painted with the sidebar's own background: a logo designed for a dark strip
    looks fine on a card and wrong where it will actually live. */
 .logo-preview-frame {
+  position: relative;
   background: var(--sidebar-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1705,6 +1762,43 @@ td code {
   align-items: center;
   min-width: 120px;
   min-height: 48px;
+}
+
+/* A small circle overhanging the top-right corner of the preview, the way a
+   removable chip or avatar carries its delete affordance — on the thing itself,
+   not off in the form. Neutral until hovered, then it takes the danger colour
+   so the destructive intent is unmistakable the moment before the click. */
+.logo-preview-remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: var(--card-shadow);
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.logo-preview-remove:hover {
+  background: var(--error-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.logo-preview-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .logo-preview-frame img {
@@ -3126,17 +3220,14 @@ td code {
   flex-shrink: 0;
 }
 
-/* The scope picker, matched to the text inputs beside it so a row of controls
-   reads as one. Sized to its content and allowed to shrink, since the device
-   names it holds vary in length. */
+/* The scope picker inherits the global select shell — reset, chevron, border —
+   and only trims the vertical padding to sit compactly in a row of controls,
+   caps its width since the device names it holds vary in length, and keeps the
+   right room the chevron needs. Padding is longhand, not the `padding`
+   shorthand, so it does not wipe the chevron's right gutter. */
 .scope-select {
-  padding: 6px 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 13px;
-  background: var(--surface);
-  color: var(--text);
+  padding-block: 6px;
+  padding-left: 9px;
   flex-shrink: 0;
   max-width: 180px;
 }

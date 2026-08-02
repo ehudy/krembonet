@@ -7,6 +7,7 @@
  * credential they may not have.
  */
 import { useEffect, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { LogoPicker } from '../../components/LogoPicker.js';
@@ -223,6 +224,19 @@ export function AdminSettings() {
                 previewed is what will actually be seen. */}
             <div className="logo-preview-frame">
               <img src={draft.logoUrl} alt="Logo preview" />
+              {/* The same clear as the input row's button — a second reach for
+                  it, right on the thing being removed, so an operator does not
+                  have to hunt back up to the field to undo a logo they just
+                  saw was wrong. */}
+              <button
+                type="button"
+                className="logo-preview-remove"
+                aria-label={t('settings.logoRemove')}
+                title={t('settings.logoRemove')}
+                onClick={() => update('logoUrl', '')}
+              >
+                <X size={13} strokeWidth={2.5} aria-hidden="true" />
+              </button>
             </div>
           </div>
         )}
