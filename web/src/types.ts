@@ -158,6 +158,60 @@ export interface DeviceListResponse {
   devices: DeviceSummary[];
 }
 
+// --- fleet-wide views -----------------------------------------------------
+
+/** Fields every fleet response repeats, so a row can name its device. */
+export interface FleetDeviceRef {
+  slug: string;
+  displayName: string;
+  location: string | null;
+  model: string | null;
+  host: string;
+  isOnline: boolean;
+  lastSuccessAt: string | null;
+}
+
+export interface FleetSupplyDevice extends FleetDeviceRef {
+  /** Empty for a device that has never been polled, and for one with no supplies. */
+  supplies: Supply[];
+}
+
+export interface SupplyMatrixResponse {
+  devices: FleetSupplyDevice[];
+}
+
+export interface FleetMediaDevice extends FleetDeviceRef {
+  media: MediaSource[];
+}
+
+export interface MediaCatalogResponse {
+  devices: FleetMediaDevice[];
+}
+
+/**
+ * What happened, as opposed to who was told about it.
+ *
+ * `offline` and `recovered` are the two edges of one condition rather than one
+ * category reported twice — a timeline needs to distinguish them.
+ */
+export type ActivityEventType = 'offline' | 'recovered' | 'supply_low' | 'media_error';
+
+export interface ActivityEvent {
+  id: number;
+  deviceId: number | null;
+  /** Null once the device is deleted; the event still names it. */
+  deviceSlug: string | null;
+  /** The device's name at the time, which is what makes an old row meaningful. */
+  deviceName: string;
+  type: ActivityEventType;
+  message: string;
+  createdAt: string;
+}
+
+export interface ActivityResponse {
+  events: ActivityEvent[];
+}
+
 export type AccessMode = 'public' | 'passcode' | 'admin_only';
 
 export type ThemeName = 'system' | 'dark' | 'light' | 'kiosk';

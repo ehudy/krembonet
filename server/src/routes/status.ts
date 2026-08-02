@@ -7,6 +7,11 @@
  */
 import type { FastifyInstance } from 'fastify';
 
+import {
+  isActivityEventType,
+  listActivity,
+  type ActivityEventType,
+} from '../activity/store.js';
 import { listAlertRules } from '../alerts/store.js';
 import { evaluateSupplies } from '../alerts/rules.js';
 import { requireViewer } from '../auth/session.js';
@@ -29,26 +34,32 @@ import {
 } from '../poller/pollDevice.js';
 import { getSettings } from '../settings/settings.js';
 
-function decorate(view: DeviceView, deviceId: number) {
-  // Evaluated once, here, using the same rules the alert engine uses. The panel
-  // used to hardcode its own 15%/85% constants, which meant the bar could turn
-  // red at a level that sent no mail, or stay calm at one that did.
+/**
+ * Supplies with the two derived fields the browser must never compute itself.
+ *
+ * `percent` collapses the level union to one comparable number, and `breached`
+ * comes from the same rules the alert engine uses. The ink panel used to
+ * hardcode its own 15%/85% constants, which meant a bar could turn red at a
+ * level that sent no mail, or stay calm at one that did.
+ */
+function decorateSupplies(view: DeviceView, deviceId: number) {
   const breached = new Set(
     evaluateSupplies(view.slug, deviceId, view.supplies, listAlertRules())
       .filter((condition) => condition.breached)
       .map((condition) => condition.supply.name),
   );
 
+  return view.supplies.map((supply) => ({
+    ...supply,
+    percent: levelToPercent(supply.level),
+    breached: breached.has(supply.name),
+  }));
+}
+
+function decorate(view: DeviceView, deviceId: number) {
   return {
     ...view,
-    // Levels are a union, so the browser gets the comparable number alongside
-    // it rather than re-implementing the conversion — that duplication is
-    // exactly what let thresholds drift before.
-    supplies: view.supplies.map((supply) => ({
-      ...supply,
-      percent: levelToPercent(supply.level),
-      breached: breached.has(supply.name),
-    })),
+    supplies: decorateSupplies(view, deviceId),
     suppliesAgeSeconds: Math.round(ageMs(view.suppliesUpdatedAt) / 1000),
     jobsAgeSeconds: Math.round(ageMs(view.jobsUpdatedAt) / 1000),
     servedAt: new Date().toISOString(),
@@ -220,6 +231,82 @@ export async function statusRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(404).send({ error: `Unknown device: ${request.params.slug}` });
       }
       return { jobs: view.jobs, jobsUpdatedAt: view.jobsUpdatedAt };
+    },
+  );
+
+  /**
+   * Every supply on every device, in one response.
+   *
+   * Serves both the fleet re-order matrix and the Overview's critical-supplies
+   * widget. Built from the cache rather than by refreshing, for the same reason
+   * `/api/devices` is: a page showing thirty printers must not become thirty
+   * device queries, and supplies move over days.
+   */
+  app.get('/api/supplies', async () => {
+    return {
+      devices: listEnabledDevices().map((device) => {
+        const view = getDeviceView(device.slug);
+
+        return {
+          slug: device.slug,
+          displayName: device.displayName,
+          location: device.location,
+          model: device.model,
+          host: device.host,
+          isOnline: view?.isOnline ?? false,
+          lastSuccessAt: view?.lastSuccessAt ?? null,
+          // A device configured but never polled reports nothing, which is
+          // different from reporting that it has no supplies. Both render as an
+          // empty row; only the second is a fact about the hardware.
+          supplies: view === undefined ? [] : decorateSupplies(view, device.id),
+        };
+      }),
+    };
+  });
+
+  /** Loaded paper stock across the fleet, for the media catalogue. */
+  app.get('/api/media', async () => {
+    return {
+      devices: listEnabledDevices().map((device) => {
+        const view = getDeviceView(device.slug);
+
+        return {
+          slug: device.slug,
+          displayName: device.displayName,
+          location: device.location,
+          model: device.model,
+          host: device.host,
+          isOnline: view?.isOnline ?? false,
+          lastSuccessAt: view?.lastSuccessAt ?? null,
+          media: view?.media ?? [],
+        };
+      }),
+    };
+  });
+
+  /**
+   * The event timeline.
+   *
+   * `type` may be repeated (`?type=offline&type=recovered`); unrecognised
+   * values are dropped rather than rejected, so a client filtering on a type a
+   * newer build added gets the rest of the feed instead of a 400.
+   */
+  app.get<{ Querystring: { limit?: string; type?: string | string[] } }>(
+    '/api/activity',
+    async (request) => {
+      const requested = request.query.type;
+      const types = (
+        requested === undefined ? [] : Array.isArray(requested) ? requested : [requested]
+      ).filter((value): value is ActivityEventType => isActivityEventType(value));
+
+      const parsed = Number.parseInt(request.query.limit ?? '', 10);
+
+      return {
+        events: listActivity({
+          ...(Number.isFinite(parsed) ? { limit: parsed } : {}),
+          types,
+        }),
+      };
     },
   );
 }

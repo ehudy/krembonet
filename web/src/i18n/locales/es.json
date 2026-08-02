@@ -43,7 +43,11 @@
     "toggle": "Alternar navegación",
     "closeNav": "Cerrar navegación",
     "brandSubtitle": "Telemetría de dispositivos locales",
-    "devices": "Dispositivos"
+    "devices": "Dispositivos",
+    "pinned": "Fijados",
+    "supplies": "Consumibles",
+    "activity": "Registro de actividad",
+    "media": "Catálogo de soportes"
   },
   "overview": {
     "title": "Resumen",
@@ -68,7 +72,23 @@
     "suppliesLowPill": {
       "one": "{{count}} consumible bajo",
       "other": "{{count}} consumibles bajos"
-    }
+    },
+    "actionRequired": "Requiere atención",
+    "allClearTitle": "Todos los sistemas operativos",
+    "allClearBody": {
+      "one": "El único dispositivo supervisado responde y no informa de fallos.",
+      "other": "Los {{count}} dispositivos supervisados responden y no informan de fallos."
+    },
+    "criticalSupplies": "Consumibles críticos",
+    "viewAllSupplies": "Ver todos",
+    "suppliesAllStocked": "Todos los consumibles están por encima del 20 %.",
+    "moreSupplies": {
+      "one": "{{count}} consumible más por debajo del 20 %",
+      "other": "{{count}} consumibles más por debajo del 20 %"
+    },
+    "recentActivity": "Actividad reciente",
+    "viewActivityLog": "Registro de actividad",
+    "activityEmpty": "Todavía no ha ocurrido nada. Los eventos aparecen aquí cuando los dispositivos cambian de estado."
   },
   "attention": {
     "Paper out": "Sin papel",
@@ -468,6 +488,80 @@
     "mutedCategories": "Alertas silenciadas: {{categories}}",
     "categorySupply": "consumibles",
     "categoryMedia": "papel",
-    "categoryOffline": "sin conexión"
+    "categoryOffline": "sin conexión",
+    "filterPinned": "Fijados",
+    "noPinned": "Todavía no hay dispositivos fijados. Marca uno con una estrella para tenerlo en la barra lateral."
+  },
+  "pins": {
+    "column": "Fijados",
+    "pin": "Fijar {{name}} en la barra lateral",
+    "unpin": "Quitar {{name}} de la barra lateral"
+  },
+  "activity": {
+    "title": "Registro de actividad",
+    "subtitle": "Todo lo que han informado los dispositivos",
+    "filterAll": "Todos los eventos",
+    "showing": {
+      "one": "{{count}} evento",
+      "other": "{{count}} eventos"
+    },
+    "empty": "Todavía no se ha registrado ningún evento.",
+    "emptyFiltered": "No se ha registrado ningún evento de este tipo.",
+    "emptyHint": "Se registra un evento cuando un dispositivo deja de responder, vuelve, informa de un fallo o un consumible cruza su umbral.",
+    "today": "Hoy",
+    "yesterday": "Ayer",
+    "truncated": "Se muestran los {{count}} eventos más recientes.",
+    "types": {
+      "offline": "Sin conexión",
+      "recovered": "Recuperado",
+      "supply_low": "Consumible bajo",
+      "media_error": "Fallo del dispositivo"
+    }
+  },
+  "suppliesPage": {
+    "title": "Consumibles",
+    "subtitle": "Consumibles de todo el parque, de menor a mayor. Se marca para reponer todo lo que esté por debajo del {{threshold}} %.",
+    "search": "Buscar por consumible, dispositivo o ubicación…",
+    "filterReorder": "Hay que reponer",
+    "filterConsumables": "Consumibles",
+    "filterReceptacles": "Depósitos de residuos",
+    "filterAll": "Todos",
+    "empty": "Todavía no se ha informado de ningún consumible.",
+    "noMatch": "Ningún consumible coincide con esa búsqueda.",
+    "nothingToOrder": "No hay nada que reponer.",
+    "reorderTitle": "En el próximo pedido",
+    "supply": "Consumible",
+    "device": "Dispositivo",
+    "level": "Nivel",
+    "remaining": "Restante",
+    "action": "Acción",
+    "reorder": "Reponer",
+    "stocked": "En existencias",
+    "kind": {
+      "consumable": "Consumible",
+      "receptacle": "Depósito de residuos"
+    }
+  },
+  "mediaPage": {
+    "title": "Catálogo de soportes",
+    "subtitle": "Papel cargado en todas las impresoras",
+    "loadedSources": "Orígenes cargados",
+    "distinctStock": "Tipos distintos",
+    "emptySlots": "Ranuras vacías",
+    "unnamedCodes": {
+      "one": "{{count}} código de soporte todavía no tiene nombre descriptivo.",
+      "other": "{{count}} códigos de soporte todavía no tienen nombre descriptivo."
+    },
+    "nameThem": "Ponles nombre",
+    "groupBy": "Agrupar por",
+    "groupByStock": "Por tipo",
+    "groupByDevice": "Por dispositivo",
+    "empty": "Ningún dispositivo ha informado todavía de un origen de soporte.",
+    "emptyHint": "Los soportes aparecen aquí en cuanto se consulta una impresora que informa de sus orígenes de papel.",
+    "unidentified": "Tipo sin identificar",
+    "rollCount": {
+      "one": "{{count}} origen",
+      "other": "{{count}} orígenes"
+    }
   }
 }

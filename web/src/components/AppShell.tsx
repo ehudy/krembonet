@@ -9,9 +9,21 @@
  * disagree for a frame.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { Home, Menu, Printer, Settings, type LucideIcon } from 'lucide-react';
+import {
+  Droplets,
+  History,
+  Home,
+  Layers,
+  Menu,
+  Printer,
+  Settings,
+  Star,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { VersionBadge } from './VersionBadge.js';
+import { api } from '../api.js';
+import { usePinnedDevices } from '../hooks/usePinnedDevices.js';
 import { DEFAULT_HUB_TITLE } from '../hooks/useBranding.js';
 import { useTranslation } from '../i18n/i18n.js';
 import { Link, matchPath, useRouter } from '../router.js';
@@ -26,13 +38,14 @@ interface NavItem {
 }
 
 /**
- * Fixed navigation, three items.
+ * Fixed navigation.
  *
  * This used to render one link per device, which worked at three printers and
  * fell apart at thirty: the nav grew without bound, pushed Admin off the
- * bottom, and offered no way to find anything. Devices now has its own page
- * with search and filters, so the sidebar stays the same height at 3 devices
- * and at 300.
+ * bottom, and offered no way to find anything. The fleet pages replace that —
+ * each is a whole-fleet view of one dimension — so the sidebar stays the same
+ * height at 3 devices and at 300, and the only per-device entries are the ones
+ * an operator explicitly pinned.
  */
 const PRIMARY_NAV: NavItem[] = [
   { to: '/', label: 'nav.overview', icon: Home },
@@ -44,6 +57,9 @@ const PRIMARY_NAV: NavItem[] = [
     icon: Printer,
     match: ['/devices/:slug', '/printers/:slug'],
   },
+  { to: '/supplies', label: 'nav.supplies', icon: Droplets },
+  { to: '/activity', label: 'nav.activity', icon: History },
+  { to: '/media', label: 'nav.media', icon: Layers },
 ];
 
 /** Pinned to the bottom, away from the things looked at every day. */
@@ -106,6 +122,73 @@ function Brand({
   );
 }
 
+/**
+ * The starred devices, under their own sub-header.
+ *
+ * Renders nothing at all when nothing is pinned — header included. An empty
+ * "PINNED" heading over a gap is worse than no heading: it is a permanent
+ * reminder of a feature the operator has chosen not to use, taking up the space
+ * the nav was moved out of the sidebar to reclaim.
+ *
+ * Names come from the device list, which is fetched only when there is
+ * something to name. A slug that no longer resolves is dropped once the list
+ * arrives: it is a pin to a deleted device, and a nav item leading to a 404 is
+ * worse than one that quietly goes away.
+ */
+function PinnedNav({ path }: { path: string }) {
+  const { t } = useTranslation();
+  const { pinned } = usePinnedDevices();
+  const [names, setNames] = useState<Map<string, string> | null>(null);
+
+  const hasPins = pinned.length > 0;
+
+  useEffect(() => {
+    if (!hasPins) return;
+
+    const controller = new AbortController();
+    api
+      .listDevices(controller.signal)
+      .then((data) => {
+        setNames(new Map(data.devices.map((device) => [device.slug, device.displayName])));
+      })
+      .catch(() => {
+        // The pages themselves report an unreachable hub. A sidebar that
+        // announces it too would say the same thing twice, on every route.
+      });
+
+    return () => controller.abort();
+  }, [hasPins]);
+
+  if (!hasPins) return null;
+
+  // Before the list resolves the slug stands in for the name. It is a readable
+  // identifier and it is what the URL says, so the row is never blank or
+  // shifting height while the request is in flight.
+  const visible = pinned.filter((slug) => names === null || names.has(slug));
+  if (visible.length === 0) return null;
+
+  return (
+    <>
+      <h2 className="nav-heading">{t('nav.pinned')}</h2>
+      <nav className="nav nav-pinned" aria-label={t('nav.pinned')}>
+        {visible.map((slug) => {
+          const to = `/devices/${encodeURIComponent(slug)}`;
+          return (
+            <Link
+              key={slug}
+              to={to}
+              className={`nav-item${path === to ? ' is-active' : ''}`}
+            >
+              <Star className="nav-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
+              <span className="truncate">{names?.get(slug) ?? slug}</span>
+            </Link>
+          );
+        })}
+      </nav>
+    </>
+  );
+}
+
 export function AppShell({
   children,
   title = DEFAULT_HUB_TITLE,
@@ -149,9 +232,11 @@ export function AppShell({
           })}
         </nav>
 
-        {/* Admin sits at the bottom, pushed there by the spacer, so the two
-            things looked at daily stay at the top and the settings live out of
-            the way — but always in the same place. */}
+        <PinnedNav path={path} />
+
+        {/* Admin sits at the bottom, pushed there by the spacer, so the pages
+            looked at daily stay at the top and the settings live out of the
+            way — but always in the same place. */}
         <div className="sidebar-spacer" />
 
         <nav className="nav nav-secondary" aria-label={t('nav.admin')}>

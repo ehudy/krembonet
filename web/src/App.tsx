@@ -5,8 +5,11 @@ import { AccessGate } from './components/AccessGate.js';
 import { AppShell } from './components/AppShell.js';
 import { useBranding } from './hooks/useBranding.js';
 import { I18nProvider, useTranslation } from './i18n/i18n.js';
+import { Activity } from './pages/Activity.js';
 import { Devices } from './pages/Devices.js';
+import { Media } from './pages/Media.js';
 import { Overview } from './pages/Overview.js';
+import { Supplies } from './pages/Supplies.js';
 import { DeviceDetail } from './pages/DeviceDetail.js';
 import { Setup } from './pages/Setup.js';
 import { AdminPortal } from './pages/admin/AdminPortal.js';
@@ -38,6 +41,9 @@ function Routes() {
 
   if (matchPath('/', path) !== null) return <Overview />;
   if (matchPath('/devices', path) !== null) return <Devices />;
+  if (matchPath('/supplies', path) !== null) return <Supplies />;
+  if (matchPath('/activity', path) !== null) return <Activity />;
+  if (matchPath('/media', path) !== null) return <Media />;
 
   // `/printers/:slug` is kept alongside `/devices/:slug` so existing bookmarks
   // and the links in already-sent alert mail keep resolving.

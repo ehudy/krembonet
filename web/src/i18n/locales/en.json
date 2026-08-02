@@ -43,7 +43,11 @@
     "toggle": "Toggle navigation",
     "closeNav": "Close navigation",
     "brandSubtitle": "Local device telemetry",
-    "devices": "Devices"
+    "devices": "Devices",
+    "pinned": "Pinned",
+    "supplies": "Supplies",
+    "activity": "Activity Log",
+    "media": "Media Catalog"
   },
   "overview": {
     "title": "Overview",
@@ -68,7 +72,23 @@
     "suppliesLowPill": {
       "one": "{{count}} supply low",
       "other": "{{count}} supplies low"
-    }
+    },
+    "actionRequired": "Action required",
+    "allClearTitle": "All systems operational",
+    "allClearBody": {
+      "one": "The one monitored device is reachable and reports no faults.",
+      "other": "All {{count}} monitored devices are reachable and report no faults."
+    },
+    "criticalSupplies": "Critical supplies",
+    "viewAllSupplies": "View all",
+    "suppliesAllStocked": "Every supply is above 20%.",
+    "moreSupplies": {
+      "one": "{{count}} more supply below 20%",
+      "other": "{{count}} more supplies below 20%"
+    },
+    "recentActivity": "Recent activity",
+    "viewActivityLog": "Activity log",
+    "activityEmpty": "Nothing has happened yet. Events appear here as devices change state."
   },
   "attention": {
     "Paper out": "Paper out",
@@ -468,6 +488,80 @@
     "mutedCategories": "Alerts muted: {{categories}}",
     "categorySupply": "supplies",
     "categoryMedia": "media",
-    "categoryOffline": "offline"
+    "categoryOffline": "offline",
+    "filterPinned": "Pinned",
+    "noPinned": "No devices are pinned yet. Star one to keep it in the sidebar."
+  },
+  "pins": {
+    "column": "Pinned",
+    "pin": "Pin {{name}} to the sidebar",
+    "unpin": "Unpin {{name}} from the sidebar"
+  },
+  "activity": {
+    "title": "Activity Log",
+    "subtitle": "Everything the fleet has reported",
+    "filterAll": "All events",
+    "showing": {
+      "one": "{{count}} event",
+      "other": "{{count}} events"
+    },
+    "empty": "No events have been recorded yet.",
+    "emptyFiltered": "No events of this kind have been recorded.",
+    "emptyHint": "An event is written when a device goes offline, comes back, reports a fault, or a supply crosses its threshold.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "truncated": "Showing the {{count}} most recent events.",
+    "types": {
+      "offline": "Went offline",
+      "recovered": "Recovered",
+      "supply_low": "Supply low",
+      "media_error": "Device fault"
+    }
+  },
+  "suppliesPage": {
+    "title": "Supplies",
+    "subtitle": "Fleet-wide consumables, lowest first. Anything under {{threshold}}% is flagged for re-order.",
+    "search": "Search by supply, device or location…",
+    "filterReorder": "Needs re-order",
+    "filterConsumables": "Consumables",
+    "filterReceptacles": "Waste tanks",
+    "filterAll": "All",
+    "empty": "No supplies have been reported yet.",
+    "noMatch": "No supplies match that search.",
+    "nothingToOrder": "Nothing needs re-ordering.",
+    "reorderTitle": "On the next order",
+    "supply": "Supply",
+    "device": "Device",
+    "level": "Level",
+    "remaining": "Remaining",
+    "action": "Action",
+    "reorder": "Re-order",
+    "stocked": "Stocked",
+    "kind": {
+      "consumable": "Consumable",
+      "receptacle": "Waste tank"
+    }
+  },
+  "mediaPage": {
+    "title": "Media Catalog",
+    "subtitle": "Paper stock loaded across every printer",
+    "loadedSources": "Loaded sources",
+    "distinctStock": "Distinct stock",
+    "emptySlots": "Empty slots",
+    "unnamedCodes": {
+      "one": "{{count}} media code has no friendly name yet.",
+      "other": "{{count}} media codes have no friendly name yet."
+    },
+    "nameThem": "Name them",
+    "groupBy": "Group by",
+    "groupByStock": "By stock",
+    "groupByDevice": "By device",
+    "empty": "No device has reported a media source yet.",
+    "emptyHint": "Media appears here once a printer that reports paper sources has been polled.",
+    "unidentified": "Unidentified stock",
+    "rollCount": {
+      "one": "{{count}} source",
+      "other": "{{count}} sources"
+    }
   }
 }

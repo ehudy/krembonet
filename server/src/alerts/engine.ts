@@ -8,11 +8,19 @@
  * differ only in how the condition is detected; once something needs saying,
  * the edge-triggering, muting, delivery and logging are identical, and having
  * three copies of that is how they drift.
+ *
+ * Every edge this file detects is also written to `activity_events`, which is
+ * the dashboard's timeline rather than a delivery record. That happens beside
+ * dispatch and not inside it: the history has to be complete on a hub that
+ * mutes a device, has no SMTP configured, or has alerting switched off
+ * entirely — those are precisely the hubs where the dashboard is the only
+ * record of what the fleet did.
  */
 import { sql } from 'drizzle-orm';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 
+import { recordActivity } from '../activity/store.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { alertLogs, alertState, deviceStatus } from '../db/schema.js';
@@ -159,6 +167,27 @@ async function dispatch(
   log: FastifyBaseLogger,
 ): Promise<boolean> {
   const settings = getSettings();
+
+  // Alerting switched off hub-wide. Checked here rather than at the top of each
+  // evaluator so the evaluators still run: they are what detect the edges the
+  // activity timeline is built from, and a hub that only wants a dashboard
+  // should still get a history. Recorded as skipped for the same reason the
+  // no-destination case below is — an unlogged condition looks like one that
+  // never happened.
+  if (!settings.alertsEnabled) {
+    for (const ruleKey of notification.ruleKeys) {
+      logAlert(
+        ruleKey,
+        device.id,
+        notification.subject,
+        [],
+        'skipped',
+        'none',
+        'Alerts are disabled hub-wide',
+      );
+    }
+    return false;
+  }
 
   // Muted: recorded, never sent. The dashboard keeps showing the condition —
   // suppression silences the notification, not the monitoring.
@@ -311,6 +340,19 @@ async function evaluateSupplyAlerts(
 
   if (toNotify.length === 0) return;
 
+  // One event per supply rather than one per notification. The mail batches
+  // four low tanks into a single message because four emails would be noise;
+  // a timeline has the opposite requirement, since "which cartridge" is the
+  // whole reason to look at it later.
+  for (const condition of toNotify) {
+    recordActivity({
+      deviceId: device.id,
+      deviceName: device.displayName,
+      type: 'supply_low',
+      message: condition.description,
+    });
+  }
+
   const { subject, text, lines } = buildAlertMail(
     device,
     toNotify,
@@ -371,6 +413,15 @@ async function evaluateMediaAlerts(
   const lines = attention.conditions.map((condition) => condition.label);
   const headline = attention.summary ?? 'Needs attention';
 
+  recordActivity({
+    deviceId: device.id,
+    deviceName: device.displayName,
+    type: 'media_error',
+    // Every condition, not just the headline: an operator reading the timeline
+    // the next morning wants to know it was jammed *and* out of paper.
+    message: lines.length > 0 ? lines.join(', ') : headline,
+  });
+
   const delivered = await dispatch(
     device,
     {
@@ -405,7 +456,6 @@ export async function evaluateReachability(
   log: FastifyBaseLogger,
 ): Promise<void> {
   const settings = getSettings();
-  if (!settings.alertsEnabled) return;
 
   // Read rather than passed in: the poller has already persisted the outcome by
   // the time this runs, and taking the count from the row it wrote keeps one
@@ -433,6 +483,16 @@ export async function evaluateReachability(
   if (transition === null) return;
 
   if (transition === 'offline') {
+    recordActivity({
+      deviceId: device.id,
+      deviceName: device.displayName,
+      type: 'offline',
+      message:
+        status?.lastError === null || status?.lastError === undefined
+          ? `Unreachable after ${consecutiveFailures} failed attempts`
+          : `Unreachable after ${consecutiveFailures} failed attempts: ${status.lastError}`,
+    });
+
     const { subject, text, lines } = buildOfflineMail(
       device,
       settings.hubTitle,
@@ -459,6 +519,17 @@ export async function evaluateReachability(
   // device is demonstrably back, and leaving the alert active would mean the
   // next outage never announces itself.
   const downSince = triggeredAt(ruleKey);
+
+  recordActivity({
+    deviceId: device.id,
+    deviceName: device.displayName,
+    type: 'recovered',
+    message:
+      downSince === null
+        ? 'Reachable again'
+        : `Reachable again after being down since ${downSince}`,
+  });
+
   const { subject, text, lines } = buildRecoveryMail(
     device,
     settings.hubTitle,
@@ -475,14 +546,19 @@ export async function evaluateReachability(
   log.info({ device: device.slug }, 'device recovered');
 }
 
-/** Everything evaluated from a successful reading. */
+/**
+ * Everything evaluated from a successful reading.
+ *
+ * There is deliberately no `alertsEnabled` check here. Turning alerts off means
+ * "stop sending", not "stop noticing" — the evaluators own the edge detection
+ * that the dashboard's timeline is built from, so the gate lives in `dispatch`
+ * where the sending actually happens.
+ */
 export async function evaluateAlerts(
   device: DeviceRow,
   view: DeviceView,
   log: FastifyBaseLogger,
 ): Promise<void> {
-  if (!getSettings().alertsEnabled) return;
-
   await evaluateSupplyAlerts(device, view, log);
   await evaluateMediaAlerts(device, view, log);
 }

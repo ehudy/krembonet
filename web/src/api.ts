@@ -6,12 +6,15 @@
  */
 import type {
   AccessStatus,
+  ActivityEventType,
+  ActivityResponse,
   AdapterInfo,
   AdminDevice,
   AdminSettings,
   AlertLogRow,
   AlertStateRow,
   HubBranding,
+  MediaCatalogResponse,
   MediaType,
   DeviceListResponse,
   DeviceStatus,
@@ -19,6 +22,7 @@ import type {
   ProbeResponse,
   SessionInfo,
   SetupStatus,
+  SupplyMatrixResponse,
   Webhook,
   WebhookFormat,
 } from './types.js';
@@ -86,6 +90,33 @@ export const api = {
       }`,
       { signal: options?.signal },
     ),
+
+  /** Every supply on every device, for the re-order matrix and the Overview widget. */
+  listSupplies: (signal?: AbortSignal) =>
+    request<SupplyMatrixResponse>('/api/supplies', { signal }),
+
+  /** Loaded paper stock across the fleet. */
+  listMedia: (signal?: AbortSignal) =>
+    request<MediaCatalogResponse>('/api/media', { signal }),
+
+  /**
+   * The event timeline, newest first.
+   *
+   * `types` filters server-side rather than in the browser so a narrow filter
+   * over a long history still returns a full page of matching rows, instead of
+   * whatever survived filtering the most recent fifty.
+   */
+  activity: (
+    options?: { limit?: number; types?: readonly ActivityEventType[] },
+    signal?: AbortSignal,
+  ) => {
+    const query = new URLSearchParams();
+    if (options?.limit !== undefined) query.set('limit', String(options.limit));
+    for (const type of options?.types ?? []) query.append('type', type);
+
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`;
+    return request<ActivityResponse>(`/api/activity${suffix}`, { signal });
+  },
 
   setupStatus: (signal?: AbortSignal) => request<SetupStatus>('/api/setup', { signal }),
 

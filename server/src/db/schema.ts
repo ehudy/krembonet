@@ -363,3 +363,40 @@ export const alertLogs = sqliteTable(
   },
   (table) => [index('alert_logs_created_idx').on(table.createdAt)],
 );
+
+/**
+ * Operator-facing timeline of what the fleet did.
+ *
+ * Distinct from `alert_logs`, which records *notifications* — one row per
+ * destination, with delivery status and the recipient list. This records
+ * *events*: the printer went offline, the printer came back, a supply crossed
+ * its threshold, the device reported a fault. One row per thing that happened,
+ * whether or not anyone was told about it, which is why a muted device and a
+ * hub with no SMTP configured both still produce a readable history.
+ *
+ * `device_name` is denormalised on purpose. The device reference is nulled
+ * rather than cascaded on delete so the history survives the device, and a
+ * timeline of unnamed events would be worthless — the name at the time of the
+ * event is the only thing that makes an old row mean anything.
+ */
+export const activityEvents = sqliteTable(
+  'activity_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** Null once the device is deleted; `device_name` still names it. */
+    deviceId: integer('device_id').references(() => devices.id, {
+      onDelete: 'set null',
+    }),
+    deviceName: text('device_name').notNull(),
+    /** `offline` | `recovered` | `supply_low` | `media_error`. */
+    eventType: text('event_type').notNull(),
+    message: text('message').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
+  },
+  (table) => [
+    // The feed is always read newest-first, and filtered by type on top of
+    // that, so the ordering column leads.
+    index('activity_events_created_idx').on(table.createdAt),
+    index('activity_events_device_idx').on(table.deviceId, table.createdAt),
+  ],
+);

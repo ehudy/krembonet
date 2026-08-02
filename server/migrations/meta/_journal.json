@@ -29,6 +29,13 @@
       "when": 1785619656498,
       "tag": "0003_alert_suppression",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1785635904949,
+      "tag": "0004_activity_events",
+      "breakpoints": true
     }
   ]
 }

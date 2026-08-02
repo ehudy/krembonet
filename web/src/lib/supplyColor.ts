@@ -71,18 +71,31 @@ export function isTooDarkToRender(hex: string): boolean {
 }
 
 /**
- * The colour a bar is filled with.
+ * What colour this supply *is*, with the dark-ink substitution applied.
  *
- * A breached supply is danger red regardless of what the device says: at that
- * moment the point of the bar is "act on this", and a cyan tank drawn cyan
- * while it is empty buries the row that matters.
+ * Used where the colour identifies the cartridge rather than reporting its
+ * state — the swatch on the fleet supplies table, which exists so someone
+ * holding a purchase order can match a row against a box on a shelf. Colouring
+ * that by alert status would make every row on a re-order list the same red and
+ * tell the reader nothing they did not already know from the column beside it.
  */
-export function fillColor(supply: Supply): string {
-  if (supply.breached) return 'var(--danger)';
-
+export function identityColor(supply: Supply): string {
   const reported = supply.colorHex;
   if (reported === null || reported === '') return 'var(--accent)';
   if (isTooDarkToRender(reported)) return DARK_INK_FILL;
 
   return reported;
+}
+
+/**
+ * The colour a bar is filled with.
+ *
+ * A breached supply is danger red regardless of what the device says: at that
+ * moment the point of the bar is "act on this", and a cyan tank drawn cyan
+ * while it is empty buries the row that matters. That is the opposite of what
+ * `identityColor` above is for, and the two must not be collapsed.
+ */
+export function fillColor(supply: Supply): string {
+  if (supply.breached) return 'var(--danger)';
+  return identityColor(supply);
 }
