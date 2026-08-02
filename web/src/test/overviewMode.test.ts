@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 import {
   DEFAULT_OVERVIEW_MODE,
   OVERVIEW_MODES,
+  effectiveOverviewMode,
   isOverviewMode,
   parseOverviewMode,
 } from '../lib/overviewMode.js';
@@ -43,6 +44,25 @@ describe('parseOverviewMode', () => {
     for (const value of ['', 'floor', 'FLOOR_QUEUE', '{}', 'null']) {
       assert.equal(parseOverviewMode(value), DEFAULT_OVERVIEW_MODE, value);
     }
+  });
+});
+
+describe('effectiveOverviewMode', () => {
+  it('forces a viewer to Floor & Queue whatever is stored', () => {
+    // A viewer has no toggle, so a stored command_center — which they could not
+    // have set, but a shared browser might carry — must not leak the admin
+    // layout to them.
+    assert.equal(effectiveOverviewMode('command_center', false), 'floor_queue');
+    assert.equal(effectiveOverviewMode('floor_queue', false), 'floor_queue');
+  });
+
+  it('honours an admin’s stored choice', () => {
+    assert.equal(effectiveOverviewMode('command_center', true), 'command_center');
+    assert.equal(effectiveOverviewMode('floor_queue', true), 'floor_queue');
+  });
+
+  it('defaults an admin to Command Center via the stored default', () => {
+    assert.equal(effectiveOverviewMode(DEFAULT_OVERVIEW_MODE, true), 'command_center');
   });
 });
 

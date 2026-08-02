@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 
 import { ApiError, api } from '../../api.js';
+import { useAuth } from '../../auth/AuthContext.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { useTranslation } from '../../i18n/i18n.js';
 import { Link, matchPath, useRouter } from '../../router.js';
@@ -42,6 +43,7 @@ const ALERT_TABS = [
 export function AdminPortal() {
   const { path, navigate } = useRouter();
   const { t } = useTranslation();
+  const { isAdmin, refresh, signOut } = useAuth();
   const [state, setState] = useState<'loading' | 'in' | 'out' | 'disabled'>('loading');
 
   const check = useCallback(async (signal?: AbortSignal): Promise<void> => {
@@ -61,6 +63,15 @@ export function AdminPortal() {
     return () => controller.abort();
   }, [check]);
 
+  // The shared auth state losing admin — someone signed out from the sidebar on
+  // this or another tab — means this portal's cached "signed in" is stale.
+  // Re-checking against the cookie rather than trusting the flag keeps this
+  // safe during login, where the flag briefly lags behind the fresh cookie: the
+  // re-check reads the cookie and stays "in".
+  useEffect(() => {
+    if (!isAdmin) void check();
+  }, [isAdmin, check]);
+
   // Any 401 from a nested admin call means the cookie expired mid-session.
   useEffect(() => {
     const onRejection = (event: PromiseRejectionEvent): void => {
@@ -73,7 +84,9 @@ export function AdminPortal() {
   }, []);
 
   async function logout(): Promise<void> {
-    await api.logout().catch(() => undefined);
+    // The shared sign-out clears the cookie and refreshes access, so the
+    // sidebar indicator and the nav fall back to viewer mode with this.
+    await signOut();
     setState('out');
     navigate('/admin');
   }
@@ -104,7 +117,17 @@ export function AdminPortal() {
   }
 
   if (state === 'out') {
-    return <AdminLogin onSuccess={() => void check()} />;
+    return (
+      <AdminLogin
+        onSuccess={() => {
+          // Both: `check` flips this portal in, `refresh` tells the shared auth
+          // state so the sidebar shows the Admin Active indicator and the
+          // admin-only nav without waiting for the next navigation.
+          void check();
+          void refresh();
+        }}
+      />
+    );
   }
 
   const isDevices = matchPath('/admin/devices', path) !== null;

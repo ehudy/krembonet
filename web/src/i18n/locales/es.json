@@ -233,7 +233,8 @@
       "alerts": "Alertas",
       "history": "Historial",
       "webhooks": "Webhooks"
-    }
+    },
+    "activeBadge": "Administrador activo"
   },
   "settings": {
     "saved": "Ajustes guardados.",
@@ -639,5 +640,8 @@
     "tabStock": "Papel con pestañas",
     "continuous": "Papel continuo",
     "disc": "Disco"
+  },
+  "access": {
+    "adminOnly": "Esa página es solo para administradores. Volviendo al resumen."
   }
 }

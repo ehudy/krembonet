@@ -22,18 +22,27 @@ import { useCallback } from 'react';
 import { Plus } from 'lucide-react';
 
 import { api } from '../api.js';
+import { useAuth } from '../auth/AuthContext.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { ViewModeToggle } from '../components/ViewModeToggle.js';
 import { useOverviewMode } from '../hooks/useOverviewMode.js';
 import { usePolled } from '../hooks/usePolled.js';
 import { useTranslation } from '../i18n/i18n.js';
+import { effectiveOverviewMode } from '../lib/overviewMode.js';
 import { Link } from '../router.js';
 import { CommandCenterView } from './CommandCenterView.js';
 import { FloorView } from './FloorView.js';
 
 export function Overview() {
   const { t } = useTranslation();
-  const [mode, setMode] = useOverviewMode();
+  const { isAdmin } = useAuth();
+  const [storedMode, setMode] = useOverviewMode();
+
+  // A viewer is always shown Floor & Queue and has no toggle to change it; an
+  // admin gets their stored choice, defaulting to Command Center. So the mode
+  // rendered is not the stored one for a viewer, and the switch appears only
+  // for an admin.
+  const mode = effectiveOverviewMode(storedMode, isAdmin);
 
   const loadDevices = useCallback((signal: AbortSignal) => api.listDevices(signal), []);
   const fleet = usePolled(loadDevices);
@@ -48,7 +57,9 @@ export function Overview() {
         subtitle={t(
           mode === 'floor_queue' ? 'overview.subtitleFloor' : 'overview.subtitle',
         )}
-        actions={<ViewModeToggle mode={mode} onChange={setMode} />}
+        actions={
+          isAdmin ? <ViewModeToggle mode={mode} onChange={setMode} /> : undefined
+        }
       />
 
       {fleet.error !== null && <div className="banner is-error">{fleet.error}</div>}

@@ -14,15 +14,19 @@ import {
   History,
   Home,
   Layers,
+  LogOut,
   Menu,
   Printer,
   Settings,
+  ShieldCheck,
   Star,
   type LucideIcon,
 } from 'lucide-react';
 
 import { VersionBadge } from './VersionBadge.js';
 import { api } from '../api.js';
+import { ADMIN_ONLY_ROUTES } from '../auth/adminRoutes.js';
+import { useAuth } from '../auth/AuthContext.js';
 import { usePinnedDevices } from '../hooks/usePinnedDevices.js';
 import { DEFAULT_HUB_TITLE } from '../hooks/useBranding.js';
 import { useTranslation } from '../i18n/i18n.js';
@@ -189,6 +193,40 @@ function PinnedNav({ path }: { path: string }) {
   );
 }
 
+/**
+ * The "admin is signed in here" indicator, with a way out.
+ *
+ * Shown only while a session is live, and only to the browser that holds it.
+ * Deliberately quiet — a signed-in admin is the normal state on a hub someone
+ * is configuring, not an alarm — but always present, so ending the session is
+ * one click from any page rather than a trip back to the portal.
+ *
+ * Sign-out goes through the shared context, so the sidebar, the route guards,
+ * and the Overview default all fall back to viewer mode together, without a
+ * reload.
+ */
+function AdminSession() {
+  const { t } = useTranslation();
+  const { signOut } = useAuth();
+
+  return (
+    <div className="admin-session">
+      <span className="admin-session-badge">
+        <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
+        {t('admin.activeBadge')}
+      </span>
+      <button
+        type="button"
+        className="admin-signout"
+        onClick={() => void signOut()}
+      >
+        <LogOut size={13} strokeWidth={2} aria-hidden="true" />
+        {t('admin.signOut')}
+      </button>
+    </div>
+  );
+}
+
 export function AppShell({
   children,
   title = DEFAULT_HUB_TITLE,
@@ -198,11 +236,18 @@ export function AppShell({
 }: AppShellProps) {
   const { path } = useRouter();
   const { t } = useTranslation();
+  const { isAdmin } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
 
   // Close the drawer whenever navigation happens, otherwise it stays over the
   // page you just navigated to on mobile.
   useEffect(() => setIsOpen(false), [path]);
+
+  // Supplies and the activity log are the admin's back office; a viewer never
+  // sees them in the nav, and the router turns them away if reached by URL.
+  const navItems = PRIMARY_NAV.filter(
+    (item) => isAdmin || !ADMIN_ONLY_ROUTES.includes(item.to),
+  );
 
   return (
     <div className={`shell${isOpen ? ' is-drawer-open' : ''}`}>
@@ -210,7 +255,7 @@ export function AppShell({
         <Brand title={title} subtitle={subtitle} logoUrl={logoUrl} />
 
         <nav className="nav" aria-label={t('nav.main')}>
-          {PRIMARY_NAV.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             return (
               <Link
@@ -238,6 +283,8 @@ export function AppShell({
             looked at daily stay at the top and the settings live out of the
             way — but always in the same place. */}
         <div className="sidebar-spacer" />
+
+        {isAdmin && <AdminSession />}
 
         <nav className="nav nav-secondary" aria-label={t('nav.admin')}>
           <Link

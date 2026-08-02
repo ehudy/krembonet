@@ -39,6 +39,25 @@ export function isOverviewMode(value: unknown): value is OverviewMode {
 }
 
 /**
+ * The mode to actually render, given the stored preference and who is looking.
+ *
+ * A viewer is always shown Floor & Queue — the "is it free, what is loaded"
+ * layout for someone standing at a printer — and has no toggle to change it, so
+ * their stored preference (which they cannot set) is ignored. An admin gets
+ * whatever they last chose, defaulting to Command Center.
+ *
+ * Kept as a pure function rather than a ternary at the call site because it is
+ * the one line that encodes the whole auth-driven-default rule, and it is
+ * worth being able to point a test at it.
+ */
+export function effectiveOverviewMode(
+  stored: OverviewMode,
+  isAdmin: boolean,
+): OverviewMode {
+  return isAdmin ? stored : 'floor_queue';
+}
+
+/**
  * Stored as a bare string rather than JSON.
  *
  * It is a single enum value, and a quoted `"floor_queue"` in devtools invites

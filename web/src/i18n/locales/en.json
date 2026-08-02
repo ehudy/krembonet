@@ -233,7 +233,8 @@
       "alerts": "Alerts",
       "history": "History",
       "webhooks": "Webhooks"
-    }
+    },
+    "activeBadge": "Admin active"
   },
   "settings": {
     "saved": "Settings saved.",
@@ -639,5 +640,8 @@
     "tabStock": "Tab Stock",
     "continuous": "Continuous",
     "disc": "Disc"
+  },
+  "access": {
+    "adminOnly": "That page is for administrators. Returning to the overview."
   }
 }

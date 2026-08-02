@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from './api.js';
+import { AuthProvider, useAuth, type AuthValue } from './auth/AuthContext.js';
 import { AccessGate } from './components/AccessGate.js';
 import { AppShell } from './components/AppShell.js';
 import { useBranding } from './hooks/useBranding.js';
@@ -36,13 +37,46 @@ function NotFound({ path }: { path: string }) {
   );
 }
 
+/**
+ * Sends a viewer off an admin-only route, once, on render.
+ *
+ * `replace` rather than push, so the blocked URL does not sit in history and
+ * bounce the back button. Nothing is drawn — the redirect is immediate — except
+ * a live-region line for assistive tech, which does not perceive the URL change
+ * the way a sighted user watching the page swap does.
+ */
+function Redirect({ to, message }: { to: string; message: string }) {
+  const { navigate } = useRouter();
+
+  useEffect(() => {
+    navigate(to, { replace: true });
+  }, [navigate, to]);
+
+  return (
+    <p className="visually-hidden" role="status">
+      {message}
+    </p>
+  );
+}
+
 function Routes() {
   const { path } = useRouter();
+  const { t } = useTranslation();
+  const { isAdmin } = useAuth();
 
   if (matchPath('/', path) !== null) return <Overview />;
   if (matchPath('/devices', path) !== null) return <Devices />;
-  if (matchPath('/supplies', path) !== null) return <Supplies />;
-  if (matchPath('/activity', path) !== null) return <Activity />;
+
+  // Supplies and the activity log are admin-only. A viewer who lands on one by
+  // URL is sent home rather than shown the wall of 403s the guarded endpoints
+  // would otherwise produce. The same rule hides these from a viewer's sidebar.
+  if (matchPath('/supplies', path) !== null) {
+    return isAdmin ? <Supplies /> : <Redirect to="/" message={t('access.adminOnly')} />;
+  }
+  if (matchPath('/activity', path) !== null) {
+    return isAdmin ? <Activity /> : <Redirect to="/" message={t('access.adminOnly')} />;
+  }
+
   if (matchPath('/media', path) !== null) return <Media />;
 
   // `/printers/:slug` is kept alongside `/devices/:slug` so existing bookmarks
@@ -123,6 +157,25 @@ export function App() {
     return () => controller.abort();
   }, [checkAccess, path]);
 
+  // Ending the session is logout plus a re-read: the second half is what makes
+  // the sidebar and route guards fall back to viewer mode in the same tick,
+  // without a page reload. Logout failure is swallowed — a cookie that will not
+  // clear on the server is still gone from the browser's point of view, and the
+  // refresh reflects whatever truth remains.
+  const signOut = useCallback(async (): Promise<void> => {
+    await api.logout().catch(() => undefined);
+    await checkAccess();
+  }, [checkAccess]);
+
+  const authValue = useMemo<AuthValue>(
+    () => ({
+      isAdmin: access?.isAdmin ?? false,
+      refresh: () => checkAccess(),
+      signOut,
+    }),
+    [access?.isAdmin, checkAccess, signOut],
+  );
+
   // Nothing is rendered until we know, so a configured hub never flashes the
   // setup wizard — or a passcode prompt — on load.
   if (needsSetup === null || access === null) return null;
@@ -149,14 +202,16 @@ export function App() {
           onUnlocked={() => void checkAccess()}
         />
       ) : (
-        <AppShell
-          title={branding.title}
-          subtitle={branding.subtitle}
-          logoUrl={branding.logoUrl}
-          update={branding}
-        >
-          <Routes />
-        </AppShell>
+        <AuthProvider value={authValue}>
+          <AppShell
+            title={branding.title}
+            subtitle={branding.subtitle}
+            logoUrl={branding.logoUrl}
+            update={branding}
+          >
+            <Routes />
+          </AppShell>
+        </AuthProvider>
       )}
     </I18nProvider>
   );
