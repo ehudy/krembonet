@@ -88,7 +88,13 @@
     },
     "recentActivity": "Recent activity",
     "viewActivityLog": "Activity log",
-    "activityEmpty": "Nothing has happened yet. Events appear here as devices change state."
+    "activityEmpty": "Nothing has happened yet. Events appear here as devices change state.",
+    "subtitleFloor": "What is free, what is loaded, and what is queued",
+    "viewMode": "Overview layout",
+    "viewCommandCenter": "Command Center",
+    "viewCommandCenterHint": "Faults, supplies to order, and the event log.",
+    "viewFloorQueue": "Floor & Queue",
+    "viewFloorQueueHint": "Queues, loaded paper, and supply levels."
   },
   "attention": {
     "Paper out": "Paper out",
@@ -540,7 +546,11 @@
     "kind": {
       "consumable": "Consumable",
       "receptacle": "Waste tank"
-    }
+    },
+    "exportCsv": "Export CSV",
+    "copyList": "Copy List",
+    "copyFailed": "Could not copy",
+    "copyHeading": "Re-order list — {{date}}"
   },
   "mediaPage": {
     "title": "Media Catalog",
@@ -562,6 +572,32 @@
     "rollCount": {
       "one": "{{count}} source",
       "other": "{{count}} sources"
+    }
+  },
+  "floor": {
+    "yourDevices": "Your printers",
+    "allDevices": "All printers",
+    "device": "Printer",
+    "state": "Status",
+    "queue": "Queue",
+    "paper": "Loaded paper",
+    "noPaper": "Nothing loaded",
+    "ready": "Ready",
+    "printing": "Printing",
+    "printingAhead": {
+      "one": "Printing · {{count}} job ahead",
+      "other": "Printing · {{count}} jobs ahead"
+    },
+    "queued": {
+      "one": "{{count}} job queued",
+      "other": "{{count}} jobs queued"
+    },
+    "queueRead": "Queue checked {{time}}",
+    "nothingPinned": "No printers are pinned yet. Star the ones you use and they appear here.",
+    "pinFromDevices": "Choose printers",
+    "morePinned": {
+      "one": "{{count}} more pinned printer is in the list below.",
+      "other": "{{count}} more pinned printers are in the list below."
     }
   }
 }

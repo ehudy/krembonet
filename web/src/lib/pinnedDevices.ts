@@ -13,28 +13,18 @@
  * survives a rename; a device deleted and re-added under the same name resolves
  * to the same slug and inherits the pin, which is the behaviour an operator
  * expects from something that looks like the same printer.
- *
- * The parsing here is deliberately forgiving. This value is user-writable — it
- * is one devtools command away — and a malformed entry must degrade to "nothing
- * is pinned" rather than take the sidebar down on every render.
  */
+import { createLocalStore } from './localStore.js';
 
 export const PINNED_STORAGE_KEY = 'krembonet_pinned_devices';
-
-/**
- * Fired after this tab writes.
- *
- * The native `storage` event only reaches *other* tabs, so without this the
- * sidebar would not notice a star clicked on the page beside it until a
- * navigation happened to re-render it.
- */
-export const PINNED_CHANGE_EVENT = 'krembonet:pinned-devices';
 
 /**
  * Coerces whatever is in storage into a slug list.
  *
  * Exported for the tests, which is where the awkward inputs live: a bare
- * string, a nested array, a number that happens to look like an id.
+ * string, a nested array, a number that happens to look like an id. This value
+ * is user-writable, so a malformed entry has to degrade to "nothing is pinned"
+ * rather than throw on every render of the sidebar.
  */
 export function parsePinned(raw: string | null): string[] {
   if (raw === null || raw === '') return [];
@@ -64,24 +54,15 @@ export function parsePinned(raw: string | null): string[] {
   return slugs;
 }
 
-export function readPinned(): string[] {
-  try {
-    return parsePinned(window.localStorage.getItem(PINNED_STORAGE_KEY));
-  } catch {
-    // Private browsing, or storage disabled entirely. Pins are a convenience;
-    // losing them is not worth breaking the page over.
-    return [];
-  }
-}
+export const pinnedStore = createLocalStore<string[]>({
+  key: PINNED_STORAGE_KEY,
+  parse: parsePinned,
+  serialize: (slugs) => JSON.stringify(slugs),
+  fallback: [],
+});
 
-function writePinned(slugs: readonly string[]): void {
-  try {
-    window.localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(slugs));
-  } catch {
-    // As above — a full or unavailable store means the star does not stick,
-    // which is visible to the operator without an error dialog explaining it.
-  }
-  window.dispatchEvent(new Event(PINNED_CHANGE_EVENT));
+export function readPinned(): string[] {
+  return pinnedStore.read();
 }
 
 export function isPinned(slug: string): boolean {
@@ -102,22 +83,6 @@ export function togglePinned(slug: string): boolean {
     ? current.filter((entry) => entry !== slug)
     : [...current, slug];
 
-  writePinned(next);
+  pinnedStore.write(next);
   return next.includes(slug);
-}
-
-/** Subscribes to changes from this tab and from any other. */
-export function subscribePinned(onChange: () => void): () => void {
-  const onStorage = (event: StorageEvent): void => {
-    // `key` is null when the whole store is cleared, which is also a change.
-    if (event.key === null || event.key === PINNED_STORAGE_KEY) onChange();
-  };
-
-  window.addEventListener(PINNED_CHANGE_EVENT, onChange);
-  window.addEventListener('storage', onStorage);
-
-  return () => {
-    window.removeEventListener(PINNED_CHANGE_EVENT, onChange);
-    window.removeEventListener('storage', onStorage);
-  };
 }

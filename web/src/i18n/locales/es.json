@@ -88,7 +88,13 @@
     },
     "recentActivity": "Actividad reciente",
     "viewActivityLog": "Registro de actividad",
-    "activityEmpty": "Todavía no ha ocurrido nada. Los eventos aparecen aquí cuando los dispositivos cambian de estado."
+    "activityEmpty": "Todavía no ha ocurrido nada. Los eventos aparecen aquí cuando los dispositivos cambian de estado.",
+    "subtitleFloor": "Qué está libre, qué hay cargado y qué hay en cola",
+    "viewMode": "Diseño del resumen",
+    "viewCommandCenter": "Centro de mando",
+    "viewCommandCenterHint": "Fallos, consumibles por pedir y el registro de eventos.",
+    "viewFloorQueue": "Taller y cola",
+    "viewFloorQueueHint": "Colas, papel cargado y niveles de consumibles."
   },
   "attention": {
     "Paper out": "Sin papel",
@@ -540,7 +546,11 @@
     "kind": {
       "consumable": "Consumible",
       "receptacle": "Depósito de residuos"
-    }
+    },
+    "exportCsv": "Exportar CSV",
+    "copyList": "Copiar lista",
+    "copyFailed": "No se pudo copiar",
+    "copyHeading": "Lista de reposición — {{date}}"
   },
   "mediaPage": {
     "title": "Catálogo de soportes",
@@ -562,6 +572,32 @@
     "rollCount": {
       "one": "{{count}} origen",
       "other": "{{count}} orígenes"
+    }
+  },
+  "floor": {
+    "yourDevices": "Tus impresoras",
+    "allDevices": "Todas las impresoras",
+    "device": "Impresora",
+    "state": "Estado",
+    "queue": "Cola",
+    "paper": "Papel cargado",
+    "noPaper": "Sin papel cargado",
+    "ready": "Lista",
+    "printing": "Imprimiendo",
+    "printingAhead": {
+      "one": "Imprimiendo · {{count}} trabajo por delante",
+      "other": "Imprimiendo · {{count}} trabajos por delante"
+    },
+    "queued": {
+      "one": "{{count}} trabajo en cola",
+      "other": "{{count}} trabajos en cola"
+    },
+    "queueRead": "Cola consultada {{time}}",
+    "nothingPinned": "Todavía no hay impresoras fijadas. Marca con una estrella las que uses y aparecerán aquí.",
+    "pinFromDevices": "Elegir impresoras",
+    "morePinned": {
+      "one": "Hay {{count}} impresora fijada más en la lista de abajo.",
+      "other": "Hay {{count}} impresoras fijadas más en la lista de abajo."
     }
   }
 }

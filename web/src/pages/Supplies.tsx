@@ -13,14 +13,21 @@
  * cartridge to put on the order.
  */
 import { useCallback, useMemo, useState } from 'react';
-import { PackageCheck, Printer } from 'lucide-react';
+import { ClipboardCheck, ClipboardList, Download, PackageCheck, Printer } from 'lucide-react';
 
 import { api } from '../api.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { usePolled } from '../hooks/usePolled.js';
 import { useTranslation, type Translate } from '../i18n/i18n.js';
+import { copyText, downloadText } from '../lib/download.js';
 import { CRITICAL_SUPPLY_PERCENT } from '../lib/fleet.js';
 import { fillColor, identityColor } from '../lib/supplyColor.js';
+import {
+  csvFilename,
+  toCsv,
+  toPlainList,
+  type ExportRow,
+} from '../lib/supplyExport.js';
 import { Link } from '../router.js';
 import type { FleetSupplyDevice, Supply } from '../types.js';
 
@@ -142,10 +149,24 @@ function levelText(supply: Supply, t: Translate): string {
   }
 }
 
+/** The table row, reduced to the fields the export cares about. */
+function toExportRow(row: Row): ExportRow {
+  return {
+    deviceName: row.deviceName,
+    location: row.location,
+    supplyLabel: row.supply.label,
+    percent: row.supply.percent,
+    isReceptacle: row.supply.kind === 'receptacle',
+    breached: row.supply.breached,
+    needsReorder: needsReorder(row.supply),
+  };
+}
+
 export function Supplies() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('reorder');
+  const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
 
   const load = useCallback((signal: AbortSignal) => api.listSupplies(signal), []);
   const { data, error, isLoading } = usePolled(load);
@@ -168,11 +189,66 @@ export function Supplies() {
       .sort(byUrgency);
   }, [rows, filter, search]);
 
+  /*
+   * Both exports carry exactly what is on screen — the active filter and
+   * search included. The alternative, always exporting the re-order set, means
+   * someone who narrowed the table to one floor and pressed Export gets rows
+   * they did not ask for, which is the sort of thing that quietly ends up on a
+   * purchase order. The "Alert Status" column is what keeps that honest: it
+   * distinguishes the rows that are genuinely alerting from the rest.
+   */
+  const exportRows = useMemo(() => visible.map(toExportRow), [visible]);
+
+  function exportCsv(): void {
+    downloadText(csvFilename(), toCsv(exportRows), 'text/csv');
+  }
+
+  async function copyList(): Promise<void> {
+    const ok = await copyText(toPlainList(exportRows, t, locale));
+    setCopied(ok ? 'done' : 'failed');
+    // Long enough to read, short enough that the button is back to its normal
+    // label before anyone tries to use it again.
+    window.setTimeout(() => setCopied('idle'), 2500);
+  }
+
   return (
     <>
       <PageHeader
         title={t('suppliesPage.title')}
         subtitle={t('suppliesPage.subtitle', { threshold: CRITICAL_SUPPLY_PERCENT })}
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={exportCsv}
+              // Nothing on screen means nothing to export; a CSV of headers
+              // alone is a support call waiting to happen.
+              disabled={exportRows.length === 0}
+            >
+              <Download size={15} strokeWidth={2} aria-hidden="true" />
+              {t('suppliesPage.exportCsv')}
+            </button>
+
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => void copyList()}
+              disabled={exportRows.length === 0}
+            >
+              {copied === 'done' ? (
+                <ClipboardCheck size={15} strokeWidth={2} aria-hidden="true" />
+              ) : (
+                <ClipboardList size={15} strokeWidth={2} aria-hidden="true" />
+              )}
+              {copied === 'done'
+                ? t('common.copied')
+                : copied === 'failed'
+                  ? t('suppliesPage.copyFailed')
+                  : t('suppliesPage.copyList')}
+            </button>
+          </>
+        }
       />
 
       {error !== null && <div className="banner is-error">{error}</div>}

@@ -2761,3 +2761,272 @@ td code {
   letter-spacing: 0;
   font-size: 12px;
 }
+
+/* Segmented control -------------------------------------------------------- */
+
+/* Two peer options in one recessed track, rather than two separate buttons.
+   The sunken background is what makes the raised segment read as "the one you
+   are on" without needing the accent to shout. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.segment:hover {
+  color: var(--text);
+}
+
+.segment.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--card-shadow);
+}
+
+.segment.is-active svg {
+  color: var(--accent);
+}
+
+/* The radio itself is visually hidden, so the focus ring has to be put back on
+   the label it is standing in for — otherwise the control is unusable by
+   keyboard without being obviously broken. */
+.segment:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Page actions ------------------------------------------------------------- */
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Icons inside the header's buttons, which are otherwise text-only. */
+.page-actions .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Floor & Queue ------------------------------------------------------------ */
+
+.floor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 16px 0 26px;
+}
+
+/* The status tone is carried on the left edge, so a row of cards can be read
+   at a glance from across the room — which is the distance these are actually
+   read from. */
+.floor-card {
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.floor-card.is-ready {
+  border-left-color: var(--ok);
+}
+
+.floor-card.is-busy {
+  border-left-color: var(--accent);
+}
+
+.floor-card.is-blocked {
+  border-left-color: var(--danger);
+}
+
+.floor-card.is-loading {
+  justify-content: center;
+  min-height: 150px;
+}
+
+.floor-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.floor-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.floor-card h3 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.floor-card h3 a:hover {
+  color: var(--accent);
+}
+
+.floor-pin {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.floor-location {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+
+/* The one line most people will read, so it is the largest thing on the card. */
+.floor-status {
+  margin: 12px 0 0;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.floor-status.is-ready {
+  color: var(--ok-text);
+}
+
+.floor-status.is-busy {
+  color: var(--accent-hover);
+}
+
+.floor-status.is-blocked {
+  color: var(--error-text);
+}
+
+.floor-facts {
+  margin: 14px 0 0;
+}
+
+.floor-facts div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.floor-facts dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.floor-facts dd {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* Gauges without numbers: the exact percentage is a supplies-page question, and
+   what matters here is whether a job will outlast the cartridge. */
+.floor-gauges {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+/* Flex rather than a two-column grid, matching .supply-row above.
+   A `1fr auto` grid puts no floor under the bar: the label column is sized to
+   its content, and on a phone-width card a long cartridge name takes the row
+   and leaves the bar as an 8px dot — which is exactly as useless as it sounds.
+   Flex with an explicit min-width on the track and an ellipsis on the label
+   makes the bar the thing that survives, which is the right way round. */
+.floor-gauge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.floor-gauge .supply-track {
+  display: block;
+  flex: 1 1 auto;
+  /* Overrides the `min-width: 0` .supply-track carries for its flex-row use.
+     Below about this the bar stops conveying a level at all. */
+  min-width: 70px;
+  height: 6px;
+}
+
+.floor-gauge .supply-fill {
+  display: block;
+}
+
+/* Truncates rather than pushing the bar out. The full name is on the card's
+   title attribute, and the colour of the fill identifies it besides. */
+.floor-gauge small {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.floor-gauge small.is-concerning {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* Pushed to the bottom so cards of differing heights still line their
+   timestamps up along the row. */
+.floor-updated {
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  margin-top: auto;
+}
+
+/* The queue phrase in the fleet list. Flatter than a status pill: this column
+   is read down, and twenty filled lozenges would be a wall of colour. */
+.queue-pill {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.queue-pill.is-ready {
+  color: var(--ok-text);
+}
+
+.queue-pill.is-busy {
+  color: var(--accent-hover);
+}
+
+.queue-pill.is-blocked {
+  color: var(--error-text);
+}
+
+.queue-depth {
+  font-variant-numeric: tabular-nums;
+}
