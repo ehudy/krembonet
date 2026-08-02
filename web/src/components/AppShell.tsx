@@ -117,9 +117,17 @@ function Brand({
           {subtitle !== '' && <small>{subtitle}</small>}
         </span>
       ) : (
-        // The title becomes the alt text: if the image fails, the hub is still
-        // named rather than showing a broken-image icon with no context.
-        <img className="brand-logo" src={logoUrl} alt={title} />
+        <span className="brand-logo-group">
+          {/* The title becomes the alt text: if the image fails, the hub is
+              still named rather than showing a broken-image icon with no
+              context. */}
+          <img className="brand-logo" src={logoUrl} alt={title} />
+          {/* The subtitle belongs under a logo just as it does under a text
+              name — a custom mark is not a reason to drop the line of context
+              beneath it. Rendered only when there is one, so an empty element
+              does not leave the logo floating over its own line-height. */}
+          {subtitle !== '' && <small className="brand-subtitle">{subtitle}</small>}
+        </span>
       )}
     </div>
   );

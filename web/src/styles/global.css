@@ -343,6 +343,25 @@ body {
   display: block;
 }
 
+/* Stacks a custom logo over its subtitle, left-aligned so the subtitle sits
+   under the mark's left edge — the same column the text name and its subtitle
+   use, just with an image on top. */
+.brand-logo-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+/* Matches the subtitle under a text name — muted, small — with a subtle gap
+   from the mark above it. */
+.brand-subtitle {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--text-muted);
+}
+
 .brand-text {
   display: flex;
   flex-direction: column;
