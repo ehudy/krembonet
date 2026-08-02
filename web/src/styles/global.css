@@ -293,10 +293,35 @@ select {
   transition: border-color 0.15s;
 }
 
+/* Custom search input ----------------------------------------------------- */
+
+/* WebKit gives a search field its own chrome — an inset shadow, a pill radius,
+   a clear affordance — none of which match the plain box every other input is.
+   Reset so a search field is the same shell as a text field, and picks up the
+   same border, padding, and focus ring below. */
+input[type='search'] {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* One focus ring for every text-like control ------------------------------ */
+
+/* Inputs, textareas, and selects all get the same treatment on focus: the
+   native blue ring is dropped, the border turns brand amber, and a 1px shadow
+   of the same colour hugs it — a clean two-pixel ring with no layout shift.
+   Applied on `:focus`, not only `:focus-visible`, so a search box clicked with
+   the mouse lights up the same as a settings field tabbed into, and so the
+   whole app agrees on what a focused field looks like. Checkboxes and radios
+   are excluded — they carry their own offset outline. */
+input:not([type='checkbox']):not([type='radio']):focus,
+input:not([type='checkbox']):not([type='radio']):focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
 select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
   border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  outline: none;
 }
 
 body {
@@ -1272,12 +1297,6 @@ td code {
   width: 100%;
 }
 
-.field input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-  border-color: var(--accent);
-}
-
 .field-wide {
   grid-column: 1 / -1;
 }
@@ -1724,11 +1743,6 @@ td code {
   resize: vertical;
 }
 
-.code-area:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-  border-color: var(--accent);
-}
 
 /* A destructive action should not look like the neutral one beside it, but it
    is still secondary — the primary button on these forms is "save". */
