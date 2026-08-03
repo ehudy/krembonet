@@ -1,6 +1,17 @@
+/**
+ * What is loaded in one printer, slot by slot.
+ *
+ * The same row shape as the Media Catalog's By-device tab, from the same
+ * component — these two lists show identical information about identical things
+ * and had drifted into looking like different features. The tray leads, because
+ * the panel is already one printer; what is in it is the detail line.
+ */
+import { Layers } from 'lucide-react';
+
 import { useTranslation, type Translate } from '../i18n/i18n.js';
 import { resolveMediaLabel } from '../lib/mediaLabel.js';
 import type { MediaSource } from '../types.js';
+import { MediaItem, subtitleOf } from './MediaItem.js';
 
 function widthLabel(source: MediaSource, t: Translate): string | null {
   if (source.widthInches === null) return null;
@@ -17,38 +28,30 @@ function widthLabel(source: MediaSource, t: Translate): string | null {
  */
 function MediaRow({ source }: { source: MediaSource }) {
   const { t } = useTranslation();
-  const width = widthLabel(source, t);
-  const label = resolveMediaLabel(source, t);
 
   if (!source.isLoaded) {
     return (
-      <div className="paper-row">
-        <div className="paper-icon is-empty" aria-hidden="true" />
-        <div className="paper-details">
-          <strong>{source.label}</strong>
-          <span className="muted">{t('media.notLoaded')}</span>
-        </div>
-      </div>
+      <MediaItem
+        icon={Layers}
+        title={source.label}
+        subtitle={t('media.notLoaded')}
+        isDim
+      />
     );
   }
 
+  const label = resolveMediaLabel(source, t);
+
   return (
-    <div className="paper-row">
-      <div className="paper-icon" aria-hidden="true" />
-      <div className="paper-details">
-        <strong>{source.label}</strong>
-        {label.name !== null ? (
-          <span>{label.name}</span>
-        ) : label.isUnmapped ? (
-          <span className="paper-unknown" title={t('media.unknownCode')}>
-            <code>{label.code}</code>
-          </span>
-        ) : (
-          <span className="muted">{t('media.loaded')}</span>
-        )}
-        {width !== null && <span className="paper-width">{width}</span>}
-      </div>
-    </div>
+    <MediaItem
+      icon={Layers}
+      title={source.label}
+      subtitle={subtitleOf([
+        label.name ?? label.code ?? t('media.loaded'),
+        widthLabel(source, t),
+      ])}
+      hint={label.isUnmapped ? t('media.unknownCode') : undefined}
+    />
   );
 }
 
@@ -61,7 +64,11 @@ export function PaperPanel({ media }: { media: MediaSource[] }) {
       {media.length === 0 ? (
         <p className="muted">{t('media.empty')}</p>
       ) : (
-        media.map((source) => <MediaRow key={source.key} source={source} />)
+        <ul className="media-list">
+          {media.map((source) => (
+            <MediaRow key={source.key} source={source} />
+          ))}
+        </ul>
       )}
     </section>
   );

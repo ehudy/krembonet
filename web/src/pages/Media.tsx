@@ -12,9 +12,10 @@
  * and this page links there when it finds one it cannot read.
  */
 import { useCallback, useMemo, useState } from 'react';
-import { CircleHelp, Layers, Printer, type LucideIcon } from 'lucide-react';
+import { CircleHelp, Layers, Printer } from 'lucide-react';
 
 import { api } from '../api.js';
+import { MediaItem, subtitleOf } from '../components/MediaItem.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { usePolled } from '../hooks/usePolled.js';
 import { useTranslation, type Translate } from '../i18n/i18n.js';
@@ -153,70 +154,6 @@ function widthLabel(source: MediaSource, t: Translate): string | null {
   return source.type === 'roll'
     ? t('media.rollWidth', { inches: source.widthInches })
     : t('media.sheetWidth', { inches: source.widthInches });
-}
-
-/** Joins the parts of a subtitle, dropping the ones a device did not report. */
-function subtitleOf(parts: readonly (string | null)[]): string {
-  return parts.filter((part): part is string => part !== null && part !== '').join(' · ');
-}
-
-/**
- * One row, shared by all three groupings.
- *
- * The three tabs answer different questions but list the same kind of thing —
- * a named slot somewhere, with a line of detail under it — and they used to
- * render it three different ways: a link with an icon, the same link plus a
- * right-aligned badge, and a flex row led by a grey circle. Side by side that
- * read as three unrelated screens rather than three views of one catalogue, and
- * switching tabs made the eye re-find where a row's name starts.
- *
- * So the detail is always the muted second line, never a pill pinned to the
- * right edge: a badge in the corner is a different visual weight from prose
- * under a name, and the By-size tab was the only one using it. Whether the row
- * links anywhere is the only thing that varies, because a printer row goes to
- * its printer and a tray row is already inside its printer's card.
- */
-function MediaItem({
-  icon: Icon,
-  title,
-  subtitle,
-  hint,
-  to,
-  isDim = false,
-}: {
-  icon: LucideIcon;
-  title: string;
-  subtitle: string;
-  /** Tooltip for the subtitle, e.g. why a raw vendor code is showing. */
-  hint?: string;
-  /** Omitted for a row that is not a link. */
-  to?: string;
-  /** An empty slot: present, but with nothing in it. */
-  isDim?: boolean;
-}) {
-  const body = (
-    <>
-      <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
-      <span>
-        <strong>{title}</strong>
-        <small className="muted" title={hint}>
-          {subtitle}
-        </small>
-      </span>
-    </>
-  );
-
-  return (
-    <li className={`media-item${isDim ? ' is-dim' : ''}`}>
-      {to === undefined ? (
-        <span className="media-line">{body}</span>
-      ) : (
-        <Link to={to} className="media-line">
-          {body}
-        </Link>
-      )}
-    </li>
-  );
 }
 
 export function Media() {

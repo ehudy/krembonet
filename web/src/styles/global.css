@@ -1167,67 +1167,6 @@ h1 {
   border-top: 1px dashed var(--border);
 }
 
-/* Paper ------------------------------------------------------------------ */
-
-.paper-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.paper-row:last-child {
-  border-bottom: none;
-}
-
-.paper-icon {
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--border-strong);
-}
-
-.paper-icon.is-empty {
-  background: transparent;
-  border: 2px dashed var(--border);
-}
-
-.paper-details {
-  min-width: 0;
-}
-
-.paper-details strong {
-  display: block;
-  font-size: 10px;
-  color: var(--text-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.paper-details span {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  word-break: break-word;
-}
-
-.paper-details .paper-width {
-  font-weight: 500;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.paper-unknown code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  color: var(--text-muted);
-  background: var(--border);
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-}
-
 /* Tables ----------------------------------------------------------------- */
 
 .table-scroll {
@@ -3220,17 +3159,6 @@ a.media-line:focus-visible {
 .media-item.is-dim .media-line strong {
   color: var(--text-muted);
   font-weight: 500;
-}
-
-/* An unmapped vendor code. Shown as the code itself, never as a guessed name —
-   a wrong paper name is worse than an unfamiliar one, because someone will plot
-   a job on it. */
-.paper-unknown {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 10px;
-  color: var(--text-muted);
 }
 
 @media (max-width: 720px) {
