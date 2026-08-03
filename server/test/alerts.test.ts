@@ -55,6 +55,7 @@ function ink(name: string, level: SupplyLevel | number): Supply {
     type: 'ink',
     level: typeof level === 'number' ? { kind: 'percent', percent: level } : level,
     colorHex: '#000000',
+    partNumber: null,
   };
 }
 
@@ -67,6 +68,7 @@ function waste(level: SupplyLevel | number): Supply {
     type: 'waste-ink',
     level: typeof level === 'number' ? { kind: 'percent', percent: level } : level,
     colorHex: '#008080',
+    partNumber: null,
   };
 }
 

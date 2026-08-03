@@ -94,6 +94,13 @@ export interface Supply {
   level: SupplyLevel;
   /** Display colour where the device offers one. Null means "pick your own". */
   colorHex: string | null;
+  /**
+   * The cartridge SKU pulled out of the device's marker name, when it carried
+   * one — `GPR-66`, `TK-172`. Kept for tooltips and the reorder list; the label
+   * shows the colour, this shows what to actually order. Null when the name
+   * had no recognisable part number.
+   */
+  partNumber: string | null;
 }
 
 export type MediaSourceType = 'roll' | 'sheet-tray' | 'manual' | 'unknown';

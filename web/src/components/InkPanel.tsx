@@ -52,10 +52,19 @@ function SupplyRow({ supply }: { supply: Supply }) {
   const { t } = useTranslation();
   const width = fillWidth(supply.level, supply.percent);
 
+  // The colour names the row; the part number, when the device gave one, is the
+  // thing to type into a reorder form, so it rides along as a quiet suffix and
+  // in the tooltip rather than crowding the label.
+  const labelTitle =
+    supply.partNumber === null ? supply.label : `${supply.label} · ${supply.partNumber}`;
+
   return (
     <div className="supply-row">
-      <div className="supply-label" title={supply.label}>
+      <div className="supply-label" title={labelTitle}>
         {supply.label}
+        {supply.partNumber !== null && (
+          <span className="supply-part"> · {supply.partNumber}</span>
+        )}
       </div>
       <div
         className="supply-track"

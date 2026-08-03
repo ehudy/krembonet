@@ -56,6 +56,7 @@ function supply(overrides: Partial<Supply> = {}): Supply {
     percent: 50,
     breached: false,
     colorHex: '#000000',
+    partNumber: null,
     ...overrides,
   };
 }

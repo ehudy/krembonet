@@ -6,6 +6,7 @@
  * behind each. Read it before "simplifying" anything in this file.
  */
 import { asArray, asDict, asNumber, asString, type PlistValue } from './plist.js';
+import { cleanSupplyName } from '../supply-name.js';
 import {
   percentLevel,
   type DeviceSnapshot,
@@ -264,11 +265,16 @@ export function normalizeSupplies(attrs: Record<string, PlistValue>): Supply[] {
   return names.map((name, index) => {
     const { kind, type } = classifySupply(types[index] ?? '');
     const reportedColor = colors[index] ?? '';
+    // Expand a terse code first (MBK → Matte Black), then clean: a device that
+    // reports a full "TK-172 Black Toner" gets the colour for its label and the
+    // SKU kept aside, while an already-clean Canon code passes through unchanged.
+    const { label, partNumber } = cleanSupplyName(SUPPLY_LABELS[name] ?? name);
 
     return {
       index,
       name,
-      label: SUPPLY_LABELS[name] ?? name,
+      label,
+      partNumber,
       kind,
       type,
       // Receptacles count toward full and vary in which way the number runs;

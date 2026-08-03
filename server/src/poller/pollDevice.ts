@@ -555,6 +555,10 @@ export function hydrateDeviceView(device: DeviceRow): DeviceView {
       type: row.supplyType as SupplyType,
       level: levelFromColumns(row),
       colorHex: row.colorHex,
+      // Not persisted — it is re-derived from the marker name on every poll, and
+      // the stored label is already the cleaned colour with the SKU removed. A
+      // freshly hydrated cache carries none until the first poll repopulates it.
+      partNumber: null,
     })),
     media: resolveMedia(
       mediaRows.map((row) => ({

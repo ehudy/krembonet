@@ -65,16 +65,18 @@ describe('a well-behaved laser MFP', () => {
     assert.equal(identity.serial, 'CNB1X2Y3Z4');
   });
 
-  it('reads all five supplies in row order', () => {
+  it('reads all five supplies in row order, cleaned to the colour', () => {
     assert.deepEqual(
       supplies.map((supply) => supply.label),
-      [
-        'Black Cartridge HP W9060MC',
-        'Cyan Cartridge HP W9061MC',
-        'Magenta Cartridge HP W9063MC',
-        'Yellow Cartridge HP W9062MC',
-        'Toner Collection Unit',
-      ],
+      ['Black', 'Cyan', 'Magenta', 'Yellow', 'Waste Toner'],
+    );
+  });
+
+  it('keeps the cartridge SKU out of the label but on the supply', () => {
+    // The colour is what the row reads; the part number is what gets reordered.
+    assert.deepEqual(
+      supplies.map((supply) => supply.partNumber),
+      ['W9060MC', 'W9061MC', 'W9063MC', 'W9062MC', null],
     );
   });
 
@@ -153,9 +155,9 @@ describe('a device that reports awkwardly', () => {
 
   it('maps every negative sentinel without inventing a number', () => {
     // This is the whole reason the level model is a union.
-    assert.deepEqual(byLabel.get('Black Toner')?.level, { kind: 'unknown' });
-    assert.deepEqual(byLabel.get('Cyan Toner')?.level, { kind: 'binary', state: 'ok' });
-    assert.deepEqual(byLabel.get('Magenta Toner')?.level, { kind: 'unknown' });
+    assert.deepEqual(byLabel.get('Black')?.level, { kind: 'unknown' });
+    assert.deepEqual(byLabel.get('Cyan')?.level, { kind: 'binary', state: 'ok' });
+    assert.deepEqual(byLabel.get('Magenta')?.level, { kind: 'unknown' });
   });
 
   it('keeps a non-percent unit as an absolute reading', () => {
@@ -185,7 +187,9 @@ describe('a device that reports awkwardly', () => {
   it('falls back to the type enum when the class is other(1)', () => {
     // Class is authoritative, but plenty of agents leave it at other(1); the
     // wasteInk type still tells us the number counts up.
-    const waste = byLabel.get('Waste Ink Pad');
+    // "Waste Ink Pad" cleans to the Maintenance Cartridge keyword; the kind and
+    // type still come from the class/type enums, not the name.
+    const waste = byLabel.get('Maintenance Cartridge');
     assert.equal(waste?.kind, 'receptacle');
     assert.equal(waste?.type, 'waste-ink');
   });
@@ -199,8 +203,9 @@ describe('a device that reports awkwardly', () => {
   });
 
   it('still colours from the description when a name is recognisable', () => {
-    // "Black Toner" has no colorant row, but the description is unambiguous.
-    assert.equal(byLabel.get('Black Toner')?.colorHex, '#111827');
+    // "Black Toner" has no colorant row, but the description is unambiguous —
+    // and colouring reads the raw description, not the cleaned "Black" label.
+    assert.equal(byLabel.get('Black')?.colorHex, '#111827');
   });
 
   it('reports unknown state rather than guessing', () => {

@@ -39,6 +39,7 @@ import {
   SYS,
   vendorFromSysObjectId,
 } from './oids.js';
+import { cleanSupplyName } from '../supply-name.js';
 
 /** A value read from an SNMP agent. Buffers survive for bit-field columns. */
 export type SnmpValue = string | number | Buffer | null;
@@ -291,12 +292,19 @@ export function normalizeSupplies(walk: SnmpWalk): Supply[] {
       asNumber(cell(walk, PRT_MARKER_SUPPLIES.supplyUnit, index)),
     );
 
+    // The description is a parts-catalogue string ("Black Cartridge HP
+    // W9060MC"); the label shows the colour and the SKU is kept for reordering.
+    // colorHex still reads the raw description, which is where the colour word
+    // and the colorant hints live.
+    const { label, partNumber } = cleanSupplyName(description);
+
     return {
       index: position,
       // The row index is the stable key across polls; the description is prose
       // and can change with the device's configured language.
       name: index,
-      label: description,
+      label,
+      partNumber,
       kind,
       type,
       // A receptacle's raw reading is free space, not contents. Everything

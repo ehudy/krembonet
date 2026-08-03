@@ -1037,6 +1037,13 @@ h1 {
   text-overflow: ellipsis;
 }
 
+/* The part number trailing the colour. Quieter than the colour it follows —
+   it is reference detail for reordering, not the thing being read at a glance. */
+.supply-part {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
 .supply-track {
   min-width: 0;
   background: var(--border);

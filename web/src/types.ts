@@ -57,6 +57,12 @@ export interface Supply {
   breached: boolean;
   /** Null when the device reports no colour; the UI picks its own. */
   colorHex: string | null;
+  /**
+   * The cartridge SKU extracted from the device's marker name (`GPR-66`), or
+   * null when it carried none. Shown in tooltips and the reorder list — what to
+   * actually order, kept separate from the colour the label shows.
+   */
+  partNumber: string | null;
 }
 
 export type MediaSourceType = 'roll' | 'sheet-tray' | 'manual' | 'unknown';
