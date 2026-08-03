@@ -4,68 +4,223 @@
  * Mainly here to answer "did it actually send?" — the edge-trigger design means
  * silence is the expected state, so a log is the only way to tell a working
  * alert engine from a broken one.
+ *
+ * What is *currently* alerting used to be printed as its rule keys, which is
+ * exactly the data the engine stores and exactly the wrong thing to show:
+ * `device:plotter-2:supply:MBK:low` is an identifier, and an operator arriving
+ * at this page wants a printer, a severity, and a way to make it stop. So each
+ * one is a card — name, severity, how long, how many times — and carries the
+ * single action anybody takes from here, which is putting the machine into
+ * maintenance mode while somebody deals with it. That used to mean navigating
+ * to the device form and finding the right checkbox, which is three screens
+ * away from the alert that prompted it.
+ *
+ * The device list is fetched alongside the alerts because the keys carry a slug
+ * and a card needs a display name. An alert whose device has since been deleted
+ * keeps its card — the condition is real and the history should say so — but
+ * loses its link and its mute button, because neither has anywhere to go.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { BellOff, Wrench } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { useTranslation } from '../../i18n/i18n.js';
-import { relativeTime } from '../../lib/format.js';
-import type { AlertLogRow, AlertStateRow } from '../../types.js';
+import { ALERT_TONE, parseAlertRuleKey, type AlertKind } from '../../lib/alertKey.js';
+import { formatTime, relativeTime } from '../../lib/format.js';
+import { Link } from '../../router.js';
+import type { AdminDevice, AlertLogRow, AlertStateRow } from '../../types.js';
 
+/**
+ * Delivery outcomes, as pill tones.
+ *
+ * `muted` is amber rather than red: nothing failed, the hub did what it was
+ * told. Colouring a deliberate suppression the same as a bounced mail would
+ * send someone looking for a broken SMTP server that is working fine.
+ */
 const STATUS_CLASS: Record<string, string> = {
   sent: 'is-good',
   failed: 'is-bad',
   skipped: 'is-warn',
+  muted: 'is-warn',
 };
 
+/**
+ * Statuses this build has a word for.
+ *
+ * A row written by a newer version falls back to the stored token rather than
+ * rendering a dotted translation key — an unfamiliar status is still readable,
+ * `alerts.statuses.deferred` is not.
+ */
+const NAMED_STATUSES = new Set(Object.keys(STATUS_CLASS));
+
+/** Severity order, worst first — a card list is read top to bottom. */
+const KIND_RANK: Record<AlertKind, number> = {
+  offline: 0,
+  media: 1,
+  wasteFull: 2,
+  supplyLow: 3,
+  unknown: 4,
+};
+
+interface ActiveAlert {
+  row: AlertStateRow;
+  kind: AlertKind;
+  slug: string | null;
+  supplyName: string | null;
+  /** Null when the alert names a device that no longer exists. */
+  device: AdminDevice | undefined;
+}
+
+function describe(row: AlertStateRow, devices: readonly AdminDevice[]): ActiveAlert {
+  const { slug, kind, supplyName } = parseAlertRuleKey(row.ruleKey);
+  return {
+    row,
+    kind,
+    slug,
+    supplyName,
+    device: devices.find((device) => device.slug === slug),
+  };
+}
+
 export function AdminAlerts() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [active, setActive] = useState<AlertStateRow[]>([]);
   const [recent, setRecent] = useState<AlertLogRow[]>([]);
+  const [devices, setDevices] = useState<AdminDevice[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  /** The device id currently being muted, so only its own button shows busy. */
+  const [mutingId, setMutingId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const load = useCallback(async (signal?: AbortSignal): Promise<void> => {
+    try {
+      // Together rather than in sequence: the cards need both, and a card that
+      // renders its slug for half a second before the name arrives flickers.
+      const [alerts, deviceList] = await Promise.all([
+        api.alerts(signal),
+        api.listAdminDevices(signal),
+      ]);
+      setActive(alerts.active);
+      setRecent(alerts.recent);
+      setDevices(deviceList.devices);
+    } catch (cause: unknown) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') return;
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-
-    api
-      .alerts(controller.signal)
-      .then((result) => {
-        setActive(result.active);
-        setRecent(result.recent);
-      })
-      .catch((cause: unknown) => {
-        if (cause instanceof DOMException && cause.name === 'AbortError') return;
-        setError(cause instanceof Error ? cause.message : String(cause));
-      })
-      .finally(() => setIsLoading(false));
-
+    void load(controller.signal).finally(() => setIsLoading(false));
     return () => controller.abort();
-  }, []);
+  }, [load]);
 
-  if (error !== null) return <div className="banner is-error">{error}</div>;
+  /**
+   * Silences one device without leaving this page.
+   *
+   * Maintenance mode rather than the per-category switch: someone muting from
+   * an alert card is about to go and work on the machine, and a printer with
+   * its lid off will report several different faults before it is done.
+   */
+  async function mute(device: AdminDevice): Promise<void> {
+    setMutingId(device.id);
+    setError(null);
+
+    try {
+      await api.updateDevice(device.id, { isMuted: true });
+      setNotice(t('alerts.mutedNotice', { name: device.displayName }));
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setMutingId(null);
+    }
+  }
+
   if (isLoading) return <p className="muted">{t('alerts.loading')}</p>;
+
+  const alerts = active
+    .map((row) => describe(row, devices))
+    .sort(
+      (a, b) =>
+        KIND_RANK[a.kind] - KIND_RANK[b.kind] ||
+        a.row.ruleKey.localeCompare(b.row.ruleKey),
+    );
 
   return (
     <>
+      {error !== null && <div className="banner is-error">{error}</div>}
+      {notice !== null && <div className="banner is-good">{notice}</div>}
+
       <section className="card">
         <h2 className="card-title">
-          {t('alerts.activeTitle')} <span className="count">{active.length}</span>
+          {t('alerts.activeTitle')} <span className="count">{alerts.length}</span>
         </h2>
 
-        {active.length === 0 ? (
+        {alerts.length === 0 ? (
           <p className="muted">{t('alerts.activeEmpty')}</p>
         ) : (
-          <ul className="plain-list">
-            {active.map((row) => (
-              <li key={row.ruleKey}>
-                <code>{row.ruleKey}</code>
-                <span className="muted">
+          <ul className="alert-cards">
+            {alerts.map((alert) => (
+              <li key={alert.row.ruleKey} className="alert-card">
+                <div className="alert-card-head">
+                  {/* The printer, named as an operator knows it. Linked only
+                      while it exists — a deleted device keeps its card, because
+                      the condition was real, but a link to a 404 is worse than
+                      plain text. */}
+                  {alert.device === undefined ? (
+                    <strong className="alert-device">
+                      {alert.slug ?? alert.row.ruleKey}
+                    </strong>
+                  ) : (
+                    <Link to={`/devices/${alert.device.slug}`} className="alert-device">
+                      {alert.device.displayName}
+                    </Link>
+                  )}
+
+                  <span className={`alert-pill ${ALERT_TONE[alert.kind]}`}>
+                    {t(`alerts.kind.${alert.kind}`)}
+                  </span>
+                </div>
+
+                <p className="alert-meta muted">
+                  {/* The supply first, because "which cartridge" is the whole
+                      question on a device with six of them. */}
+                  {alert.supplyName !== null && alert.supplyName !== '' && (
+                    <>
+                      <span className="alert-subject">{alert.supplyName}</span>
+                      {' · '}
+                    </>
+                  )}
                   {t('alerts.since', {
-                    time: relativeTime(row.triggeredAt, t),
-                    count: row.notifyCount,
+                    time: relativeTime(alert.row.triggeredAt, t),
+                    count: alert.row.notifyCount,
                   })}
-                </span>
+                </p>
+
+                <div className="alert-card-actions">
+                  {alert.device === undefined ? (
+                    <span className="muted">{t('alerts.deviceGone')}</span>
+                  ) : alert.device.isMuted ? (
+                    <span className="pill is-warn">
+                      <BellOff size={13} strokeWidth={2} aria-hidden="true" />
+                      {t('alerts.alreadyMuted')}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={mutingId !== null}
+                      onClick={() => void mute(alert.device as AdminDevice)}
+                    >
+                      <Wrench size={13} strokeWidth={2} aria-hidden="true" />
+                      {mutingId === alert.device.id
+                        ? t('alerts.muting')
+                        : t('alerts.mute')}
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -79,7 +234,7 @@ export function AdminAlerts() {
           <p className="muted">{t('alerts.recentEmpty')}</p>
         ) : (
           <div className="table-scroll">
-            <table>
+            <table className="data-table">
               <thead>
                 <tr>
                   <th scope="col">{t('alerts.when')}</th>
@@ -92,7 +247,14 @@ export function AdminAlerts() {
               <tbody>
                 {recent.map((row) => (
                   <tr key={row.id}>
-                    <td>{relativeTime(row.createdAt, t)}</td>
+                    {/* Relative for scanning, absolute on hover for the one
+                        question a log is ever asked precisely: what time. */}
+                    <td
+                      className="alert-when"
+                      title={formatTime(row.createdAt, locale, t)}
+                    >
+                      {relativeTime(row.createdAt, t)}
+                    </td>
                     <td>{row.subject}</td>
                     {/* Rows written before webhooks existed default to email
                         server-side, so this is never blank. */}
@@ -104,7 +266,9 @@ export function AdminAlerts() {
                     <td className="muted">{row.recipients || t('common.none')}</td>
                     <td>
                       <span className={`pill ${STATUS_CLASS[row.status] ?? ''}`}>
-                        {row.status}
+                        {NAMED_STATUSES.has(row.status)
+                          ? t(`alerts.statuses.${row.status}`)
+                          : row.status}
                       </span>
                       {row.error !== null && (
                         <span className="state-reason">{row.error}</span>

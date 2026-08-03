@@ -11,10 +11,12 @@ import { activeAlerts, recentAlertLogs } from '../alerts/engine.js';
 import { sendTestEmail } from '../alerts/mailer.js';
 import {
   dispatchWebhooks,
+  forgetWebhookRouting,
   getWebhook,
   listWebhooks,
   toTarget,
 } from '../alerts/webhooks.js';
+import { looksLikeEmail, parseRecipients } from '../alerts/routing.js';
 import {
   isWebhookFormat,
   WEBHOOK_FORMAT_LABELS,
@@ -114,19 +116,6 @@ function clampNumber(value: unknown, min: number, max: number): number | undefin
   const parsed = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
   if (!Number.isFinite(parsed)) return undefined;
   return Math.min(Math.max(Math.round(parsed), min), max);
-}
-
-function parseRecipients(value: unknown): string[] {
-  const raw = Array.isArray(value) ? value.join(',') : String(value ?? '');
-  return raw
-    .split(/[,;\s]+/)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry !== '');
-}
-
-/** Deliberately permissive — enough to catch typos, not to police RFC 5322. */
-function looksLikeEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 /** Roughly 512KB of base64, which is a generous inline logo. */
@@ -788,9 +777,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     '/api/admin/webhooks/:id',
     { preHandler: requireAdmin },
     async (request) => {
-      db.delete(webhooks)
-        .where(eq(webhooks.id, Number.parseInt(request.params.id, 10)))
-        .run();
+      const id = Number.parseInt(request.params.id, 10);
+      db.delete(webhooks).where(eq(webhooks.id, id)).run();
+      // Devices routing at this destination lose it from their selection. A
+      // device left holding only dead ids would route at nothing while its
+      // routing card showed an empty — that is, defaulted — selection.
+      forgetWebhookRouting(id);
       return { ok: true };
     },
   );

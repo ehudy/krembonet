@@ -27,9 +27,14 @@ import { alertLogs, alertState, deviceStatus } from '../db/schema.js';
 import { assessAttention } from '../devices/attention.js';
 import type { DeviceView } from '../poller/cache.js';
 import type { DeviceRow } from '../poller/pollDevice.js';
-import { getSettings, isSmtpConfigured } from '../settings/settings.js';
+import { getSettings, isSmtpTransportConfigured } from '../settings/settings.js';
 import { sendMail } from './mailer.js';
 import { suppressionReason, type AlertCategory, type MuteFlags } from './mute.js';
+import {
+  parseDeviceRouting,
+  resolveEmailRecipients,
+  resolveWebhookTargets,
+} from './routing.js';
 import {
   buildOfflineMail,
   buildRecoveryMail,
@@ -203,25 +208,33 @@ async function dispatch(
     return false;
   }
 
-  const smtpReady = isSmtpConfigured(settings);
-  const targets = listEnabledTargets();
+  // Per-device routing, falling back to the hub-wide destinations wherever the
+  // device has nothing to say — which is every device on a hub that has never
+  // opened the routing card. See alerts/routing.ts for why blank means "the
+  // default" rather than "nowhere".
+  const routing = parseDeviceRouting(device);
+  const recipients = resolveEmailRecipients(routing, settings.alertRecipients);
+  const targets = resolveWebhookTargets(routing, listEnabledTargets());
+
+  const smtpReady = isSmtpTransportConfigured(settings) && recipients.length > 0;
 
   // Record the condition even when nothing can carry it, otherwise a hub with
   // no destination configured would retry — and re-log — on every single poll.
   if (!smtpReady && targets.length === 0) {
+    // Two different problems wearing the same hat, and they send an operator to
+    // different screens: nothing is configured at all, or this device's routing
+    // points at destinations that are all switched off. Saying which is the
+    // difference between a legible log line and a scavenger hunt.
+    const isRouted = routing.emailRecipients.length > 0 || routing.webhookIds.length > 0;
+    const reason = isRouted
+      ? 'No reachable destination for this device — check its alert routing'
+      : 'No destination configured (no SMTP, no webhooks)';
+
     for (const ruleKey of notification.ruleKeys) {
-      logAlert(
-        ruleKey,
-        device.id,
-        notification.subject,
-        [],
-        'skipped',
-        'email',
-        'No destination configured (no SMTP, no webhooks)',
-      );
+      logAlert(ruleKey, device.id, notification.subject, [], 'skipped', 'email', reason);
     }
     log.warn(
-      { device: device.slug, category: notification.category },
+      { device: device.slug, category: notification.category, routed: isRouted },
       'alert raised but no destination is configured',
     );
     return false;
@@ -232,7 +245,11 @@ async function dispatch(
   // every other one.
   const [mail, deliveries] = await Promise.all([
     smtpReady
-      ? sendMail({ subject: notification.subject, text: notification.text }, settings)
+      ? sendMail(
+          { subject: notification.subject, text: notification.text },
+          settings,
+          recipients,
+        )
       : null,
     targets.length > 0
       ? dispatchWebhooks(

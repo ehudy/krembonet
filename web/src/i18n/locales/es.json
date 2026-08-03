@@ -386,6 +386,15 @@
     "muteMediaHint": "Sin papel, bandeja vacía, atascos.",
     "muteOffline": "Silenciar alertas de conexión",
     "muteOfflineHint": "El dispositivo dejando de responder, y recuperándose.",
+    "routing": "Enrutado de alertas",
+    "routingHint": "A dónde van las alertas de esta impresora, cuando difiere del centro. Déjalo todo en blanco y usará los destinos generales, que es lo adecuado para casi todas las impresoras.",
+    "routeEmail": "Destinatarios de correo propios",
+    "routeEmailPlaceholder": "soporte-planta2@empresa.com",
+    "routeEmailHint": "Déjalo en blanco para usar los destinatarios SMTP globales. Las direcciones que pongas aquí sustituyen a la lista global para esta impresora, no se suman a ella. Separa varias con comas.",
+    "routeWebhooks": "Destinos de webhook",
+    "routeWebhooksHint": "Si no marcas ninguno, se envía a todos los webhooks activados, tal como estén configurados en Alertas → Webhooks. Si marcas alguno, esta impresora se enruta solo a esos.",
+    "routeWebhooksNone": "Todavía no hay webhooks configurados. Añade uno en Alertas → Webhooks y aparecerá aquí.",
+    "routeWebhookDisabled": "Desactivado en todo el centro",
     "probeIp": "Probar IP",
     "probingIp": "Probando…",
     "probeIpHint": "Comprueba si la dirección responde por IPP, SNMP o interfaz web, y rellena los ajustes que funcionaron.",
@@ -481,7 +490,25 @@
     "status": "Estado",
     "channelEmail": "Correo",
     "channelWebhook": "Webhook",
-    "loading": "Cargando el historial de alertas…"
+    "loading": "Cargando el historial de alertas…",
+    "kind": {
+      "offline": "Sin conexión",
+      "media": "Requiere atención",
+      "supplyLow": "Consumible bajo",
+      "wasteFull": "Depósito de residuos lleno",
+      "unknown": "En alerta"
+    },
+    "statuses": {
+      "sent": "Enviada",
+      "failed": "Fallida",
+      "skipped": "Omitida",
+      "muted": "Silenciada"
+    },
+    "mute": "Poner en modo mantenimiento",
+    "muting": "Silenciando…",
+    "alreadyMuted": "En mantenimiento",
+    "mutedNotice": "{{name}} está en modo mantenimiento. La condición se sigue registrando y se sigue mostrando aquí; solo se detienen el correo y los webhooks.",
+    "deviceGone": "Esta impresora ha sido eliminada."
   },
   "webhooks": {
     "title": "Destinos de webhook",

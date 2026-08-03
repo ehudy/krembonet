@@ -12,7 +12,7 @@
  * and this page links there when it finds one it cannot read.
  */
 import { useCallback, useMemo, useState } from 'react';
-import { CircleHelp, Layers, Printer } from 'lucide-react';
+import { CircleHelp, Layers, Printer, type LucideIcon } from 'lucide-react';
 
 import { api } from '../api.js';
 import { PageHeader } from '../components/PageHeader.js';
@@ -155,18 +155,67 @@ function widthLabel(source: MediaSource, t: Translate): string | null {
     : t('media.sheetWidth', { inches: source.widthInches });
 }
 
-/** A source that is present but has nothing in it. */
-function EmptySlot({ source }: { source: MediaSource }) {
-  const { t } = useTranslation();
+/** Joins the parts of a subtitle, dropping the ones a device did not report. */
+function subtitleOf(parts: readonly (string | null)[]): string {
+  return parts.filter((part): part is string => part !== null && part !== '').join(' · ');
+}
+
+/**
+ * One row, shared by all three groupings.
+ *
+ * The three tabs answer different questions but list the same kind of thing —
+ * a named slot somewhere, with a line of detail under it — and they used to
+ * render it three different ways: a link with an icon, the same link plus a
+ * right-aligned badge, and a flex row led by a grey circle. Side by side that
+ * read as three unrelated screens rather than three views of one catalogue, and
+ * switching tabs made the eye re-find where a row's name starts.
+ *
+ * So the detail is always the muted second line, never a pill pinned to the
+ * right edge: a badge in the corner is a different visual weight from prose
+ * under a name, and the By-size tab was the only one using it. Whether the row
+ * links anywhere is the only thing that varies, because a printer row goes to
+ * its printer and a tray row is already inside its printer's card.
+ */
+function MediaItem({
+  icon: Icon,
+  title,
+  subtitle,
+  hint,
+  to,
+  isDim = false,
+}: {
+  icon: LucideIcon;
+  title: string;
+  subtitle: string;
+  /** Tooltip for the subtitle, e.g. why a raw vendor code is showing. */
+  hint?: string;
+  /** Omitted for a row that is not a link. */
+  to?: string;
+  /** An empty slot: present, but with nothing in it. */
+  isDim?: boolean;
+}) {
+  const body = (
+    <>
+      <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
+      <span>
+        <strong>{title}</strong>
+        <small className="muted" title={hint}>
+          {subtitle}
+        </small>
+      </span>
+    </>
+  );
 
   return (
-    <div className="paper-row">
-      <div className="paper-icon is-empty" aria-hidden="true" />
-      <div className="paper-details">
-        <strong>{source.label}</strong>
-        <span className="muted">{t('media.notLoaded')}</span>
-      </div>
-    </div>
+    <li className={`media-item${isDim ? ' is-dim' : ''}`}>
+      {to === undefined ? (
+        <span className="media-line">{body}</span>
+      ) : (
+        <Link to={to} className="media-line">
+          {body}
+        </Link>
+      )}
+    </li>
   );
 }
 
@@ -285,35 +334,25 @@ export function Media() {
                 </p>
               )}
 
-              <ul className="plain-list stock-devices">
-                {group.entries.map((entry) => {
-                  // Tray, the size loaded in it, and where it lives — joined on
-                  // one muted line. The size is the tray's own, not the group's
-                  // set of widths above it: one stock can be loaded at several
-                  // widths across the fleet, so this is what says which machine
-                  // has the 24-inch roll and which the 11-inch sheet. Built by
-                  // filter-then-join so a tray that reports no size (or no
-                  // location) reads "Tray 1" with no dangling separator.
-                  const subtitle = [
-                    entry.source.label,
-                    widthLabel(entry.source, t),
-                    entry.location,
-                  ]
-                    .filter((part): part is string => part !== null && part !== '')
-                    .join(' · ');
-
-                  return (
-                    <li key={`${entry.slug}:${entry.source.key}`}>
-                      <Link to={`/devices/${entry.slug}`} className="device-link">
-                        <Printer size={14} strokeWidth={1.75} aria-hidden="true" />
-                        <span>
-                          <strong>{entry.deviceName}</strong>
-                          <small className="muted">{subtitle}</small>
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
+              <ul className="media-list">
+                {group.entries.map((entry) => (
+                  // Tray, the size loaded in it, and where it lives — one muted
+                  // line. The size is the tray's own, not the group's set of
+                  // widths above it: one stock can be loaded at several widths
+                  // across the fleet, so this is what says which machine has
+                  // the 24-inch roll and which the 11-inch sheet.
+                  <MediaItem
+                    key={`${entry.slug}:${entry.source.key}`}
+                    icon={Printer}
+                    title={entry.deviceName}
+                    subtitle={subtitleOf([
+                      entry.source.label,
+                      widthLabel(entry.source, t),
+                      entry.location,
+                    ])}
+                    to={`/devices/${entry.slug}`}
+                  />
+                ))}
               </ul>
             </section>
           ))}
@@ -336,35 +375,27 @@ export function Media() {
                 </span>
               </div>
 
-              <ul className="plain-list stock-devices">
+              <ul className="media-list">
                 {group.entries.map((entry) => {
-                  // The stock loaded in this tray, shown as a sub-badge — the
-                  // counterpart to the By-stock view, where the size is the
-                  // badge and the stock groups the card.
+                  // The stock loaded in this tray, inline under the printer
+                  // name — the mirror of the By-stock view, where the tray line
+                  // carries the size and the stock groups the card.
                   const label = resolveMediaLabel(entry.source, t);
                   const stockName = label.name ?? label.code;
 
                   return (
-                    <li key={`${entry.slug}:${entry.source.key}`}>
-                      <Link to={`/devices/${entry.slug}`} className="device-link">
-                        <Printer size={14} strokeWidth={1.75} aria-hidden="true" />
-                        <span>
-                          <strong>{entry.deviceName}</strong>
-                          <small className="muted">
-                            {entry.source.label}
-                            {entry.location !== null && ` · ${entry.location}`}
-                          </small>
-                        </span>
-                      </Link>
-                      {stockName !== null && (
-                        <span
-                          className="tag stock-badge"
-                          title={label.isUnmapped ? t('media.unknownCode') : undefined}
-                        >
-                          {stockName}
-                        </span>
-                      )}
-                    </li>
+                    <MediaItem
+                      key={`${entry.slug}:${entry.source.key}`}
+                      icon={Printer}
+                      title={entry.deviceName}
+                      subtitle={subtitleOf([
+                        entry.source.label,
+                        stockName,
+                        entry.location,
+                      ])}
+                      hint={label.isUnmapped ? t('media.unknownCode') : undefined}
+                      to={`/devices/${entry.slug}`}
+                    />
                   );
                 })}
               </ul>
@@ -388,33 +419,42 @@ export function Media() {
                 )}
               </div>
 
-              {device.media.map((source) => {
-                if (!source.isLoaded) {
-                  return <EmptySlot key={source.key} source={source} />;
-                }
+              <ul className="media-list">
+                {device.media.map((source) => {
+                  // The tray leads here, because the card is already the
+                  // printer; what is in it is the detail line. Same row shape
+                  // as the other two tabs — the grey circle these used to carry
+                  // was the only icon treatment of its kind in the catalogue.
+                  if (!source.isLoaded) {
+                    return (
+                      <MediaItem
+                        key={source.key}
+                        icon={Layers}
+                        title={source.label}
+                        subtitle={t('media.notLoaded')}
+                        isDim
+                      />
+                    );
+                  }
 
-                const label = resolveMediaLabel(source, t);
-                return (
-                  <div key={source.key} className="paper-row">
-                    <div className="paper-icon" aria-hidden="true" />
-                    <div className="paper-details">
-                      <strong>{source.label}</strong>
-                      {label.name !== null ? (
-                        <span>{label.name}</span>
-                      ) : label.isUnmapped ? (
-                        <span className="paper-unknown" title={t('media.unknownCode')}>
-                          <code>{label.code}</code>
-                        </span>
-                      ) : (
-                        <span className="muted">{t('media.loaded')}</span>
-                      )}
-                      {widthLabel(source, t) !== null && (
-                        <span className="paper-width">{widthLabel(source, t)}</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                  const label = resolveMediaLabel(source, t);
+                  return (
+                    <MediaItem
+                      key={source.key}
+                      icon={Layers}
+                      title={source.label}
+                      subtitle={subtitleOf([
+                        // The raw code only when no tier names it — never a
+                        // guess, because someone will plot a job on whatever
+                        // this says.
+                        label.name ?? label.code ?? t('media.loaded'),
+                        widthLabel(source, t),
+                      ])}
+                      hint={label.isUnmapped ? t('media.unknownCode') : undefined}
+                    />
+                  );
+                })}
+              </ul>
             </section>
           ))}
         </div>

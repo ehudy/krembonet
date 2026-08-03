@@ -386,6 +386,15 @@
     "muteMediaHint": "Paper out, tray empty, jams.",
     "muteOffline": "Mute offline alerts",
     "muteOfflineHint": "The device becoming unreachable, and recovering.",
+    "routing": "Alert routing",
+    "routingHint": "Where this printer's alerts go, when that differs from the hub. Leave both blank and it uses the hub-wide destinations, which is what you want for almost every printer.",
+    "routeEmail": "Custom email recipients",
+    "routeEmailPlaceholder": "floor2-support@company.com",
+    "routeEmailHint": "Leave blank to fall back to global SMTP recipients. Addresses here replace the global list for this printer rather than adding to it. Separate several with commas.",
+    "routeWebhooks": "Webhook destinations",
+    "routeWebhooksHint": "Select none to send to every enabled webhook, as configured under Alerts → Webhooks. Selecting some routes this printer to those only.",
+    "routeWebhooksNone": "No webhooks are configured yet. Add one under Alerts → Webhooks and it appears here.",
+    "routeWebhookDisabled": "Disabled hub-wide",
     "probeIp": "Probe IP",
     "probingIp": "Probing…",
     "probeIpHint": "Tests the address for IPP, SNMP and a web interface, then fills in the settings that worked.",
@@ -481,7 +490,25 @@
     "status": "Status",
     "channelEmail": "Email",
     "channelWebhook": "Webhook",
-    "loading": "Loading alert history…"
+    "loading": "Loading alert history…",
+    "kind": {
+      "offline": "Offline",
+      "media": "Needs attention",
+      "supplyLow": "Supply low",
+      "wasteFull": "Waste box full",
+      "unknown": "Alerting"
+    },
+    "statuses": {
+      "sent": "Sent",
+      "failed": "Failed",
+      "skipped": "Skipped",
+      "muted": "Muted"
+    },
+    "mute": "Put in maintenance mode",
+    "muting": "Muting…",
+    "alreadyMuted": "In maintenance",
+    "mutedNotice": "{{name}} is in maintenance mode. The condition is still tracked and still shown here — only the email and webhooks stop.",
+    "deviceGone": "This printer has been removed."
   },
   "webhooks": {
     "title": "Webhook destinations",

@@ -12,8 +12,14 @@
  */
 import type { Locale, Translate } from '../i18n/i18n.js';
 
+/**
+ * Accepts epoch milliseconds as well as an ISO string, because the admin
+ * endpoints hand back drizzle timestamp columns as numbers while the dashboard
+ * endpoints serialise theirs to ISO — the same instant either way, and a caller
+ * should not have to know which side of the API it is reading.
+ */
 export function formatTime(
-  iso: string | null | undefined,
+  iso: string | number | null | undefined,
   locale: Locale,
   t: Translate,
 ): string {

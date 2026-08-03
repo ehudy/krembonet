@@ -68,7 +68,7 @@ describe('a well-behaved laser MFP', () => {
   it('reads all five supplies in row order, cleaned to the colour', () => {
     assert.deepEqual(
       supplies.map((supply) => supply.label),
-      ['Black', 'Cyan', 'Magenta', 'Yellow', 'Waste Toner'],
+      ['Black', 'Cyan', 'Magenta', 'Yellow', 'Waste Toner Box'],
     );
   });
 

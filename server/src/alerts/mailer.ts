@@ -8,7 +8,11 @@
  */
 import nodemailer from 'nodemailer';
 
-import { getSettings, isSmtpConfigured, type AppSettings } from '../settings/settings.js';
+import {
+  getSettings,
+  isSmtpTransportConfigured,
+  type AppSettings,
+} from '../settings/settings.js';
 
 export interface MailMessage {
   subject: string;
@@ -43,31 +47,41 @@ function createTransport(current: AppSettings) {
   });
 }
 
+/**
+ * Sends one message.
+ *
+ * `recipients` defaults to the hub-wide list and is passed explicitly when a
+ * device routes its alerts somewhere of its own — see alerts/routing.ts. It is
+ * a parameter rather than something read back out of settings so the addresses
+ * the log records are provably the addresses the transport was handed.
+ */
 export async function sendMail(
   message: MailMessage,
   current: AppSettings = getSettings(),
+  recipients: readonly string[] = current.alertRecipients,
 ): Promise<SendResult> {
-  if (!isSmtpConfigured(current)) {
+  if (!isSmtpTransportConfigured(current) || recipients.length === 0) {
     throw new SmtpNotConfiguredError(
       'SMTP is not configured — set host, sender, and at least one recipient in the admin portal.',
     );
   }
 
   const transport = createTransport(current);
+  const to = [...recipients];
 
   try {
     await transport.sendMail({
       from: current.smtpFrom,
-      to: current.alertRecipients.join(', '),
+      to: to.join(', '),
       subject: message.subject,
       text: message.text,
       ...(message.html !== undefined ? { html: message.html } : {}),
     });
-    return { ok: true, recipients: current.alertRecipients };
+    return { ok: true, recipients: to };
   } catch (error) {
     return {
       ok: false,
-      recipients: current.alertRecipients,
+      recipients: to,
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {

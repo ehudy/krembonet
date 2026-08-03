@@ -160,6 +160,13 @@ function PinnedCard({ slug }: { slug: string }) {
         <div className="floor-gauges">
           {consumables.map((supply) => (
             <div key={supply.index} className="floor-gauge" title={supply.label}>
+              {/* Label, bar, number — the same order and the same fixed tracks
+                  as the device page, so a gauge means the same thing wherever
+                  it is read. The name leads because it is what someone is
+                  looking for; the bar is what they act on. */}
+              <small className={supply.breached ? 'is-concerning' : 'muted'}>
+                {supply.label}
+              </small>
               <span
                 className="supply-track"
                 role="meter"
@@ -180,9 +187,17 @@ function PinnedCard({ slug }: { slug: string }) {
                   />
                 )}
               </span>
-              <small className={supply.breached ? 'is-concerning' : 'muted'}>
-                {supply.label}
-              </small>
+              {/* A dash, not a zero, when the device declined to give a number
+                  — the bar beside it is already hatched to say so, and "0%"
+                  would send someone to change a cartridge that is probably
+                  full. */}
+              <span
+                className={`floor-gauge-value${supply.breached ? ' is-concerning' : ''}`}
+              >
+                {supply.percent === null
+                  ? t('common.none')
+                  : t('supplies.percent', { percent: supply.percent })}
+              </span>
             </div>
           ))}
         </div>

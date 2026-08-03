@@ -408,6 +408,15 @@ export interface AdminDevice {
   muteSupplyAlerts: boolean;
   muteMediaAlerts: boolean;
   muteOfflineAlerts: boolean;
+  /**
+   * Where this device's alerts go, when that differs from the hub's.
+   *
+   * Both empty on a device that has never been routed, which is the normal
+   * state: empty means "use the global SMTP recipients and every enabled
+   * webhook", not "send nowhere". See server/src/alerts/routing.ts.
+   */
+  emailRecipients: string[];
+  webhookIds: number[];
 }
 
 export interface DeviceIdentity {

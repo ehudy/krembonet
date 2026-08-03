@@ -91,6 +91,27 @@ export const devices = sqliteTable('devices', {
   muteOfflineAlerts: integer('mute_offline_alerts', { mode: 'boolean' })
     .notNull()
     .default(false),
+
+  /*
+   * Alert routing.
+   *
+   * Where this device's alerts go, when that differs from the hub-wide
+   * destinations. Null — and, for the address list, blank — means "no opinion",
+   * and the global SMTP recipients and every enabled webhook are used. That
+   * default is what keeps a fleet of thirty printers configured once rather
+   * than thirty times; the override exists for the handful where the second
+   * floor's own support address is the one that will actually walk over.
+   *
+   * Both are stored as text for the same reason the mute flags sit at the end
+   * of the table: they arrive via `ALTER TABLE ... ADD COLUMN`, which appends
+   * physically, and the migration test compares the real column order against
+   * the snapshot.
+   */
+
+  /** Comma-separated addresses. Blank or null falls back to the global list. */
+  alertEmailRecipients: text('alert_email_recipients'),
+  /** JSON array of webhook ids. Null or empty falls back to every enabled one. */
+  alertWebhookIds: text('alert_webhook_ids'),
 });
 
 /**

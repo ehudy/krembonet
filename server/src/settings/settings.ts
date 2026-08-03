@@ -125,12 +125,18 @@ export function getPublicSettings(): PublicSettings {
   };
 }
 
-export function isSmtpConfigured(current: AppSettings = getSettings()): boolean {
-  return (
-    current.smtpHost !== '' &&
-    current.smtpFrom !== '' &&
-    current.alertRecipients.length > 0
-  );
+/**
+ * Everything needed to send mail, apart from an audience.
+ *
+ * Deliberately says nothing about `alertRecipients`. This used to be one check
+ * that folded the two together, which stopped being right once a device could
+ * carry its own recipients: a hub that routes every printer to a floor address
+ * has a perfectly working SMTP setup and an empty global list. Who a given
+ * message goes to is decided per device in alerts/routing.ts and checked where
+ * it is known, in `sendMail`.
+ */
+export function isSmtpTransportConfigured(current: AppSettings = getSettings()): boolean {
+  return current.smtpHost !== '' && current.smtpFrom !== '';
 }
 
 export function clearSetting(key: keyof AppSettings): void {

@@ -1020,7 +1020,7 @@ h1 {
 .supply-row,
 .waste-row {
   display: grid;
-  grid-template-columns: 100px 1fr 84px;
+  grid-template-columns: 120px 1fr 84px;
   align-items: center;
   gap: 12px;
   margin-bottom: 11px;
@@ -1029,9 +1029,14 @@ h1 {
   color: var(--text-muted);
 }
 
+/* Left-aligned, against the panel's own margin. Ragged-right against the bar
+   read as a second, wobbling edge two pixels from a straight one: the names
+   are of wildly different lengths ("Cyan", "Maintenance Cartridge · GPR-66"),
+   so right-alignment made the start of each label land somewhere new while the
+   bars beside them stayed put. Reading down the panel now starts at one x. */
 .supply-label {
   min-width: 0;
-  text-align: right;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1307,6 +1312,123 @@ td code {
   gap: 10px;
 }
 
+/* Alert cards -------------------------------------------------------------- */
+
+/* "Currently alerting" as one card per condition rather than a list of rule
+   keys. A grid rather than a fixed row count: at two columns a hub with eight
+   outstanding alerts is one screen, and at one column — a phone, a narrow
+   split — each card keeps its name, severity and action stacked legibly. */
+.alert-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.alert-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.alert-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.alert-device {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.alert-device:hover {
+  color: var(--accent);
+}
+
+a.alert-device:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.alert-meta {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* The cartridge, on a device with six of them. Brighter than the timing beside
+   it, because "which one" is the first thing anybody asks. */
+.alert-subject {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.alert-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+/* Severity, as its own pill rather than the generic three-tone .pill. A full
+   waste box and a low cartridge are both "warn" to the shared palette, and they
+   are not the same errand — one is a walk to the machine, the other an order
+   form. The waste tone is mixed from the two existing tokens rather than being
+   a new hex, so it follows both themes without a second definition. */
+.alert-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+.alert-pill.is-offline,
+.alert-pill.is-media {
+  background: var(--error-bg);
+  color: var(--danger);
+}
+
+.alert-pill.is-supply {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.alert-pill.is-waste {
+  background: color-mix(in srgb, var(--error-bg) 50%, var(--warning-bg));
+  color: color-mix(in srgb, var(--danger) 45%, var(--warning-text));
+}
+
+/* Relative in the cell, absolute on hover — so the column scans and still
+   answers "what time exactly" without a second column for it. */
+.alert-when {
+  white-space: nowrap;
+  cursor: help;
+}
+
 .plain-list li {
   display: flex;
   flex-wrap: wrap;
@@ -1425,6 +1547,20 @@ td code {
 
 .field-hint {
   margin: 8px 0 0;
+}
+
+/* A stack of checkboxes inside one field, e.g. which webhooks a printer routes
+   to. Tighter than .field-grid, which is for whole fields — these are options
+   within a single one, and spacing them like separate questions would read as
+   four questions rather than one list. */
+.checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
 }
 
 .inline-form {
@@ -1736,7 +1872,6 @@ td code {
   .supply-label {
     grid-area: label;
     width: auto;
-    text-align: left;
   }
 
   .supply-value {
@@ -2982,34 +3117,76 @@ td code {
   font-variant-numeric: tabular-nums;
 }
 
-.stock-devices {
+/* One row shape for all three catalogue views — By stock, By size, By device.
+   They list the same kind of thing (a named slot, with a line of detail under
+   it) and used to render it three ways, which read as three screens rather than
+   three views of one catalogue. The detail is always the muted second line;
+   nothing is pinned to the right edge, because a badge in the corner carries a
+   different weight from prose under a name and only one of the three tabs had
+   one. */
+.media-list {
+  list-style: none;
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin: 0;
+  padding: 0;
 }
 
-/* Printer on the left; anything trailing (the By-size stock badge) pinned
-   right. Harmless in the By-stock view, whose rows have only the link. */
-.stock-devices li {
+.media-line {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
 }
 
-.stock-devices .device-link small {
-  font-size: 11px;
-}
-
-/* The stock name under a tray in the By-size view. Constrained so a long raw
-   vendor code cannot push the printer name off its own row. */
-.stock-badge {
+.media-line svg {
+  color: var(--text-faint);
   flex-shrink: 0;
-  max-width: 45%;
+}
+
+.media-line > span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.media-line strong {
+  font-size: 13px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.media-line small {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Only the linked rows react — a tray row inside its own printer's card has
+   nowhere to go, and hover feedback on it would promise a click that is not
+   there. */
+a.media-line:hover strong {
+  color: var(--accent);
+}
+
+a.media-line:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* A slot that is present but holds nothing. Dimmed rather than given its own
+   icon: the row still belongs to the list, it just has no stock to name. */
+.media-item.is-dim .media-line strong {
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 /* An unmapped vendor code. Shown as the code itself, never as a guessed name —
@@ -3263,8 +3440,6 @@ td code {
   overflow-wrap: anywhere;
 }
 
-/* Gauges without numbers: the exact percentage is a supplies-page question, and
-   what matters here is whether a job will outlast the cartridge. */
 .floor-gauges {
   display: flex;
   flex-direction: column;
@@ -3272,24 +3447,24 @@ td code {
   margin-top: 16px;
 }
 
-/* Flex rather than a two-column grid, matching .supply-row above.
-   A `1fr auto` grid puts no floor under the bar: the label column is sized to
-   its content, and on a phone-width card a long cartridge name takes the row
-   and leaves the bar as an 8px dot — which is exactly as useless as it sounds.
-   Flex with an explicit min-width on the track and an ellipsis on the label
-   makes the bar the thing that survives, which is the right way round. */
+/* The same three-track shape as .supply-row on the device page — [label] [bar]
+   [value] — at the smaller scale a card wants. Fixed tracks rather than the
+   flex row this used to be: with `flex: 0 1 auto` on the label, the bar started
+   wherever the longest cartridge name on *that* card happened to end, so two
+   cards side by side had their bars beginning and ending at different x. A
+   board is scanned across as well as down, and mismatched gauges make three
+   printers look like three different readings when they are the same one.
+   Fixing the label track also removes the reason the old flex layout needed a
+   min-width on the bar to survive: the grid, not the content, sets the tracks. */
 .floor-gauge {
-  display: flex;
+  display: grid;
+  grid-template-columns: 100px 1fr 44px;
   align-items: center;
   gap: 10px;
 }
 
 .floor-gauge .supply-track {
   display: block;
-  flex: 1 1 auto;
-  /* Overrides the `min-width: 0` .supply-track carries for its flex-row use.
-     Below about this the bar stops conveying a level at all. */
-  min-width: 70px;
   height: 6px;
 }
 
@@ -3297,10 +3472,9 @@ td code {
   display: block;
 }
 
-/* Truncates rather than pushing the bar out. The full name is on the card's
+/* Truncates rather than pushing the bar out. The full name is on the row's
    title attribute, and the colour of the fill identifies it besides. */
 .floor-gauge small {
-  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3309,6 +3483,22 @@ td code {
 }
 
 .floor-gauge small.is-concerning {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* Enough for "100%" and no more. Tabular figures so the column reads as a set
+   rather than as numbers that shuffle sideways by a pixel per row. */
+.floor-gauge-value {
+  text-align: right;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.floor-gauge-value.is-concerning {
   color: var(--danger);
   font-weight: 700;
 }

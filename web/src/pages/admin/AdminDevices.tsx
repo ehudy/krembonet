@@ -27,6 +27,7 @@ import type {
   AdminDevice,
   ProbeResponse,
   SmartProbeResponse,
+  Webhook,
 } from '../../types.js';
 import { AutoDiscover } from './AutoDiscover.js';
 
@@ -43,6 +44,9 @@ interface Draft {
   muteSupplyAlerts: boolean;
   muteMediaAlerts: boolean;
   muteOfflineAlerts: boolean;
+  /** As typed: one field, however the operator likes to separate addresses. */
+  alertEmailRecipients: string;
+  alertWebhookIds: number[];
 }
 
 type MuteKey = 'isMuted' | 'muteSupplyAlerts' | 'muteMediaAlerts' | 'muteOfflineAlerts';
@@ -70,6 +74,8 @@ function blankDraft(adapters: AdapterInfo[]): Draft {
     muteSupplyAlerts: false,
     muteMediaAlerts: false,
     muteOfflineAlerts: false,
+    alertEmailRecipients: '',
+    alertWebhookIds: [],
   };
 }
 
@@ -87,6 +93,8 @@ function draftFrom(device: AdminDevice): Draft {
     muteSupplyAlerts: device.muteSupplyAlerts,
     muteMediaAlerts: device.muteMediaAlerts,
     muteOfflineAlerts: device.muteOfflineAlerts,
+    alertEmailRecipients: device.emailRecipients.join(', '),
+    alertWebhookIds: [...device.webhookIds],
   };
 }
 
@@ -244,6 +252,8 @@ export function AdminDevices() {
   const { t } = useTranslation();
   const [devices, setDevices] = useState<AdminDevice[] | null>(null);
   const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
+  /** The destinations the routing card offers. Empty until one is configured. */
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [probe, setProbe] = useState<ProbeResponse | null>(null);
   const [isProbing, setIsProbing] = useState(false);
@@ -257,12 +267,14 @@ export function AdminDevices() {
 
   const load = useCallback(async (signal?: AbortSignal): Promise<void> => {
     try {
-      const [deviceList, adapterList] = await Promise.all([
+      const [deviceList, adapterList, webhookList] = await Promise.all([
         api.listAdminDevices(signal),
         api.listAdapters(signal),
+        api.listWebhooks(signal),
       ]);
       setDevices(deviceList.devices);
       setAdapters(adapterList.adapters);
+      setWebhooks(webhookList.webhooks);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === 'AbortError') return;
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -387,6 +399,10 @@ export function AdminDevices() {
       muteSupplyAlerts: draft.muteSupplyAlerts,
       muteMediaAlerts: draft.muteMediaAlerts,
       muteOfflineAlerts: draft.muteOfflineAlerts,
+      // Sent as typed; the server owns the splitting and the address check, so
+      // the form cannot disagree with it about what counts as a valid list.
+      alertEmailRecipients: draft.alertEmailRecipients,
+      alertWebhookIds: draft.alertWebhookIds,
       config: visibleValues(schema, draft.config),
       // Record what the probe actually found, so the dashboard renders panels
       // for what this device does rather than what its adapter might do.
@@ -675,6 +691,69 @@ export function AdminDevices() {
                 </span>
               </label>
             ))}
+          </div>
+
+          {/* Where this device's alerts go, when that differs from the hub's.
+              Sits under suppression because the two answer consecutive
+              questions — whether to say anything, then who to say it to — and
+              an operator who has just decided a printer should not page the
+              whole IT list is one field away from routing it at the floor
+              instead. Both controls default to the hub-wide destinations, and
+              clearing either goes back to them. */}
+          <h3 className="card-subtitle">{t('devices.routing')}</h3>
+          <p className="field-hint">{t('devices.routingHint')}</p>
+
+          <div className="field-grid">
+            <label className="field">
+              <span>{t('devices.routeEmail')}</span>
+              <input
+                value={draft.alertEmailRecipients}
+                placeholder={t('devices.routeEmailPlaceholder')}
+                onChange={(event) =>
+                  setDraft({ ...draft, alertEmailRecipients: event.target.value })
+                }
+              />
+              <small className="field-hint">{t('devices.routeEmailHint')}</small>
+            </label>
+
+            <div className="field">
+              <span>{t('devices.routeWebhooks')}</span>
+              {webhooks.length === 0 ? (
+                <small className="field-hint">{t('devices.routeWebhooksNone')}</small>
+              ) : (
+                <>
+                  <div className="checkbox-list">
+                    {webhooks.map((webhook) => (
+                      <label key={webhook.id} className="field field-check">
+                        <input
+                          type="checkbox"
+                          checked={draft.alertWebhookIds.includes(webhook.id)}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              alertWebhookIds: event.target.checked
+                                ? [...draft.alertWebhookIds, webhook.id]
+                                : draft.alertWebhookIds.filter((id) => id !== webhook.id),
+                            })
+                          }
+                        />
+                        <span>
+                          {webhook.name}
+                          {/* A disabled destination stays listed and
+                              selectable: it is off for the whole hub, and
+                              hiding it here would make re-enabling it look
+                              like it had lost its routing. */}
+                          {!webhook.enabled && (
+                            <small>{t('devices.routeWebhookDisabled')}</small>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <small className="field-hint">{t('devices.routeWebhooksHint')}</small>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="inline-actions">

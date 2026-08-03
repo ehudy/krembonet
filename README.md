@@ -187,6 +187,32 @@ Configure them under **Admin → Alerts → Webhooks**, where each has a Test bu
 The test posts to the _saved_ row, not to the form, so a green result means the
 destination that will actually fire at 2am works.
 
+#### Per-printer routing
+
+The destinations above are hub-wide, which is right for almost every printer.
+A single machine can override them under **Admin → Devices → Alert routing**:
+its own email recipients, and a subset of the configured webhooks — the second
+floor's plotter paging the second floor's support address rather than the whole
+IT list.
+
+Blank means _the hub-wide destinations_, not _nowhere_. Clearing the address
+field or unchecking every webhook goes back to the default rather than silencing
+the printer, because a device that quietly stopped alerting when a field was
+emptied is the exact failure this subsystem exists to prevent. Silencing is what
+the mute switches above are for, and they say so on the tin.
+
+Addresses entered here **replace** the global list for that printer rather than
+adding to it. Deleting a webhook removes it from every printer that routed to
+it, so a selection never points at a destination that is gone.
+
+#### Reading what is alerting
+
+**Admin → Alerts** lists every outstanding condition as a card: the printer,
+what kind of alert it is, how long it has been going, and how many times it has
+been notified. Each card carries a **Put in maintenance mode** button, since
+that is what an operator does next about nine times in ten and it otherwise
+meant navigating to the device form to find a checkbox.
+
 ## Requirements
 
 - Node 22+
