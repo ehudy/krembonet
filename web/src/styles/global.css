@@ -1044,6 +1044,52 @@ h1 {
   font-weight: 500;
 }
 
+/* Data & system reset -------------------------------------------------- */
+
+.reset-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.reset-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reset-copy strong {
+  font-size: 13px;
+}
+
+.reset-done {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* The factory row is set apart: a red hairline and tinted panel so nobody
+   arrives at it by accident on the way down the list. */
+.reset-row.is-danger-zone {
+  margin-top: 8px;
+  padding: 14px 14px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+}
+
 .supply-track {
   min-width: 0;
   background: var(--border);

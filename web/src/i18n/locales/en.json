@@ -665,5 +665,38 @@
   },
   "access": {
     "adminOnly": "That page is for administrators. Returning to the overview."
+  },
+  "reset": {
+    "title": "Data & system reset",
+    "intro": "Each action removes what it names and nothing else. None can be undone.",
+    "done": "Done.",
+    "activity": {
+      "title": "Clear activity log",
+      "body": "Deletes the event history. Devices, supplies, and settings are kept.",
+      "action": "Clear log",
+      "confirmTitle": "Clear the activity log?",
+      "confirmBody": "Every recorded event is deleted. Your devices and settings are untouched. This cannot be undone."
+    },
+    "devices": {
+      "title": "Clear printers",
+      "body": "Removes every registered printer and its readings. Settings are kept.",
+      "action": "Clear printers",
+      "confirmTitle": "Remove all printers?",
+      "confirmBody": "Every printer, along with its supplies, media, and queue history, is deleted. Your settings stay. You will need to add printers again. This cannot be undone."
+    },
+    "media": {
+      "title": "Reset media mappings",
+      "body": "Reverts every paper-code name to the built-in defaults, discarding your edits.",
+      "action": "Reset mappings",
+      "confirmTitle": "Reset media mappings?",
+      "confirmBody": "All custom paper-code names and per-printer overrides are discarded and the factory defaults restored. This cannot be undone."
+    },
+    "factory": {
+      "title": "Factory reset",
+      "body": "Erases everything — printers, settings, and your admin login — and returns the hub to first-run setup.",
+      "action": "Factory reset",
+      "confirmTitle": "Factory reset the whole hub?",
+      "confirmBody": "Every printer, mapping, setting, and the admin password are erased. The hub returns to onboarding as if freshly installed, and you will be signed out immediately. This cannot be undone."
+    }
   }
 }

@@ -665,5 +665,38 @@
   },
   "access": {
     "adminOnly": "Esa página es solo para administradores. Volviendo al resumen."
+  },
+  "reset": {
+    "title": "Restablecer datos y sistema",
+    "intro": "Cada acción elimina solo lo que indica. Ninguna se puede deshacer.",
+    "done": "Hecho.",
+    "activity": {
+      "title": "Borrar registro de actividad",
+      "body": "Elimina el historial de eventos. Se conservan dispositivos, consumibles y ajustes.",
+      "action": "Borrar registro",
+      "confirmTitle": "¿Borrar el registro de actividad?",
+      "confirmBody": "Se eliminan todos los eventos registrados. Tus dispositivos y ajustes no se tocan. Esto no se puede deshacer."
+    },
+    "devices": {
+      "title": "Borrar impresoras",
+      "body": "Elimina todas las impresoras registradas y sus lecturas. Se conservan los ajustes.",
+      "action": "Borrar impresoras",
+      "confirmTitle": "¿Eliminar todas las impresoras?",
+      "confirmBody": "Se elimina cada impresora, junto con sus consumibles, soportes e historial de cola. Tus ajustes se conservan. Tendrás que volver a añadir impresoras. Esto no se puede deshacer."
+    },
+    "media": {
+      "title": "Restablecer asignaciones de soportes",
+      "body": "Revierte cada nombre de código de papel a los valores predeterminados, descartando tus cambios.",
+      "action": "Restablecer asignaciones",
+      "confirmTitle": "¿Restablecer las asignaciones de soportes?",
+      "confirmBody": "Se descartan todos los nombres personalizados de códigos de papel y las anulaciones por impresora, y se restauran los valores de fábrica. Esto no se puede deshacer."
+    },
+    "factory": {
+      "title": "Restablecer de fábrica",
+      "body": "Borra todo —impresoras, ajustes y tu acceso de administrador— y devuelve el centro a la configuración inicial.",
+      "action": "Restablecer de fábrica",
+      "confirmTitle": "¿Restablecer de fábrica todo el centro?",
+      "confirmBody": "Se borran todas las impresoras, asignaciones, ajustes y la contraseña de administrador. El centro vuelve a la configuración inicial como recién instalado y se cerrará tu sesión de inmediato. Esto no se puede deshacer."
+    }
   }
 }

@@ -140,6 +140,16 @@ export const api = {
 
   logout: () => request<{ ok: true }>('/api/admin/logout', { method: 'POST' }),
 
+  /** Tiered system resets, narrowest to widest. See routes/admin.ts. */
+  resetActivity: () =>
+    request<{ ok: true }>('/api/admin/reset/activity', { method: 'POST' }),
+  resetDevices: () =>
+    request<{ ok: true }>('/api/admin/reset/devices', { method: 'POST' }),
+  resetMediaMappings: () =>
+    request<{ ok: true }>('/api/admin/reset/media-mappings', { method: 'POST' }),
+  factoryReset: () =>
+    request<{ ok: true }>('/api/admin/reset/factory', { method: 'POST' }),
+
   getSettings: (signal?: AbortSignal) =>
     request<AdminSettings>('/api/admin/settings', { signal }),
 

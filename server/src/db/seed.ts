@@ -97,6 +97,34 @@ export function seedDatabase(): void {
   });
 }
 
+/**
+ * Drops every media mapping and re-seeds the factory pack.
+ *
+ * The "Reset media mappings" admin action: an operator's per-device overrides
+ * and hand-edited names go, and the built-in pack comes back exactly as a fresh
+ * install would have it. Distinct from {@link seedDatabase}, which preserves
+ * edited rows — reset is the deliberate throw-it-away that seeding must not be.
+ */
+export function resetMediaMappingsToFactory(): void {
+  const pack = loadMediaPack();
+
+  db.transaction((tx) => {
+    tx.delete(mediaTypes).run();
+
+    for (const entry of pack) {
+      tx.insert(mediaTypes)
+        .values({
+          deviceId: null,
+          code: entry.code,
+          friendlyName: entry.friendlyName,
+          vendor: entry.vendor ?? null,
+          isSeeded: true,
+        })
+        .run();
+    }
+  });
+}
+
 export function countMediaTypes(): number {
   const [row] = db
     .select({ count: sql<number>`count(*)` })

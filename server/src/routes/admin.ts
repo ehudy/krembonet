@@ -23,7 +23,24 @@ import {
 import { decryptSecret, encryptSecret } from '../crypto/secrets.js';
 import { db } from '../db/client.js';
 import { collectDiscoveredMediaCodes } from '../db/media-discovery.js';
-import { devices, mediaTypes, webhooks } from '../db/schema.js';
+import { resetMediaMappingsToFactory } from '../db/seed.js';
+import {
+  activityEvents,
+  alertLogs,
+  alertRules,
+  alertState,
+  deviceStatus,
+  devices,
+  jobs,
+  mediaSources,
+  mediaTypes,
+  settings,
+  supplies,
+  supplyHistory,
+  webhooks,
+} from '../db/schema.js';
+import { clearActivity } from '../activity/store.js';
+import { clearCache } from '../poller/cache.js';
 import {
   clearLoginFailures,
   clearSession,
@@ -814,4 +831,80 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true, status: result.status };
     },
   );
+
+  // --- data & system reset ---------------------------------------------
+  //
+  // Four tiers, narrowest first. Each is deliberately its own endpoint rather
+  // than one call with a scope parameter, so a mistyped scope can never widen a
+  // "clear the log" request into a wipe — the blast radius is fixed by the URL.
+
+  /** Clears the activity log. Devices, supplies, and settings are untouched. */
+  app.post('/api/admin/reset/activity', { preHandler: requireAdmin }, async (request) => {
+    clearActivity();
+    request.log.warn({ ip: request.ip }, 'admin cleared the activity log');
+    return { ok: true };
+  });
+
+  /**
+   * Removes every registered device. FK cascades take their supplies, media,
+   * jobs, and per-device rules with them; the poll cache is dropped so the UI
+   * does not keep serving devices that no longer exist. Settings stay.
+   */
+  app.post('/api/admin/reset/devices', { preHandler: requireAdmin }, async (request) => {
+    db.delete(devices).run();
+    clearCache();
+    request.log.warn({ ip: request.ip }, 'admin cleared all devices');
+    return { ok: true };
+  });
+
+  /** Reverts media mappings to the factory pack, dropping operator overrides. */
+  app.post(
+    '/api/admin/reset/media-mappings',
+    { preHandler: requireAdmin },
+    async (request) => {
+      resetMediaMappingsToFactory();
+      request.log.warn({ ip: request.ip }, 'admin reset media mappings to factory');
+      return { ok: true };
+    },
+  );
+
+  /**
+   * Factory reset: wipes every table and setting, ends the admin session, and
+   * leaves the hub in the same state a fresh install boots into — so the next
+   * request is bounced to onboarding. The credential and setup marker live in
+   * the settings table, so clearing it is what re-arms the wizard.
+   *
+   * Deleting each table directly rather than leaning on cascade: the history
+   * tables (alert_logs, activity_events) only null their device reference on a
+   * device delete, so they would survive a devices-only wipe.
+   */
+  app.post('/api/admin/reset/factory', { preHandler: requireAdmin }, async (request, reply) => {
+    db.transaction((tx) => {
+      for (const table of [
+        activityEvents,
+        alertLogs,
+        alertState,
+        alertRules,
+        jobs,
+        supplyHistory,
+        supplies,
+        mediaSources,
+        mediaTypes,
+        deviceStatus,
+        webhooks,
+        devices,
+        settings,
+      ]) {
+        tx.delete(table).run();
+      }
+    });
+
+    clearCache();
+    // Ends this session, so the redirect to onboarding lands as a fresh visitor
+    // rather than an admin whose hub has vanished underneath them.
+    clearSession(reply);
+    request.log.warn({ ip: request.ip }, 'admin performed a FACTORY RESET');
+
+    return { ok: true };
+  });
 }

@@ -115,6 +115,11 @@ export function pruneActivity(limit = RETAINED_EVENTS): void {
   db.delete(activityEvents).where(lt(activityEvents.id, cutoff.id)).run();
 }
 
+/** Wipes the whole event log. Used by the admin "Clear activity log" reset. */
+export function clearActivity(): void {
+  db.delete(activityEvents).run();
+}
+
 export interface ActivityEvent {
   id: number;
   deviceId: number | null;

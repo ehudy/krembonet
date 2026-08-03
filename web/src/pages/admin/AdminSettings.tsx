@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 
 import { api } from '../../api.js';
+import { DataReset } from './DataReset.js';
 import { LogoPicker } from '../../components/LogoPicker.js';
 import { VersionBadge } from '../../components/VersionBadge.js';
 import { useBranding } from '../../hooks/useBranding.js';
@@ -186,7 +187,8 @@ export function AdminSettings() {
   if (draft === null) return <p className="muted">{t('settings.loading')}</p>;
 
   return (
-    <form onSubmit={save}>
+    <>
+      <form onSubmit={save}>
       <section className="card">
         <h2 className="card-title">{t('settings.hub')}</h2>
 
@@ -626,6 +628,11 @@ export function AdminSettings() {
           </span>
         )}
       </div>
-    </form>
+      </form>
+
+      {/* Outside the settings form: these are their own confirmed actions, not
+          fields that save with everything else. */}
+      <DataReset />
+    </>
   );
 }
