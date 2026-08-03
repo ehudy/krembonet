@@ -137,6 +137,7 @@
     "lastSuccess": "Last successful reading: {{time}}.",
     "reports": "Device reports: {{reasons}}",
     "refreshFailed": "Could not refresh: {{error}}",
+    "openWebConsole": "Open web console",
     "printQueue": "Print Queue",
     "states": {
       "idle": "Ready",
@@ -207,8 +208,8 @@
   "setup": {
     "title": "Welcome to KremboNet",
     "intro": "Two things to set up, then you are done. You can change both later.",
-    "hubName": "Hub name",
-    "hubNameHint": "Shown in the sidebar and used as the subject prefix on alert email.",
+    "hubName": "Company / shop name",
+    "hubNameHint": "Shown in the sidebar header and used as the subject prefix on alert email. Defaults to KremboNet.",
     "adminPassword": "Admin password",
     "passwordHint": "At least {{count}} characters. This is a single shared password for everyone who administers the hub — there are no user accounts.",
     "confirmPassword": "Confirm password",
@@ -604,7 +605,9 @@
     "nameThem": "Name them",
     "groupBy": "Group by",
     "groupByStock": "By stock",
+    "groupBySize": "By size",
     "groupByDevice": "By device",
+    "sizeUnknown": "Size not reported",
     "empty": "No device has reported a media source yet.",
     "emptyHint": "Media appears here once a printer that reports paper sources has been polled.",
     "unidentified": "Unidentified stock",

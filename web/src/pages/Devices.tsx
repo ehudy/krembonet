@@ -205,7 +205,18 @@ export function Devices() {
                     <MuteBadge device={device} t={t} />
                   </td>
                   <td className="muted">
-                    <code>{device.host}</code>
+                    {/* The address doubles as a link to the printer's own
+                        embedded web server — the fastest way to its full
+                        config from a row an operator is already looking at. */}
+                    <a
+                      className="ews-link"
+                      href={`http://${device.host}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={t('device.openWebConsole')}
+                    >
+                      <code>{device.host}</code>
+                    </a>
                   </td>
                   <td>
                     <StatusPill device={device} />

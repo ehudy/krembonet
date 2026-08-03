@@ -8,6 +8,8 @@
  * Panels render only for capabilities the device actually has, so a device that
  * cannot report a queue shows no queue rather than an empty one.
  */
+import { ExternalLink } from 'lucide-react';
+
 import { InkPanel } from '../components/InkPanel.js';
 import { JobTable } from '../components/JobTable.js';
 import { PaperPanel } from '../components/PaperPanel.js';
@@ -59,7 +61,22 @@ export function DeviceDetail({ slug }: { slug: string }) {
     <>
       <PageHeader
         title={data.displayName}
-        subtitle={`${data.model ?? t('overview.unknownModel')} · ${data.host}`}
+        subtitle={
+          <>
+            {data.model ?? t('overview.unknownModel')} ·{' '}
+            {/* The address links to the printer's own web server — one click to
+                its full configuration from the page already open on it. */}
+            <a
+              className="ews-link"
+              href={`http://${data.host}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={t('device.openWebConsole')}
+            >
+              {data.host}
+            </a>
+          </>
+        }
         actions={
           <span className={`pill ${data.isOnline ? 'is-good' : 'is-bad'}`}>
             {data.isOnline
@@ -107,14 +124,25 @@ export function DeviceDetail({ slug }: { slug: string }) {
               })}
             </small>
           </div>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={refreshNow}
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? t('sync.refreshing') : t('sync.refreshAll')}
-          </button>
+          <div className="sync-actions">
+            <a
+              className="btn-secondary"
+              href={`http://${data.host}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t('device.openWebConsole')}
+              <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
+            </a>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={refreshNow}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? t('sync.refreshing') : t('sync.refreshAll')}
+            </button>
+          </div>
         </div>
       )}
 

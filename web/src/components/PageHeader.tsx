@@ -6,7 +6,8 @@ export function PageHeader({
   actions,
 }: {
   title: string;
-  subtitle?: string;
+  /** A node, not just text, so a subtitle can carry a link (e.g. the EWS host). */
+  subtitle?: ReactNode;
   actions?: ReactNode;
 }) {
   return (

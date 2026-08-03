@@ -137,6 +137,7 @@
     "lastSuccess": "Última lectura correcta: {{time}}.",
     "reports": "El dispositivo informa: {{reasons}}",
     "refreshFailed": "No se pudo actualizar: {{error}}",
+    "openWebConsole": "Abrir consola web",
     "printQueue": "Cola de impresión",
     "states": {
       "idle": "Preparado",
@@ -207,8 +208,8 @@
   "setup": {
     "title": "Te damos la bienvenida a KremboNet",
     "intro": "Dos cosas por configurar y listo. Puedes cambiar ambas más adelante.",
-    "hubName": "Nombre del centro",
-    "hubNameHint": "Se muestra en la barra lateral y se usa como prefijo del asunto en los correos de alerta.",
+    "hubName": "Nombre de empresa o taller",
+    "hubNameHint": "Se muestra en la cabecera de la barra lateral y se usa como prefijo del asunto en los correos de alerta. Por defecto, KremboNet.",
     "adminPassword": "Contraseña de administración",
     "passwordHint": "Al menos {{count}} caracteres. Es una única contraseña compartida por todas las personas que administran el centro — no hay cuentas de usuario.",
     "confirmPassword": "Confirmar contraseña",
@@ -604,7 +605,9 @@
     "nameThem": "Ponles nombre",
     "groupBy": "Agrupar por",
     "groupByStock": "Por tipo",
+    "groupBySize": "Por tamaño",
     "groupByDevice": "Por dispositivo",
+    "sizeUnknown": "Tamaño no informado",
     "empty": "Ningún dispositivo ha informado todavía de un origen de soporte.",
     "emptyHint": "Los soportes aparecen aquí en cuanto se consulta una impresora que informa de sus orígenes de papel.",
     "unidentified": "Tipo sin identificar",

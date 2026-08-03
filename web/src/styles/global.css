@@ -843,6 +843,35 @@ h1 {
   color: var(--text-muted);
 }
 
+/* Keeps the web-console link and Refresh all together at the end of the bar,
+   wrapping as a pair on a narrow screen rather than splitting across it. */
+.sync-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* An address that is also a link to the printer's own web server. Kept quiet
+   until hovered so the table and the header do not read as a wall of links —
+   the accent on hover is what signals it goes somewhere. */
+.ews-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border-strong);
+}
+
+.ews-link:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.ews-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* Buttons ---------------------------------------------------------------- */
 
 .btn-primary,
@@ -981,9 +1010,17 @@ h1 {
 
 /* Supplies --------------------------------------------------------------- */
 
+/* A fixed three-track grid — [label] [bar] [value] — rather than flex, so every
+   bar starts at the same x and spans the same width no matter how long the
+   label is. The label column is fixed and the bar takes the rest; the value
+   column is sized for this app's worded readings ("85% full", "Not reported"),
+   not a bare percentage, which is why it is wider than a raw number would need.
+   The bar can never be nudged by its neighbours because the grid, not the
+   content, sets the tracks. */
 .supply-row,
 .waste-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 100px 1fr 84px;
   align-items: center;
   gap: 12px;
   margin-bottom: 11px;
@@ -993,8 +1030,7 @@ h1 {
 }
 
 .supply-label {
-  width: 140px;
-  flex-shrink: 0;
+  min-width: 0;
   text-align: right;
   white-space: nowrap;
   overflow: hidden;
@@ -1002,7 +1038,6 @@ h1 {
 }
 
 .supply-track {
-  flex: 1;
   min-width: 0;
   background: var(--border);
   height: 8px;
@@ -1034,10 +1069,9 @@ h1 {
 /* Bright enough to read against the fill it labels. This is the number an
    operator acts on, so it is the highest-contrast text in the row. */
 .supply-value {
-  /* Wide enough for "Not reported" on one line. A wrapped value pushes its
-     own row taller than its neighbours and breaks the column's alignment. */
-  width: 84px;
-  flex-shrink: 0;
+  /* Right-aligned tabular figures so the numbers line up vertically down the
+     column and read as a set. The grid track (84px) is what gives "Not
+     reported" room without a wrap breaking the row's height. */
   text-align: right;
   white-space: nowrap;
   font-size: 12px;
@@ -2190,48 +2224,49 @@ td code {
 
 /* Sidebar sign-out -------------------------------------------------------- */
 
-/* A compact link sitting just above the Admin item, sharing its geometry so the
-   two icons line up in one column. Lighter than a nav item — smaller, fainter —
-   because ending the session is a deliberate but secondary action, not a
-   destination competing with the nav. */
+/* A secondary button sitting just above the Admin item. Ending the session is
+   a deliberate action, so it reads as a real control — a bordered pill with a
+   hover fill — rather than the faint text link it used to be, which was easy to
+   miss on the dark sidebar. Still quieter than the primary blue: it is a button
+   an admin reaches for occasionally, not a call to action. */
 .nav-signout {
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 10px 8px 24px;
-  border: 0;
-  /* Square on the left, rounded on the right, exactly like a nav item, so it
-     sits flush in the same column. */
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: none;
-  color: var(--text-faint);
+  justify-content: center;
+  gap: 8px;
+  margin: 0 12px 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
   font: inherit;
   font-size: 12px;
-  font-weight: 500;
-  text-align: left;
+  font-weight: 600;
   cursor: pointer;
   transition:
     background 0.15s,
+    border-color 0.15s,
     color 0.15s;
 }
 
 .nav-signout:hover {
-  background: var(--sidebar-active);
+  background: var(--hover-surface);
+  border-color: var(--border-strong);
   color: var(--text);
 }
 
 .nav-signout .nav-icon {
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 .nav-signout:hover .nav-icon {
-  color: var(--text-muted);
+  color: var(--text);
 }
 
 .nav-signout:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 
 /* Floor & Queue empty state ---------------------------------------------- */
@@ -2404,15 +2439,9 @@ td code {
 .nav-pinned .nav-item {
   font-weight: 450;
   font-size: 13px;
-}
-
-.nav-pinned .nav-item.is-active .nav-icon,
-.nav-pinned .nav-item .nav-icon {
-  color: var(--text-faint);
-}
-
-.nav-pinned .nav-item.is-active .nav-icon {
-  color: var(--accent);
+  /* No icon any more, so indent the name to where the primary nav's labels
+     begin (icon width + its gap) and the two columns line up as one. */
+  padding-left: 50px;
 }
 
 /* Star toggle -------------------------------------------------------------- */
@@ -2907,8 +2936,27 @@ td code {
   margin: 0;
 }
 
+/* Printer on the left; anything trailing (the By-size stock badge) pinned
+   right. Harmless in the By-stock view, whose rows have only the link. */
+.stock-devices li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .stock-devices .device-link small {
   font-size: 11px;
+}
+
+/* The stock name under a tray in the By-size view. Constrained so a long raw
+   vendor code cannot push the printer name off its own row. */
+.stock-badge {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* An unmapped vendor code. Shown as the code itself, never as a guessed name —
@@ -3028,11 +3076,27 @@ td code {
 
 /* Floor & Queue ------------------------------------------------------------ */
 
+/* A fixed 3-across on the desktop, stepping to 2 then 1 as the viewport
+   narrows. A balanced grid at three keeps each card wide enough to read its
+   gauges, where the old auto-fill could pack five thin columns on a big screen
+   and leave them cramped. */
 .floor-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   margin: 16px 0 26px;
+}
+
+@media (max-width: 1100px) {
+  .floor-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .floor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* The status tone is carried on the left edge, so a row of cards can be read

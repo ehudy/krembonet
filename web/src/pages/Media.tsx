@@ -22,7 +22,7 @@ import { resolveMediaLabel, type MediaLabel } from '../lib/mediaLabel.js';
 import { Link } from '../router.js';
 import type { FleetMediaDevice, MediaSource } from '../types.js';
 
-type Grouping = 'stock' | 'device';
+type Grouping = 'stock' | 'size' | 'device';
 
 /** One loaded source, carrying the device it sits in. */
 interface Loaded {
@@ -109,6 +109,45 @@ function groupByStock(loaded: readonly Loaded[], t: Translate): StockGroup[] {
     );
 }
 
+interface SizeGroup {
+  key: string;
+  /** Null is the "reports no width" bucket, sorted last. */
+  widthInches: number | null;
+  entries: Loaded[];
+}
+
+/**
+ * Groups loaded media by the physical size in the tray, widest-format first.
+ *
+ * The question this answers is the buying-and-cutting one: who is loaded with
+ * 24-inch, so a job that size can go to any of them. Width is the only vendor-
+ * neutral dimension the media state carries — no attribute reports a named size
+ * like A4 — so the bucket key is the width, and a tray that reports none falls
+ * into its own group rather than being dropped.
+ */
+function groupBySize(loaded: readonly Loaded[]): SizeGroup[] {
+  const groups = new Map<string, SizeGroup>();
+
+  for (const entry of loaded) {
+    const width = entry.source.widthInches;
+    const key = width === null ? 'none' : String(width);
+    const existing = groups.get(key);
+
+    if (existing === undefined) {
+      groups.set(key, { key, widthInches: width, entries: [entry] });
+    } else {
+      existing.entries.push(entry);
+    }
+  }
+
+  return [...groups.values()].sort((a, b) => {
+    // Widest first; the no-width bucket sorts to the very end.
+    if (a.widthInches === null) return 1;
+    if (b.widthInches === null) return -1;
+    return b.widthInches - a.widthInches;
+  });
+}
+
 function widthLabel(source: MediaSource, t: Translate): string | null {
   if (source.widthInches === null) return null;
   return source.type === 'roll'
@@ -143,6 +182,7 @@ export function Media() {
   // `t` is a dep because the grouping now resolves standard names, which are
   // localised — the groups re-form when the language changes.
   const stock = useMemo(() => groupByStock(loaded, t), [loaded, t]);
+  const sizes = useMemo(() => groupBySize(loaded), [loaded]);
 
   const reporting = devices.filter((device) => device.media.length > 0);
   const emptySlots = devices.reduce(
@@ -183,7 +223,13 @@ export function Media() {
 
       <div className="list-controls">
         <div className="filter-chips" role="group" aria-label={t('mediaPage.groupBy')}>
-          {(['stock', 'device'] as const).map((value) => (
+          {(
+            [
+              ['stock', 'mediaPage.groupByStock'],
+              ['size', 'mediaPage.groupBySize'],
+              ['device', 'mediaPage.groupByDevice'],
+            ] as const
+          ).map(([value, labelKey]) => (
             <button
               key={value}
               type="button"
@@ -191,7 +237,7 @@ export function Media() {
               aria-pressed={grouping === value}
               onClick={() => setGrouping(value)}
             >
-              {t(`mediaPage.groupBy${value === 'stock' ? 'Stock' : 'Device'}`)}
+              {t(labelKey)}
             </button>
           ))}
         </div>
@@ -265,6 +311,59 @@ export function Media() {
                           <small className="muted">{subtitle}</small>
                         </span>
                       </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
+
+      {!isLoading && grouping === 'size' && sizes.length > 0 && (
+        <div className="panel-grid">
+          {sizes.map((group) => (
+            <section key={group.key} className="card">
+              <div className="card-head">
+                <h2 className="card-title">
+                  <Layers size={14} strokeWidth={2} aria-hidden="true" />{' '}
+                  {group.widthInches === null
+                    ? t('mediaPage.sizeUnknown')
+                    : t('media.sheetWidth', { inches: group.widthInches })}
+                </h2>
+                <span className="tag">
+                  {t('mediaPage.rollCount', { count: group.entries.length })}
+                </span>
+              </div>
+
+              <ul className="plain-list stock-devices">
+                {group.entries.map((entry) => {
+                  // The stock loaded in this tray, shown as a sub-badge — the
+                  // counterpart to the By-stock view, where the size is the
+                  // badge and the stock groups the card.
+                  const label = resolveMediaLabel(entry.source, t);
+                  const stockName = label.name ?? label.code;
+
+                  return (
+                    <li key={`${entry.slug}:${entry.source.key}`}>
+                      <Link to={`/devices/${entry.slug}`} className="device-link">
+                        <Printer size={14} strokeWidth={1.75} aria-hidden="true" />
+                        <span>
+                          <strong>{entry.deviceName}</strong>
+                          <small className="muted">
+                            {entry.source.label}
+                            {entry.location !== null && ` · ${entry.location}`}
+                          </small>
+                        </span>
+                      </Link>
+                      {stockName !== null && (
+                        <span
+                          className="tag stock-badge"
+                          title={label.isUnmapped ? t('media.unknownCode') : undefined}
+                        >
+                          {stockName}
+                        </span>
+                      )}
                     </li>
                   );
                 })}

@@ -18,7 +18,6 @@ import {
   Menu,
   Printer,
   Settings,
-  Star,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -188,9 +187,11 @@ function PinnedNav({ path }: { path: string }) {
             <Link
               key={slug}
               to={to}
-              className={`nav-item${path === to ? ' is-active' : ''}`}
+              // No star icon: everything under this heading is pinned by
+              // definition, so a row of identical stars labels nothing and just
+              // pushes the names it should be making room for.
+              className={`nav-item is-pinned${path === to ? ' is-active' : ''}`}
             >
-              <Star className="nav-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
               <span className="truncate">{names?.get(slug) ?? slug}</span>
             </Link>
           );

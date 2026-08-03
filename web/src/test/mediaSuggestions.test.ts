@@ -46,24 +46,39 @@ describe('COMMON_MEDIA_NAMES', () => {
 
 describe('suggestMediaName', () => {
   it('proposes a name for a known vendor code', () => {
-    assert.equal(suggestMediaName('com.canon-012f'), 'Premium Matte Paper');
+    assert.equal(suggestMediaName('com.canon-012f'), 'Premium Plain Paper 80');
     assert.equal(suggestMediaName('com.epson-9f2a'), 'Satin Photo Paper');
     assert.equal(suggestMediaName('com.hp-0041'), 'Heavyweight Coated (130g)');
   });
 
   it('tolerates case and stray whitespace from a hand-typed code', () => {
-    assert.equal(suggestMediaName('  COM.Canon-012F  '), 'Premium Matte Paper');
+    assert.equal(suggestMediaName('  COM.Canon-012F  '), 'Premium Plain Paper 80');
   });
 
-  it('returns null for anything it does not know, rather than inventing one', () => {
-    // The common case by far, and the correct answer: an unknown code gets no
-    // proposal at all instead of a plausible-sounding wrong one.
+  it('classifies an unknown Canon code by its hex family', () => {
+    // Not in the exact table, but the imagePROGRAF/TZ convention puts 02xx in
+    // the coated/matte family — a shelf to pull from, not a claimed product.
+    assert.equal(suggestMediaName('com.canon-01a4'), 'Plain Paper');
+    assert.equal(suggestMediaName('com.canon-02c8'), 'Premium Matte Paper');
+    assert.equal(suggestMediaName('com.canon-03ff'), 'Glossy Photo Paper');
+  });
+
+  it('humanizes a code that literally spells a name', () => {
+    // The vendor already wrote the name into the code; reading it back is not a
+    // guess. Underscores, hyphens, and camelCase all resolve.
+    assert.equal(suggestMediaName('com.hp-heavyweight_coated'), 'Heavyweight Coated');
+    assert.equal(suggestMediaName('com.epson-satinPhoto'), 'Satin Photo');
+  });
+
+  it('returns null for anything it cannot read, rather than inventing one', () => {
+    // A bare hex blob carries no meaning, and a lone fragment like "vendor" is
+    // not a paper name — both stay unmapped instead of getting a false guess.
     for (const code of ['com.canon-9999', 'stationery', '', 'com.unknown-vendor']) {
       assert.equal(suggestMediaName(code), null, code);
     }
   });
 
-  it('proposes only names the datalist also offers, so the two agree', () => {
+  it('proposes only names the datalist also offers, for the confirmed codes', () => {
     for (const code of ['com.canon-012f', 'com.epson-9f2a', 'com.hp-0041']) {
       const name = suggestMediaName(code) as string;
       assert.ok(COMMON_MEDIA_NAMES.includes(name), `${code} → ${name}`);

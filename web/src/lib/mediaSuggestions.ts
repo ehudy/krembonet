@@ -25,6 +25,7 @@
  * saying "Bond / CAD (80g)" says it in those words. The UI wrapped around them
  * is localised; the proposed value is not.
  */
+import { humanizeMediaCode, suggestFromDictionaries } from './mediaDictionaries/index.js';
 
 /**
  * Stock a commercial print shop actually keeps, for the name field's datalist.
@@ -35,6 +36,7 @@
  */
 export const COMMON_MEDIA_NAMES: readonly string[] = [
   'Plain Paper',
+  'Premium Plain Paper 80',
   'Bond / CAD (80g)',
   'Heavyweight Coated (130g)',
   'Heavyweight Coated (180g)',
@@ -51,32 +53,19 @@ export const COMMON_MEDIA_NAMES: readonly string[] = [
 export const COMMON_MEDIA_LIST_ID = 'common-paper-names';
 
 /**
- * Vendor codes that commonly mean a particular stock.
- *
- * "Commonly" is doing real work in that sentence. These come from the
- * conventions manufacturers use across their driver families, not from a
- * standard, and a given firmware may well use the code for something else.
- * That is exactly why they surface as a button an admin presses rather than as
- * a name the dashboard displays on its own.
- *
- * Keys are matched case-insensitively and with surrounding whitespace trimmed;
- * beyond that a code is compared literally, since a vendor code carries no
- * structure worth parsing.
- */
-const VENDOR_CODE_SUGGESTIONS: Record<string, string> = {
-  'com.canon-012f': 'Premium Matte Paper',
-  'com.canon-0201': 'Heavyweight Coated (130g)',
-  'com.epson-9f2a': 'Satin Photo Paper',
-  'com.hp-0041': 'Heavyweight Coated (130g)',
-};
-
-/**
  * The name to propose for a raw vendor code, or null when there is nothing
  * worth proposing.
  *
- * Null is the common and correct answer: most codes are not in the table, and
- * inventing something for them is the failure this whole design avoids.
+ * The lookups themselves live in ./mediaDictionaries — structured per vendor,
+ * with a Canon range fallback and a generic humanizer for codes that spell a
+ * name. This function is just the order they run in and the normalisation they
+ * share. Null is the common and correct answer: most codes carry no meaning to
+ * read, and inventing something for them is the failure this whole design
+ * avoids.
  */
 export function suggestMediaName(code: string): string | null {
-  return VENDOR_CODE_SUGGESTIONS[code.trim().toLowerCase()] ?? null;
+  const trimmed = code.trim();
+  // Dictionaries match case-insensitively; the humanizer needs the original
+  // case, since a camelCase seam is one of the things it reads a name from.
+  return suggestFromDictionaries(trimmed.toLowerCase()) ?? humanizeMediaCode(trimmed);
 }
