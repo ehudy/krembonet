@@ -13,10 +13,16 @@
  * carries the scope it applies to.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Wand2 } from 'lucide-react';
+import { Info, Sparkles, Wand2 } from 'lucide-react';
 
 import { api } from '../../api.js';
+import { InfoDialog } from '../../components/InfoDialog.js';
 import { useTranslation, type Translate } from '../../i18n/i18n.js';
+import {
+  COMMON_MEDIA_LIST_ID,
+  COMMON_MEDIA_NAMES,
+  suggestMediaName,
+} from '../../lib/mediaSuggestions.js';
 import { standardMediaKey } from '../../lib/standardMedia.js';
 import type { DiscoveredMediaCode, MediaType } from '../../types.js';
 
@@ -91,6 +97,7 @@ export function AdminPaperTypes() {
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [newScope, setNewScope] = useState('');
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   async function load(signal?: AbortSignal): Promise<void> {
     try {
@@ -244,6 +251,17 @@ export function AdminPaperTypes() {
         </div>
       )}
 
+      {/* One list, shared by every friendly-name field on the page, so the
+          same suggestions appear whichever route someone takes to naming a
+          code. A datalist rather than a custom dropdown: it is the platform's
+          own autocomplete, so it types-to-filter and works by keyboard without
+          any of that being reimplemented here. */}
+      <datalist id={COMMON_MEDIA_LIST_ID}>
+        {COMMON_MEDIA_NAMES.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+
       {/* Discovery first: this is the effortless path, where the codes name
           themselves and an admin only supplies the words. The manual form and
           the full mapping table below are the fallback and the reference. */}
@@ -257,6 +275,18 @@ export function AdminPaperTypes() {
               </span>
             )}
           </h2>
+          {/* The codes in this table are the least self-explanatory thing on
+              the page. The explanation is a click away rather than three
+              paragraphs above the table nobody reads twice. */}
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={t('paperTypes.helpAria')}
+            title={t('paperTypes.helpAria')}
+            onClick={() => setIsHelpOpen(true)}
+          >
+            <Info size={16} strokeWidth={2} aria-hidden="true" />
+          </button>
         </div>
         <p className="field-hint">{t('paperTypes.discoveredHint')}</p>
 
@@ -275,6 +305,10 @@ export function AdminPaperTypes() {
               <tbody>
                 {discovered.map((entry) => {
                   const { name, isStandard } = describeDiscovered(entry);
+                  // Only offered for a code nobody has named, and only when the
+                  // draft is still empty — once someone starts typing, their
+                  // words win over the proposal.
+                  const suggestion = name === null ? suggestMediaName(entry.code) : null;
 
                   return (
                     <tr key={entry.code} className={name === null ? 'is-unmapped' : ''}>
@@ -318,6 +352,7 @@ export function AdminPaperTypes() {
                             />
                             <input
                               className="cell-input"
+                              list={COMMON_MEDIA_LIST_ID}
                               value={mapDrafts[entry.code] ?? ''}
                               placeholder={t('paperTypes.namePlaceholder')}
                               aria-label={t('paperTypes.mapAria', { code: entry.code })}
@@ -328,6 +363,30 @@ export function AdminPaperTypes() {
                                 }))
                               }
                             />
+                            {/* A proposal, not an answer: it fills the field
+                                and stops there, so the name is only ever stored
+                                because a person read it and pressed Map. The
+                                vendor table it comes from is a convention, not
+                                a standard, and can be wrong for a given
+                                firmware. Hidden once the field has text so it
+                                never looks like it will overwrite typing. */}
+                            {suggestion !== null &&
+                              (mapDrafts[entry.code] ?? '') === '' && (
+                                <button
+                                  type="button"
+                                  className="suggest-button"
+                                  title={t('paperTypes.suggestTitle')}
+                                  onClick={() =>
+                                    setMapDrafts((current) => ({
+                                      ...current,
+                                      [entry.code]: suggestion,
+                                    }))
+                                  }
+                                >
+                                  <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
+                                  {t('paperTypes.suggest', { name: suggestion })}
+                                </button>
+                              )}
                             <button
                               type="submit"
                               className="btn-primary btn-small"
@@ -367,6 +426,7 @@ export function AdminPaperTypes() {
           <label className="field field-wide">
             <span>{t('paperTypes.friendlyName')}</span>
             <input
+              list={COMMON_MEDIA_LIST_ID}
               value={newName}
               placeholder={t('paperTypes.namePlaceholder')}
               onChange={(event) => setNewName(event.target.value)}
@@ -420,6 +480,7 @@ export function AdminPaperTypes() {
                     <td>
                       <input
                         className="cell-input"
+                        list={COMMON_MEDIA_LIST_ID}
                         value={value}
                         onChange={(event) =>
                           setEdits((current) => ({
@@ -475,6 +536,17 @@ export function AdminPaperTypes() {
 
         {visible.length === 0 && <p className="muted">{t('paperTypes.noMatch')}</p>}
       </section>
+
+      {isHelpOpen && (
+        <InfoDialog
+          title={t('paperTypes.helpTitle')}
+          onClose={() => setIsHelpOpen(false)}
+        >
+          <p>{t('paperTypes.helpWhat')}</p>
+          <p>{t('paperTypes.helpWhy')}</p>
+          <p>{t('paperTypes.helpGlobal')}</p>
+        </InfoDialog>
+      )}
     </>
   );
 }

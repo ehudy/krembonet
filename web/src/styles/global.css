@@ -3476,3 +3476,67 @@ td code {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Paper name suggestion --------------------------------------------------- */
+
+/* A proposal sitting inside the mapping row, deliberately lighter than the Map
+   button beside it: pressing this only fills a field, and it must not read as
+   the action that commits the name. */
+.suggest-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.suggest-button:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.suggest-button svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.suggest-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Explanatory modal body -------------------------------------------------- */
+
+/* Paragraphs of prose, rather than the label/value pairs the rest of the admin
+   is made of — so they get reading measure and spacing instead of form
+   density. */
+.modal-body.prose p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+.modal-body.prose p:last-child {
+  margin-bottom: 0;
+}
+
+/* The section's help affordance, aligned with the title it sits beside. */
+.card-head .icon-button {
+  flex-shrink: 0;
+}

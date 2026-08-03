@@ -455,7 +455,14 @@
     "appliesTo": "Se aplica a",
     "scopeGlobal": "Global",
     "scopeGlobalOption": "Todas las impresoras (global)",
-    "standard": "Estándar"
+    "standard": "Estándar",
+    "suggest": "Sugerir: {{name}}",
+    "suggestTitle": "Un nombre habitual para este código de fabricante. Rellena el campo: comprueba que coincide con el papel realmente cargado antes de asignarlo.",
+    "helpAria": "Acerca de los códigos de papel",
+    "helpTitle": "Acerca de los códigos de papel",
+    "helpWhat": "Las impresoras informan del papel cargado como un código opaco en lugar de un nombre, normalmente en forma de dominio invertido, como com.canon-012f. Ni IPP ni SNMP incluyen una etiqueta legible junto a él, así que el código es todo lo que recibe este centro.",
+    "helpWhy": "Cada fabricante usa sus propios códigos porque el catálogo de papel es suyo: el mismo material es un producto distinto, con un perfil distinto, en cada marca de plóter. Por eso tampoco se incluye ninguna lista de códigos con este centro: una tabla sacada del controlador de una oficina es incorrecta para la siguiente, así que un código sin nombre se muestra tal cual en vez de como una suposición sobre la que alguien podría imprimir.",
+    "helpGlobal": "Asignar un nombre global se aplica a todas las impresoras que informan de ese código, y eso es lo que hace útil el Catálogo de soportes: dos plóteres con el mismo material se agrupan bajo un nombre en lugar de dos códigos. Asigna un código a un solo dispositivo únicamente cuando esa máquina lo use de verdad para otra cosa."
   },
   "alerts": {
     "activeTitle": "Alertas activas",
