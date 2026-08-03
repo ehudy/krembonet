@@ -241,25 +241,30 @@ export function Media() {
 
               <ul className="plain-list stock-devices">
                 {group.entries.map((entry) => {
-                  // The size loaded in this specific tray, not the group's set
-                  // of widths above it. The width the group is bucketed by can
-                  // be shared across printers loading it at different widths,
-                  // so the per-row size is what tells you which machine has the
-                  // 24-inch roll and which has the 11-inch sheet.
-                  const size = widthLabel(entry.source, t);
+                  // Tray, the size loaded in it, and where it lives — joined on
+                  // one muted line. The size is the tray's own, not the group's
+                  // set of widths above it: one stock can be loaded at several
+                  // widths across the fleet, so this is what says which machine
+                  // has the 24-inch roll and which the 11-inch sheet. Built by
+                  // filter-then-join so a tray that reports no size (or no
+                  // location) reads "Tray 1" with no dangling separator.
+                  const subtitle = [
+                    entry.source.label,
+                    widthLabel(entry.source, t),
+                    entry.location,
+                  ]
+                    .filter((part): part is string => part !== null && part !== '')
+                    .join(' · ');
+
                   return (
                     <li key={`${entry.slug}:${entry.source.key}`}>
                       <Link to={`/devices/${entry.slug}`} className="device-link">
                         <Printer size={14} strokeWidth={1.75} aria-hidden="true" />
                         <span>
                           <strong>{entry.deviceName}</strong>
-                          <small className="muted">
-                            {entry.source.label}
-                            {entry.location !== null && ` · ${entry.location}`}
-                          </small>
+                          <small className="muted">{subtitle}</small>
                         </span>
                       </Link>
-                      {size !== null && <span className="stock-size">{size}</span>}
                     </li>
                   );
                 })}
