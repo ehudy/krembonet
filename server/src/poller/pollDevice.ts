@@ -34,6 +34,7 @@ import { guarded } from '../devices/concurrency.js';
 import { readStoredConfig } from '../devices/config-io.js';
 import { getAdapter } from '../devices/registry.js';
 import { sortMediaBySlot } from '../devices/ipp/normalize.js';
+import { cleanSupplyName } from '../devices/supply-name.js';
 import type {
   DeviceState,
   MediaSource,
@@ -134,9 +135,7 @@ function resolveMedia(sources: MediaSource[], deviceId: number): ResolvedMediaSo
       // client then tries the standard dictionary, and failing that shows the
       // raw code rather than a plausible fiction someone might plot on.
       mediaTypeName:
-        source.mediaTypeCode === null
-          ? null
-          : resolver.resolve(source.mediaTypeCode),
+        source.mediaTypeCode === null ? null : resolver.resolve(source.mediaTypeCode),
     })),
   );
 }
@@ -382,7 +381,9 @@ async function readSections(
         state: reading.state,
         stateReasons: reading.stateReasons,
         ...(reading.supplies === undefined ? {} : { supplies: reading.supplies }),
-        ...(reading.media === undefined ? {} : { media: resolveMedia(reading.media, device.id) }),
+        ...(reading.media === undefined
+          ? {}
+          : { media: resolveMedia(reading.media, device.id) }),
         ...(reading.jobs === undefined ? {} : { jobs: reading.jobs }),
         isOnline: true,
         lastError: null,
@@ -547,19 +548,42 @@ export function hydrateDeviceView(device: DeviceRow): DeviceView {
     ...emptyView(device),
     state: (status?.state ?? 'unknown') as DeviceState,
     stateReasons: status?.stateReasons ? status.stateReasons.split(', ') : [],
-    supplies: supplyRows.map((row) => ({
-      index: row.supplyIndex,
-      name: row.name,
-      label: row.label,
-      kind: row.kind as SupplyKind,
-      type: row.supplyType as SupplyType,
-      level: levelFromColumns(row),
-      colorHex: row.colorHex,
-      // Not persisted — it is re-derived from the marker name on every poll, and
-      // the stored label is already the cleaned colour with the SKU removed. A
-      // freshly hydrated cache carries none until the first poll repopulates it.
-      partNumber: null,
-    })),
+    supplies: supplyRows.map((row) => {
+      /*
+       * Run back through the cleaner rather than trusted as stored.
+       *
+       * A stored label was cleaned by whichever build wrote it, which is not
+       * necessarily this one: rows written before the cleaner existed, or before
+       * it learned a vendor's spelling, sit in the table as the device's own
+       * parts-catalogue prose ("Canon GPR-66 Black Toner") and are served that
+       * way to every page until the device is next polled. On a hub that has
+       * just restarted, or one whose printer is switched off for the weekend,
+       * that is what an operator sees.
+       *
+       * Cleaning here rather than in the browser keeps one implementation:
+       * the SPA has no access to this module, and a second copy of the
+       * vendor patterns would drift from it. Cleaning is idempotent — an
+       * already-clean "Black" cleans to "Black" — so a row written by this
+       * build passes through untouched.
+       *
+       * It also recovers the part number, which is not a stored column. Only
+       * from a label that still carries one: a row already cleaned down to
+       * "Black" has nothing left to recover, and gets its SKU back on the next
+       * poll rather than being invented here.
+       */
+      const cleaned = cleanSupplyName(row.label);
+
+      return {
+        index: row.supplyIndex,
+        name: row.name,
+        label: cleaned.label,
+        kind: row.kind as SupplyKind,
+        type: row.supplyType as SupplyType,
+        level: levelFromColumns(row),
+        colorHex: row.colorHex,
+        partNumber: cleaned.partNumber,
+      };
+    }),
     media: resolveMedia(
       mediaRows.map((row) => ({
         key: row.key,

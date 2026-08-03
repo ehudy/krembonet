@@ -100,4 +100,35 @@ describe('cleanSupplyName', () => {
     assert.equal(cleanSupplyName('Cyan 80').partNumber, null);
     assert.equal(cleanSupplyName('Cyan 80').label, 'Cyan');
   });
+
+  it('is idempotent, so a stored label can be cleaned again safely', () => {
+    // Load-bearing. A supply row keeps whatever label the build that wrote it
+    // produced, which may predate this cleaner or a vendor it has since
+    // learned, so hydrating the cache from the database runs stored labels
+    // through here again (poller/pollDevice.ts). That is only sound if a
+    // second pass over an already-clean name is a no-op — otherwise every
+    // restart would degrade the names a little further.
+    const outputs = [
+      'Black',
+      'Cyan',
+      'Magenta',
+      'Yellow',
+      'Matte Black',
+      'Photo Black',
+      'Waste Toner Box',
+      'Maintenance Cartridge',
+    ];
+
+    for (const name of outputs) {
+      assert.deepEqual(cleanSupplyName(name), { label: name, partNumber: null }, name);
+    }
+
+    // And a raw label stored by an older build cleans on the way out, part
+    // number included — which is how a hub that has just restarted shows a
+    // colour rather than a parts-catalogue string.
+    assert.deepEqual(cleanSupplyName('Canon GPR-66 Black Toner'), {
+      label: 'Black',
+      partNumber: 'GPR-66',
+    });
+  });
 });

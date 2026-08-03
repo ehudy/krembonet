@@ -16,6 +16,8 @@ import {
   alertStatus,
   csvFilename,
   escapeCsvField,
+  supplyKeyOf,
+  supplyTitleOf,
   toCsv,
   toPlainList,
   type ExportRow,
@@ -26,6 +28,7 @@ function row(overrides: Partial<ExportRow> = {}): ExportRow {
     deviceName: 'Studio Plotter',
     location: 'Second floor',
     supplyLabel: 'Matte Black',
+    partNumber: null,
     percent: 6,
     isReceptacle: false,
     breached: true,
@@ -66,21 +69,70 @@ describe('alertStatus', () => {
   });
 });
 
+describe('supply identity', () => {
+  it('separates two colours that clean to the same name', () => {
+    // The whole reason the SKU is carried. A Canon magenta and a Kyocera
+    // magenta are both labelled "Magenta" once the vendor prose is stripped,
+    // and counting them together orders three of a cartridge that only two
+    // machines take.
+    assert.notEqual(
+      supplyKeyOf({ supplyLabel: 'Magenta', partNumber: 'GPR-66' }),
+      supplyKeyOf({ supplyLabel: 'Magenta', partNumber: 'TK-172' }),
+    );
+  });
+
+  it('groups two of the same cartridge together', () => {
+    assert.equal(
+      supplyKeyOf({ supplyLabel: 'Magenta', partNumber: 'GPR-66' }),
+      supplyKeyOf({ supplyLabel: 'Magenta', partNumber: 'GPR-66' }),
+    );
+  });
+
+  it('does not let a colour name collide with a SKU boundary', () => {
+    // The separator has to be something neither field can contain, or
+    // "Magenta GPR" with no SKU would key the same as "Magenta" with SKU "GPR".
+    assert.notEqual(
+      supplyKeyOf({ supplyLabel: 'Magenta GPR', partNumber: null }),
+      supplyKeyOf({ supplyLabel: 'Magenta', partNumber: 'GPR' }),
+    );
+  });
+
+  it('names a cartridge the way an order form wants it', () => {
+    assert.equal(
+      supplyTitleOf({ supplyLabel: 'Magenta', partNumber: 'GPR-66' }),
+      'Magenta (GPR-66)',
+    );
+    // No SKU, no empty parentheses.
+    assert.equal(supplyTitleOf({ supplyLabel: 'Magenta', partNumber: null }), 'Magenta');
+  });
+});
+
 describe('toCsv', () => {
   it('leads with the fixed column names', () => {
     const [header] = toCsv([]).split('\r\n');
-    assert.equal(header, 'Device Name,Location,Supply Name,Level %,Alert Status');
-    assert.equal(CSV_COLUMNS.length, 5);
+    assert.equal(
+      header,
+      'Device Name,Location,Supply Name,Level %,Alert Status,Part Number',
+    );
+    assert.equal(CSV_COLUMNS.length, 6);
+  });
+
+  it('appends the part number rather than inserting it', () => {
+    // A script matching columns by position would read levels out of the wrong
+    // column if a field were slotted in ahead of them.
+    assert.equal(CSV_COLUMNS.indexOf('Part Number'), CSV_COLUMNS.length - 1);
+    assert.equal(CSV_COLUMNS.indexOf('Level %'), 3);
   });
 
   it('writes one row per supply, in order', () => {
     const lines = toCsv([
-      row(),
-      row({ deviceName: 'Front Desk', supplyLabel: 'Black Toner', percent: 18 }),
+      row({ partNumber: 'GPR-66' }),
+      row({ deviceName: 'Front Desk', supplyLabel: 'Black', percent: 18 }),
     ]).split('\r\n');
 
-    assert.equal(lines[1], 'Studio Plotter,Second floor,Matte Black,6,Alerting');
-    assert.equal(lines[2], 'Front Desk,Second floor,Black Toner,18,Alerting');
+    assert.equal(lines[1], 'Studio Plotter,Second floor,Matte Black,6,Alerting,GPR-66');
+    // Blank rather than absent, so the column count holds on every row.
+    assert.equal(lines[2], 'Front Desk,Second floor,Black,18,Alerting,');
   });
 
   it('writes the level as a bare number so a spreadsheet can sum it', () => {
@@ -98,6 +150,10 @@ describe('toCsv', () => {
     );
   });
 
+  it('leaves a missing part number blank', () => {
+    assert.match(toCsv([row({ partNumber: null })]), /,Alerting,\r\n/);
+  });
+
   it('leaves a missing location blank', () => {
     assert.match(toCsv([row({ location: null })]), /^Studio Plotter,,Matte Black/m);
   });
@@ -112,6 +168,14 @@ describe('toCsv', () => {
     const csv = toCsv([row()]);
     assert.ok(csv.endsWith('\r\n'));
     assert.equal(csv.split('\r\n').length, 3); // header, one row, trailing empty
+  });
+
+  it('writes the same number of fields on every row as the header', () => {
+    const [header, first] = toCsv([row({ partNumber: null })]).split('\r\n');
+    assert.equal(
+      (first as string).split(',').length,
+      (header as string).split(',').length,
+    );
   });
 });
 
@@ -163,6 +227,33 @@ describe('toPlainList', () => {
   it('omits the parentheses when a device has no location', () => {
     const text = toPlainList([row({ location: null })], t, 'en');
     assert.match(text, /- Studio Plotter - 6%/);
+  });
+
+  it('keeps two vendors’ cartridges apart even when they clean to one colour', () => {
+    // The failure this prevents ends up on a purchase order: "Magenta x3" for
+    // three machines that between them take two different cartridges.
+    const text = toPlainList(
+      [
+        row({ deviceName: 'Studio', supplyLabel: 'Magenta', partNumber: 'GPR-66' }),
+        row({
+          deviceName: 'Drawing Office',
+          supplyLabel: 'Magenta',
+          partNumber: 'GPR-66',
+        }),
+        row({ deviceName: 'Front Desk', supplyLabel: 'Magenta', partNumber: 'TK-172' }),
+      ],
+      t,
+      'en',
+    );
+
+    assert.match(text, /Magenta \(GPR-66\) x2/);
+    assert.match(text, /Magenta \(TK-172\) x1/);
+    assert.doesNotMatch(text, /Magenta x3/);
+  });
+
+  it('names a cartridge by colour alone when no SKU was reported', () => {
+    const text = toPlainList([row({ supplyLabel: 'Yellow', partNumber: null })], t, 'en');
+    assert.match(text, /^Yellow x1$/m);
   });
 
   it('says so rather than inventing a level when none was reported', () => {

@@ -8,12 +8,24 @@
  * twelve pages and adding up.
  *
  * So the default sort is by level ascending across the whole fleet, and the
- * summary at the top groups by supply label rather than by printer. A row here
- * is one cartridge in one machine; the group tells you how many of that
- * cartridge to put on the order.
+ * summary at the top groups by cartridge rather than by printer. A row here is
+ * one cartridge in one machine; the group tells you how many of that cartridge
+ * to put on the order.
+ *
+ * "That cartridge" means the colour *and* the part number. Supply labels are
+ * cleaned down to the colour, which is what makes the table scannable and also
+ * what makes a Canon's magenta and a Kyocera's magenta the same string —
+ * grouping on the label alone would put "Magenta x3" on an order for three
+ * machines that between them take two different cartridges.
  */
 import { useCallback, useMemo, useState } from 'react';
-import { ClipboardCheck, ClipboardList, Download, PackageCheck, Printer } from 'lucide-react';
+import {
+  ClipboardCheck,
+  ClipboardList,
+  Download,
+  PackageCheck,
+  Printer,
+} from 'lucide-react';
 
 import { api } from '../api.js';
 import { PageHeader } from '../components/PageHeader.js';
@@ -24,9 +36,12 @@ import { CRITICAL_SUPPLY_PERCENT } from '../lib/fleet.js';
 import { fillColor, identityColor } from '../lib/supplyColor.js';
 import {
   csvFilename,
+  supplyKeyOf,
+  supplyTitleOf,
   toCsv,
   toPlainList,
   type ExportRow,
+  type SupplyIdentity,
 } from '../lib/supplyExport.js';
 import { Link } from '../router.js';
 import type { FleetSupplyDevice, Supply } from '../types.js';
@@ -114,18 +129,42 @@ function byUrgency(a: Row, b: Row): number {
   );
 }
 
-/** The order summary: how many of each cartridge, across every machine. */
-function reorderTotals(rows: readonly Row[]): { label: string; count: number }[] {
-  const totals = new Map<string, number>();
+/** One line of the order: a cartridge, and how many of it. */
+interface ReorderTotal extends SupplyIdentity {
+  key: string;
+  count: number;
+}
+
+/**
+ * The order summary: how many of each cartridge, across every machine.
+ *
+ * Grouped by colour *and* part number rather than by the label alone. Labels are
+ * cleaned down to the colour, which is what makes the table scannable and also
+ * what makes a Canon's "Magenta" and a Kyocera's "Magenta" the same string —
+ * counting those together would put "Magenta x3" on an order for three machines
+ * that take two different cartridges. Shares its key with the copied list, so
+ * the chips and the export can never disagree about the count.
+ */
+function reorderTotals(rows: readonly Row[]): ReorderTotal[] {
+  const totals = new Map<string, ReorderTotal>();
 
   for (const row of rows) {
     if (!needsReorder(row.supply)) continue;
-    totals.set(row.supply.label, (totals.get(row.supply.label) ?? 0) + 1);
+
+    const identity: SupplyIdentity = {
+      supplyLabel: row.supply.label,
+      partNumber: row.supply.partNumber,
+    };
+    const key = supplyKeyOf(identity);
+    const existing = totals.get(key);
+
+    if (existing === undefined) totals.set(key, { ...identity, key, count: 1 });
+    else existing.count += 1;
   }
 
-  return [...totals]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  return [...totals.values()].sort(
+    (a, b) => b.count - a.count || supplyTitleOf(a).localeCompare(supplyTitleOf(b)),
+  );
 }
 
 function levelText(supply: Supply, t: Translate): string {
@@ -155,6 +194,7 @@ function toExportRow(row: Row): ExportRow {
     deviceName: row.deviceName,
     location: row.location,
     supplyLabel: row.supply.label,
+    partNumber: row.supply.partNumber,
     percent: row.supply.percent,
     isReceptacle: row.supply.kind === 'receptacle',
     breached: row.supply.breached,
@@ -182,7 +222,16 @@ export function Supplies() {
       .filter(
         (row) =>
           needle === '' ||
-          [row.deviceName, row.location, row.supply.label, row.supply.type]
+          // The part number is searchable because it is now on screen, and
+          // because "which machines take a GPR-66" is the question someone
+          // holding a box of them actually asks.
+          [
+            row.deviceName,
+            row.location,
+            row.supply.label,
+            row.supply.type,
+            row.supply.partNumber,
+          ]
             .filter((field): field is string => typeof field === 'string')
             .some((field) => field.toLowerCase().includes(needle)),
       )
@@ -261,8 +310,14 @@ export function Supplies() {
           <h2 className="card-title">{t('suppliesPage.reorderTitle')}</h2>
           <ul className="reorder-chips">
             {totals.map((entry) => (
-              <li key={entry.label} className="reorder-chip">
-                <strong>{entry.label}</strong>
+              <li key={entry.key} className="reorder-chip">
+                <strong>{entry.supplyLabel}</strong>
+                {/* The SKU is what gets typed into the order form, and on a
+                    fleet from more than one vendor it is the only thing
+                    separating two chips that both say "Magenta". */}
+                {entry.partNumber !== null && (
+                  <span className="reorder-sku">{entry.partNumber}</span>
+                )}
                 <span className="reorder-count">×{entry.count}</span>
               </li>
             ))}
@@ -310,7 +365,9 @@ export function Supplies() {
       {rows.length > 0 && visible.length === 0 && (
         <p className="widget-empty">
           <PackageCheck size={15} strokeWidth={2} aria-hidden="true" />
-          {filter === 'reorder' ? t('suppliesPage.nothingToOrder') : t('suppliesPage.noMatch')}
+          {filter === 'reorder'
+            ? t('suppliesPage.nothingToOrder')
+            : t('suppliesPage.noMatch')}
         </p>
       )}
 
@@ -342,8 +399,15 @@ export function Supplies() {
                       />
                       <span>
                         <strong>{row.supply.label}</strong>
+                        {/* The SKU when the device gave one, because this is a
+                            purchasing page and that is the string someone types
+                            into an order form. It falls back to the kind rather
+                            than leaving the line blank — and the kind is still
+                            reachable as a filter above, so nothing is lost on
+                            the devices that report no part number. */}
                         <small className="muted">
-                          {t(`suppliesPage.kind.${row.supply.kind}`)}
+                          {row.supply.partNumber ??
+                            t(`suppliesPage.kind.${row.supply.kind}`)}
                         </small>
                       </span>
                     </span>

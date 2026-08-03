@@ -22,6 +22,17 @@ export interface ExportRow {
   deviceName: string;
   location: string | null;
   supplyLabel: string;
+  /**
+   * The cartridge SKU, when the device reported one.
+   *
+   * Load-bearing on a purchase order rather than decoration. Supply labels are
+   * cleaned down to the colour, which is what makes them scannable — and which
+   * also means a Canon's "Magenta" and a Kyocera's "Magenta" are the same
+   * string. Grouping on the label alone would put "Magenta x3" on an order for
+   * three machines that take two different cartridges, so the part number is
+   * what separates them.
+   */
+  partNumber: string | null;
   /** Null when the device declined to report a level. */
   percent: number | null;
   /**
@@ -37,13 +48,50 @@ export interface ExportRow {
   needsReorder: boolean;
 }
 
-/** Fixed field names. See the note above — these do not translate. */
+/** What makes two rows the same cartridge, for grouping and counting. */
+export interface SupplyIdentity {
+  supplyLabel: string;
+  partNumber: string | null;
+}
+
+/**
+ * The grouping key for an order.
+ *
+ * Exported so the Supplies page's on-screen summary and the copied list group
+ * the same way. Two counts of the same thing that disagree is worse than either
+ * one alone, and that is precisely what happens when a page and its export each
+ * decide for themselves what counts as "the same cartridge".
+ *
+ * The newline is deliberate: it cannot occur in either field, so no colour name
+ * can be mistaken for a SKU boundary.
+ */
+export function supplyKeyOf(supply: SupplyIdentity): string {
+  return `${supply.supplyLabel}\n${supply.partNumber ?? ''}`;
+}
+
+/** How a cartridge is named on an order: the colour, then the SKU to type in. */
+export function supplyTitleOf(supply: SupplyIdentity): string {
+  return supply.partNumber === null
+    ? supply.supplyLabel
+    : `${supply.supplyLabel} (${supply.partNumber})`;
+}
+
+/**
+ * Fixed field names. See the note above — these do not translate.
+ *
+ * `Part Number` is appended rather than slotted in beside `Supply Name`, where
+ * it reads more naturally: a script matching columns by position rather than by
+ * header would silently shift every field after the insertion point, and a
+ * purchasing import that quietly reads levels out of the wrong column is the
+ * worst outcome this file can produce.
+ */
 export const CSV_COLUMNS = [
   'Device Name',
   'Location',
   'Supply Name',
   'Level %',
   'Alert Status',
+  'Part Number',
 ] as const;
 
 /**
@@ -100,6 +148,7 @@ export function toCsv(rows: readonly ExportRow[]): string {
         // its type, which is the whole reason a spreadsheet is opening this.
         row.percent === null ? '' : String(row.percent),
         alertStatus(row),
+        row.partNumber ?? '',
       ]
         .map((field) => escapeCsvField(field))
         .join(','),
@@ -126,16 +175,26 @@ export function csvFilename(now: Date = new Date()): string {
  * A flat row-per-supply list would make the reader do that grouping in their
  * head.
  */
-export function toPlainList(rows: readonly ExportRow[], t: Translate, locale: string): string {
+export function toPlainList(
+  rows: readonly ExportRow[],
+  t: Translate,
+  locale: string,
+): string {
   const groups = new Map<string, ExportRow[]>();
   for (const row of rows) {
-    const existing = groups.get(row.supplyLabel);
-    if (existing === undefined) groups.set(row.supplyLabel, [row]);
+    // Keyed on the colour *and* the SKU. Labels are cleaned down to the colour,
+    // so a Canon and a Kyocera magenta are the same string and grouping on the
+    // label alone would order three of one cartridge for machines that take
+    // two different ones. Rows whose device reported no SKU still group
+    // together, which is the best that can be said about them.
+    const key = supplyKeyOf(row);
+    const existing = groups.get(key);
+    if (existing === undefined) groups.set(key, [row]);
     else existing.push(row);
   }
 
   const ordered = [...groups].sort(
-    ([aLabel, a], [bLabel, b]) => b.length - a.length || aLabel.localeCompare(bLabel),
+    ([aKey, a], [bKey, b]) => b.length - a.length || aKey.localeCompare(bKey),
   );
 
   const lines: string[] = [
@@ -149,8 +208,12 @@ export function toPlainList(rows: readonly ExportRow[], t: Translate, locale: st
     '',
   ];
 
-  for (const [label, entries] of ordered) {
-    lines.push(`${label} x${entries.length}`);
+  for (const [, entries] of ordered) {
+    // The group's own heading rather than the map key, so the SKU appears in
+    // the shape someone types into an order form — "Magenta (GPR-66) x2" —
+    // rather than whatever separator the key happens to use.
+    const first = entries[0] as ExportRow;
+    lines.push(`${supplyTitleOf(first)} x${entries.length}`);
     for (const entry of entries) {
       const where =
         entry.location === null

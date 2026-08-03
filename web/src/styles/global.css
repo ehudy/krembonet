@@ -1017,10 +1017,21 @@ h1 {
    not a bare percentage, which is why it is wider than a raw number would need.
    The bar can never be nudged by its neighbours because the grid, not the
    content, sets the tracks. */
+/* The label track is `minmax(120px, max-content)` rather than a flat 120px: a
+   grid track is shared by every row, so max-content sizes it to the longest
+   label in the panel and every bar still starts and ends at the same x — the
+   alignment a fixed width was there to buy, without the mid-word chop a fixed
+   width also bought. "Maintenance Cartridge · GPR-66" does not fit in 120px,
+   and an operator reading "Maintenance Car…" learns nothing the row did not
+   already tell them.
+
+   The bar keeps a 90px floor so the trade only ever runs one way. On a window
+   narrow enough that both cannot be satisfied, the label gives up its space and
+   ellipses — the bar is the thing being read. */
 .supply-row,
 .waste-row {
   display: grid;
-  grid-template-columns: 120px 1fr 84px;
+  grid-template-columns: minmax(120px, max-content) minmax(90px, 1fr) 84px;
   align-items: center;
   gap: 12px;
   margin-bottom: 11px;
@@ -3074,8 +3085,30 @@ a.alert-device:focus-visible {
   min-width: 0;
 }
 
+/* Neither line wraps. A cartridge name broken across two lines makes one row
+   twice the height of its neighbours and turns a scannable column into a ragged
+   one; the table sits in .table-scroll, so the honest answer to "this does not
+   fit" is a wider table the reader can scroll, not a word split in half. The
+   ellipsis is the last resort for a genuinely absurd name. */
+.supply-name strong,
+.supply-name small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .supply-name small {
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The SKU on an order chip. Monospaced because it is a code to be copied
+   character for character, not a word to be read. */
+.reorder-sku {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* The device's own reported colour, which is the fastest way to find a
