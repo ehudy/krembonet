@@ -240,20 +240,29 @@ export function Media() {
               )}
 
               <ul className="plain-list stock-devices">
-                {group.entries.map((entry) => (
-                  <li key={`${entry.slug}:${entry.source.key}`}>
-                    <Link to={`/devices/${entry.slug}`} className="device-link">
-                      <Printer size={14} strokeWidth={1.75} aria-hidden="true" />
-                      <span>
-                        <strong>{entry.deviceName}</strong>
-                        <small className="muted">
-                          {entry.source.label}
-                          {entry.location !== null && ` · ${entry.location}`}
-                        </small>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
+                {group.entries.map((entry) => {
+                  // The size loaded in this specific tray, not the group's set
+                  // of widths above it. The width the group is bucketed by can
+                  // be shared across printers loading it at different widths,
+                  // so the per-row size is what tells you which machine has the
+                  // 24-inch roll and which has the 11-inch sheet.
+                  const size = widthLabel(entry.source, t);
+                  return (
+                    <li key={`${entry.slug}:${entry.source.key}`}>
+                      <Link to={`/devices/${entry.slug}`} className="device-link">
+                        <Printer size={14} strokeWidth={1.75} aria-hidden="true" />
+                        <span>
+                          <strong>{entry.deviceName}</strong>
+                          <small className="muted">
+                            {entry.source.label}
+                            {entry.location !== null && ` · ${entry.location}`}
+                          </small>
+                        </span>
+                      </Link>
+                      {size !== null && <span className="stock-size">{size}</span>}
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           ))}

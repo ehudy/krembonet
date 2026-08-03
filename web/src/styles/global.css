@@ -2907,8 +2907,32 @@ td code {
   margin: 0;
 }
 
+/* Printer on the left, the size it has loaded pinned to the right, so the
+   column of widths lines up and reads top to bottom without hunting. */
+.stock-devices li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .stock-devices .device-link small {
   font-size: 11px;
+}
+
+/* The per-tray size badge. Quiet by design — it sits in a list of them, so it
+   has to be scannable in bulk rather than shouting one at a time. Tabular
+   figures keep 8.5in and 11in vertically aligned. */
+.stock-size {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* An unmapped vendor code. Shown as the code itself, never as a guessed name —
