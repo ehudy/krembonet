@@ -81,7 +81,9 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
 
     const controller = new AbortController();
     api
-      .defaultSubnet(controller.signal)
+      // The address this browser reached the hub on. Inside a container it is
+      // the only party that knows the real LAN — the server sees a bridge.
+      .defaultSubnet(window.location.hostname, controller.signal)
       .then(({ subnet: local }) => {
         if (local === null) return;
         setDetected(local.cidr);

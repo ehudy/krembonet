@@ -211,11 +211,22 @@ export const api = {
       signal,
     }),
 
-  /** The hub's own subnet, to pre-fill the sweep field. Null when unknown. */
-  defaultSubnet: (signal?: AbortSignal) =>
-    request<{ subnet: LocalSubnet | null }>('/api/admin/devices/default-subnet', {
-      signal,
-    }),
+  /**
+   * The hub's own subnet, to pre-fill the sweep field. Null when unknown.
+   *
+   * `host` is the address the browser reached the hub on. It matters because a
+   * containerised server cannot see the LAN from its own interfaces — it sees a
+   * Docker bridge — while the browser had to use a real LAN address to get
+   * here. The server validates it like any other input; this is a hint, not a
+   * claim.
+   */
+  defaultSubnet: (host?: string, signal?: AbortSignal) => {
+    const query = host === undefined || host === '' ? '' : `?host=${encodeURIComponent(host)}`;
+    return request<{ subnet: LocalSubnet | null }>(
+      `/api/admin/devices/default-subnet${query}`,
+      { signal },
+    );
+  },
 
   /**
    * Sweeps a subnet. Slow by nature — a /24 takes several seconds — so callers

@@ -26,7 +26,7 @@ import {
 } from '../devices/config-io.js';
 import { parseCidr } from '../devices/discovery/cidr.js';
 import { DEFAULT_DISCOVER, discover } from '../devices/discovery/discover.js';
-import { pickLocalSubnet } from '../devices/discovery/local-subnet.js';
+import { resolveDefaultSubnet } from '../devices/discovery/local-subnet.js';
 import { DEFAULT_SWEEP } from '../devices/discovery/scan.js';
 import { smartProbe } from '../devices/discovery/smart-probe.js';
 import { probeAll, suggestedAdapter } from '../devices/probe.js';
@@ -205,12 +205,36 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
    * so the UI falls back to its own placeholder instead of proposing a range
    * that does not exist.
    */
-  app.get(
+  app.get<{ Querystring: { host?: string } }>(
     '/api/admin/devices/default-subnet',
     { preHandler: requireAdmin },
-    async () => {
+    async (request) => {
       const { networkInterfaces } = await import('node:os');
-      return { subnet: pickLocalSubnet(networkInterfaces()) };
+
+      /*
+       * Three sources, best first.
+       *
+       * `?host=` is what the browser saw in its own address bar — the address
+       * someone actually typed to reach this hub. It is the only one of the
+       * three that is right when the server runs in a container, where its own
+       * interfaces describe a Docker bridge and nothing on the LAN.
+       *
+       * The socket's remote address is the fallback for that: it is the client
+       * as the kernel sees it, which is equally good unless a reverse proxy sits
+       * in between, in which case it is the proxy's address and gets rejected
+       * for not being a sweepable private range — or, worse, quietly names the
+       * proxy's network. Hence the query parameter first.
+       *
+       * Both are only ever *suggestions* pre-filled into an editable field, and
+       * neither is trusted for anything but that: the value goes back through
+       * the same CIDR parsing and private-range check the typed one does.
+       */
+      const hinted = String(request.query.host ?? '').trim();
+      const clientAddress = hinted !== '' ? hinted : request.ip;
+
+      return {
+        subnet: resolveDefaultSubnet(clientAddress, networkInterfaces()),
+      };
     },
   );
 

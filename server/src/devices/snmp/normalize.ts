@@ -137,6 +137,56 @@ export function readSupplyLevel(
   return { kind: 'absolute', value: level, max: maxCapacity, unit };
 }
 
+/**
+ * Re-expresses a receptacle's reading as how full it is.
+ *
+ * This is the single most consequential asymmetry in the Printer MIB, and
+ * getting it wrong is what made healthy waste tanks alert. RFC 3805 defines
+ * `prtMarkerSuppliesLevel` as "the current level if this supply is a container;
+ * **the remaining space** if this supply is a receptacle" — so for a waste tank
+ * the number counts *down* as the tank fills, exactly like an ink cartridge,
+ * and it is the one supply where that is not what it looks like.
+ *
+ * Read literally, a freshly emptied tank reports nearly its whole capacity as
+ * free space, which the rest of this codebase — where a receptacle's percentage
+ * means percent *full* — then displayed as "98% full" and alerted on. The
+ * device was right; the reading was inverted. docs/canon-tz32000-field-notes.md
+ * §4 records the same thing against real hardware: `8000 / 10000` of space left
+ * is a tank 20% full, and the IPP path already reports fullness directly, so
+ * this is also what makes the two adapters agree about one physical tank.
+ *
+ * Applied to every receptacle the adapter identifies, by class or by supply
+ * type, rather than to any particular model: the semantics come from the MIB,
+ * so anything reading that table inherits them.
+ *
+ * The binary case is deliberately left alone. `-3` is "some remaining", which
+ * for a receptacle means some space remains — the tank is not full — and `ok`
+ * already says that.
+ */
+export function toReceptacleFullness(level: SupplyLevel): SupplyLevel {
+  switch (level.kind) {
+    case 'percent':
+      return {
+        kind: 'percent',
+        percent: Math.max(0, Math.min(100, 100 - level.percent)),
+      };
+    case 'absolute': {
+      // Guarded rather than trusted: a device reporting more free space than
+      // the tank holds would otherwise produce a negative fullness.
+      if (level.max <= 0) return { kind: 'unknown' };
+      return {
+        kind: 'absolute',
+        value: Math.max(0, Math.min(level.max, level.max - level.value)),
+        max: level.max,
+        unit: level.unit,
+      };
+    }
+    case 'binary':
+    case 'unknown':
+      return level;
+  }
+}
+
 // --- supplies -------------------------------------------------------------
 
 /** Colorant row index to its name, e.g. `1` → `black`. */
@@ -235,6 +285,12 @@ export function normalizeSupplies(walk: SnmpWalk): Supply[] {
         ? undefined
         : colorants.get(String(colorantIndex));
 
+    const reported = readSupplyLevel(
+      asNumber(cell(walk, PRT_MARKER_SUPPLIES.level, index)),
+      asNumber(cell(walk, PRT_MARKER_SUPPLIES.maxCapacity, index)),
+      asNumber(cell(walk, PRT_MARKER_SUPPLIES.supplyUnit, index)),
+    );
+
     return {
       index: position,
       // The row index is the stable key across polls; the description is prose
@@ -243,11 +299,11 @@ export function normalizeSupplies(walk: SnmpWalk): Supply[] {
       label: description,
       kind,
       type,
-      level: readSupplyLevel(
-        asNumber(cell(walk, PRT_MARKER_SUPPLIES.level, index)),
-        asNumber(cell(walk, PRT_MARKER_SUPPLIES.maxCapacity, index)),
-        asNumber(cell(walk, PRT_MARKER_SUPPLIES.supplyUnit, index)),
-      ),
+      // A receptacle's raw reading is free space, not contents. Everything
+      // downstream — the "% full" label, the `above` alert rule — reads a
+      // receptacle's percentage as fullness, so the conversion belongs here,
+      // where the MIB's semantics are known, rather than in each consumer.
+      level: kind === 'receptacle' ? toReceptacleFullness(reported) : reported,
       colorHex: colorFor(colorant, description),
     };
   });

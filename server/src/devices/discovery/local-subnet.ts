@@ -32,6 +32,81 @@ export interface LocalSubnet {
   interfaceName: string;
   /** The hub's own address on that network. */
   address: string;
+  /**
+   * Where the answer came from.
+   *
+   * `client` means it was derived from the address the browser reached the hub
+   * on, which is the only reliable signal when the server is containerised;
+   * `interface` means it came from the host's own adapters.
+   */
+  source: 'client' | 'interface';
+}
+
+/**
+ * Docker's default bridge space.
+ *
+ * A container sees `172.17.0.1` and little else, so an interface scan inside
+ * one confidently proposes a network containing nothing but the container's own
+ * stack. These are deprioritised rather than excluded, because 172.16/12 is
+ * ordinary RFC 1918 space and plenty of real offices are numbered in it —
+ * throwing it away outright would break exactly the sites that need discovery
+ * most. A better answer wins if one exists; this is still offered if not.
+ */
+function isDockerDefaultRange(value: number): boolean {
+  const first = (value >>> 24) & 0xff;
+  const second = (value >>> 16) & 0xff;
+  return first === 172 && second >= 17 && second <= 31;
+}
+
+/**
+ * Ranges a LAN sweep has any business proposing.
+ *
+ * The same set the CIDR parser accepts, minus loopback: a subnet derived from a
+ * client that reached the hub over the loopback interface describes the machine
+ * itself, not a network with printers on it.
+ */
+function isSweepablePrivate(value: number): boolean {
+  const first = (value >>> 24) & 0xff;
+  const second = (value >>> 16) & 0xff;
+
+  if (first === 10) return true;
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  if (first === 192 && second === 168) return true;
+  if (first === 100 && second >= 64 && second <= 127) return true;
+  return false;
+}
+
+/**
+ * The subnet implied by the address a client reached the hub on.
+ *
+ * This is the one signal that survives containerisation. Inside Docker the
+ * server's own interfaces describe the bridge network and nothing else, but the
+ * browser had to use a real LAN address to get here — so that address names the
+ * network the printers are on, and a /24 around it is the range worth sweeping.
+ *
+ * Assumed /24 because the client tells us an address and not a mask, and a /24
+ * is both the overwhelmingly common office layout and small enough to sweep in
+ * seconds. It is a pre-filled suggestion in an editable field; someone on a /23
+ * corrects it.
+ *
+ * Anything that is not a sweepable private IPv4 returns null: a hostname, an
+ * IPv6 address, a loopback connection from a local browser, or a public address
+ * are all reasons to fall back to the interface scan rather than guess.
+ */
+export function subnetFromClientAddress(address: string | undefined): LocalSubnet | null {
+  if (address === undefined) return null;
+
+  // Strips the IPv4-mapped IPv6 form Node hands back on a dual-stack socket,
+  // and any zone or port suffix that came with it.
+  const cleaned = address.trim().replace(/^::ffff:/i, '').split('%')[0] ?? '';
+
+  const value = toInt(cleaned);
+  if (value === null || !isSweepablePrivate(value)) return null;
+
+  const cidr = toCidr(cleaned, 24);
+  if (cidr === null) return null;
+
+  return { cidr, interfaceName: 'client', address: cleaned, source: 'client' };
 }
 
 /**
@@ -117,7 +192,7 @@ export function toCidr(address: string, prefix: number): string | null {
 export function pickLocalSubnet(
   interfaces: Readonly<Record<string, InterfaceAddress[] | undefined>>,
 ): LocalSubnet | null {
-  const candidates: (LocalSubnet & { prefix: number })[] = [];
+  const candidates: (LocalSubnet & { prefix: number; isDocker: boolean })[] = [];
 
   for (const [name, entries] of Object.entries(interfaces)) {
     if (entries === undefined) continue;
@@ -135,15 +210,55 @@ export function pickLocalSubnet(
       const cidr = toCidr(entry.address, prefix);
       if (cidr === null) continue;
 
-      candidates.push({ cidr, interfaceName: name, address: entry.address, prefix });
+      const value = toInt(entry.address);
+
+      candidates.push({
+        cidr,
+        interfaceName: name,
+        address: entry.address,
+        source: 'interface',
+        prefix,
+        isDocker: value !== null && isDockerDefaultRange(value),
+      });
     }
   }
 
   if (candidates.length === 0) return null;
 
-  // Largest prefix = smallest network.
-  candidates.sort((a, b) => b.prefix - a.prefix || a.interfaceName.localeCompare(b.interfaceName));
+  candidates.sort(
+    (a, b) =>
+      // Docker's own bridge space last: inside a container it is the only thing
+      // visible and contains nothing but the container, so anything else is a
+      // better guess. Still offered when it is all there is.
+      Number(a.isDocker) - Number(b.isDocker) ||
+      // Largest prefix = smallest network, which is the likeliest office LAN
+      // and the fastest to sweep.
+      b.prefix - a.prefix ||
+      a.interfaceName.localeCompare(b.interfaceName),
+  );
 
   const best = candidates[0] as LocalSubnet & { prefix: number };
-  return { cidr: best.cidr, interfaceName: best.interfaceName, address: best.address };
+  return {
+    cidr: best.cidr,
+    interfaceName: best.interfaceName,
+    address: best.address,
+    source: 'interface',
+  };
+}
+
+/**
+ * The subnet to propose, preferring what the client's own address implies.
+ *
+ * Order matters and is the whole point of the change: the client address is
+ * checked first because it is right in the case the interface scan gets wrong —
+ * a hub in a container, where the scan sees a bridge network and the browser
+ * sees the real LAN. When there is no usable client address (a local browser on
+ * loopback, a hostname, IPv6) the scan is still the better answer, so it is not
+ * replaced, only outranked.
+ */
+export function resolveDefaultSubnet(
+  clientAddress: string | undefined,
+  interfaces: Readonly<Record<string, InterfaceAddress[] | undefined>>,
+): LocalSubnet | null {
+  return subnetFromClientAddress(clientAddress) ?? pickLocalSubnet(interfaces);
 }

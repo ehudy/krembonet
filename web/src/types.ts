@@ -493,6 +493,12 @@ export interface LocalSubnet {
   cidr: string;
   interfaceName: string;
   address: string;
+  /**
+   * `client` when derived from the address this browser reached the hub on —
+   * the reliable signal when the server is containerised — `interface` when it
+   * came from the host's own network adapters.
+   */
+  source: 'client' | 'interface';
 }
 
 export interface DiscoveryResponse {

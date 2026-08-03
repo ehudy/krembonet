@@ -13,6 +13,8 @@ import { describe, it } from 'node:test';
 import {
   netmaskToPrefix,
   pickLocalSubnet,
+  resolveDefaultSubnet,
+  subnetFromClientAddress,
   toCidr,
   type InterfaceAddress,
 } from '../src/devices/discovery/local-subnet.js';
@@ -132,6 +134,154 @@ describe('pickLocalSubnet', () => {
     assert.equal(
       pickLocalSubnet({ en0: [entry({ netmask: '255.255.0.255' })] }),
       null,
+    );
+  });
+});
+
+/**
+ * Deriving the subnet from the address a client reached the hub on.
+ *
+ * This is the branch that exists because of Docker. A containerised server's
+ * own interfaces describe a bridge network containing nothing but the
+ * container, so an interface scan confidently proposes a range with no printers
+ * in it; the browser, meanwhile, had to use a real LAN address to get here.
+ */
+describe('subnetFromClientAddress', () => {
+  it('takes a /24 around a private LAN address', () => {
+    assert.deepEqual(subnetFromClientAddress('10.1.50.42'), {
+      cidr: '10.1.50.0/24',
+      interfaceName: 'client',
+      address: '10.1.50.42',
+      source: 'client',
+    });
+  });
+
+  it('accepts every private range a LAN tool belongs on', () => {
+    assert.equal(subnetFromClientAddress('192.168.7.9')?.cidr, '192.168.7.0/24');
+    assert.equal(subnetFromClientAddress('172.20.4.5')?.cidr, '172.20.4.0/24');
+    assert.equal(subnetFromClientAddress('100.72.3.1')?.cidr, '100.72.3.0/24');
+  });
+
+  it('unwraps the IPv4-mapped form a dual-stack socket reports', () => {
+    // Node hands back ::ffff:10.1.50.42 on a dual-stack listener; taken
+    // literally it parses as nothing and the whole branch silently never fires.
+    assert.equal(subnetFromClientAddress('::ffff:10.1.50.42')?.cidr, '10.1.50.0/24');
+  });
+
+  it('ignores loopback, which describes the machine and not a network', () => {
+    // A browser on the hub itself. The interface scan is the better answer.
+    assert.equal(subnetFromClientAddress('127.0.0.1'), null);
+    assert.equal(subnetFromClientAddress('::1'), null);
+  });
+
+  it('ignores a public address, a hostname, and nothing at all', () => {
+    for (const value of ['203.0.113.9', 'krembonet.local', 'localhost', '', undefined]) {
+      assert.equal(subnetFromClientAddress(value), null, String(value));
+    }
+  });
+});
+
+describe('resolveDefaultSubnet', () => {
+  const dockerOnly = {
+    eth0: [
+      {
+        address: '172.17.0.2',
+        netmask: '255.255.0.0',
+        family: 'IPv4',
+        internal: false,
+      },
+    ],
+  };
+
+  it('prefers the client address over a container bridge', () => {
+    // The case the whole change exists for: inside Docker the scan can only
+    // offer the bridge, and the browser knows better.
+    const picked = resolveDefaultSubnet('10.1.50.42', dockerOnly);
+    assert.equal(picked?.cidr, '10.1.50.0/24');
+    assert.equal(picked?.source, 'client');
+  });
+
+  it('falls back to the interface scan when the client tells us nothing useful', () => {
+    const picked = resolveDefaultSubnet('127.0.0.1', {
+      en0: [
+        {
+          address: '10.1.50.7',
+          netmask: '255.255.255.0',
+          family: 'IPv4',
+          internal: false,
+        },
+      ],
+    });
+    assert.equal(picked?.cidr, '10.1.50.0/24');
+    assert.equal(picked?.source, 'interface');
+  });
+
+  it('has nothing to offer a container whose client address is unusable', () => {
+    // Docker's default bridge is a /16, wider than the sweep accepts, so the
+    // scan cannot rescue this case even in principle. Which is the argument for
+    // the client-address branch: in a container it is not a nicety, it is the
+    // only source of a real answer.
+    assert.equal(resolveDefaultSubnet('127.0.0.1', dockerOnly), null);
+  });
+
+  it('still offers a narrow bridge when it is genuinely all there is', () => {
+    // Deprioritised, not discarded: with no rival, a wrong suggestion in an
+    // editable field beats an empty one.
+    // A container on a user-defined compose network: the interface is `eth0`,
+    // so the name filter does not catch it and only the address range marks it.
+    const picked = resolveDefaultSubnet(undefined, {
+      eth0: [
+        {
+          address: '172.19.0.4',
+          netmask: '255.255.255.0',
+          family: 'IPv4',
+          internal: false,
+        },
+      ],
+    });
+    assert.equal(picked?.cidr, '172.19.0.0/24');
+  });
+
+  it('ranks a real LAN above a Docker bridge on the same host', () => {
+    // A host running Docker outside a container sees both. The bridge is a /16
+    // and the LAN a /24, so smallest-network alone would already pick the LAN —
+    // this pins the Docker rule by giving the bridge the smaller network.
+    const picked = resolveDefaultSubnet(undefined, {
+      docker_gwbridge: [
+        {
+          address: '172.18.0.1',
+          netmask: '255.255.255.0',
+          family: 'IPv4',
+          internal: false,
+        },
+      ],
+      en0: [
+        {
+          address: '10.1.50.7',
+          netmask: '255.255.240.0',
+          family: 'IPv4',
+          internal: false,
+        },
+      ],
+    });
+    assert.equal(picked?.cidr, '10.1.48.0/20');
+  });
+
+  it('does not mistake a real 172.16/12 office network for Docker', () => {
+    // 172.16.x is ordinary RFC 1918 space. Only Docker's own default range
+    // (172.17–172.31) is deprioritised, and even then only against a rival.
+    assert.equal(
+      resolveDefaultSubnet(undefined, {
+        en0: [
+          {
+            address: '172.16.4.9',
+            netmask: '255.255.255.0',
+            family: 'IPv4',
+            internal: false,
+          },
+        ],
+      })?.cidr,
+      '172.16.4.0/24',
     );
   });
 });

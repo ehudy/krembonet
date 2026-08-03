@@ -21,6 +21,7 @@ import {
   normalizeSupplies,
   readSupplyLevel,
   rowIndices,
+  toReceptacleFullness,
   type SnmpWalk,
 } from '../src/devices/snmp/normalize.js';
 import { levelToPercent } from '../src/devices/types.js';
@@ -85,12 +86,24 @@ describe('a well-behaved laser MFP', () => {
     assert.equal(supplies[4]?.type, 'waste-toner');
   });
 
-  it('reads percent levels as percentages', () => {
+  it('reads percent levels on the consumables as percentages remaining', () => {
     assert.deepEqual(
-      supplies.map((supply) => levelToPercent(supply.level)),
-      [45, 80, 12, 90, 70],
+      supplies.slice(0, 4).map((supply) => levelToPercent(supply.level)),
+      [45, 80, 12, 90],
     );
     assert.deepEqual([...new Set(supplies.map((s) => s.level.kind))], ['percent']);
+  });
+
+  it('reports the collection unit as how full it is, not how much space is left', () => {
+    // The fixture's toner collection unit reports 70 of 100 at class
+    // receptacle(4). RFC 3805 defines that number as the *remaining space*, so
+    // this tank is 30% full and has plenty of room — reading the 70 literally
+    // is what used to show a healthy unit as nearly full and alert on it. See
+    // docs/canon-tz32000-field-notes.md §4, where real hardware corroborates
+    // the same inversion.
+    const collection = supplies[4];
+    assert.equal(collection?.kind, 'receptacle');
+    assert.equal(levelToPercent(collection?.level ?? { kind: 'unknown' }), 30);
   });
 
   it('colours supplies from the colorant table', () => {
@@ -289,5 +302,112 @@ describe('helpers', () => {
     assert.equal(dimensionToMm(1000, undefined), null);
     assert.equal(dimensionToMm(0, 4), null);
     assert.equal(dimensionToMm(undefined, 4), null);
+  });
+});
+
+/**
+ * The receptacle inversion, on its own.
+ *
+ * RFC 3805 defines `prtMarkerSuppliesLevel` as the remaining *space* for a
+ * receptacle, so a waste tank's number counts down as it fills — the opposite
+ * of every other supply in the table, and the one place a literal reading
+ * silently means the wrong thing. Reading it literally is what turned a freshly
+ * emptied tank into a "98% full" alert.
+ */
+describe('waste receptacle levels', () => {
+  it('reports an almost-empty tank as almost empty', () => {
+    // 98% of the tank is free space. The old reading called this 98% full and
+    // paged somebody about a unit that had just been serviced.
+    assert.deepEqual(toReceptacleFullness({ kind: 'percent', percent: 98 }), {
+      kind: 'percent',
+      percent: 2,
+    });
+  });
+
+  it('reports a nearly-full tank as nearly full, so the alert still fires', () => {
+    // The inversion must not simply silence waste alerts: 2% of space left is a
+    // tank that genuinely needs emptying.
+    assert.deepEqual(toReceptacleFullness({ kind: 'percent', percent: 2 }), {
+      kind: 'percent',
+      percent: 98,
+    });
+  });
+
+  it('inverts an absolute reading against its capacity', () => {
+    // The worked example from docs/canon-tz32000-field-notes.md §4: 8000 units
+    // of space left in a 10000 unit tank is 20% full.
+    assert.deepEqual(
+      toReceptacleFullness({ kind: 'absolute', value: 8000, max: 10000, unit: 'other' }),
+      { kind: 'absolute', value: 2000, max: 10000, unit: 'other' },
+    );
+    assert.equal(
+      levelToPercent(
+        toReceptacleFullness({ kind: 'absolute', value: 8000, max: 10000, unit: 'other' }),
+      ),
+      20,
+    );
+  });
+
+  it('clamps a device that reports more free space than the tank holds', () => {
+    const level = toReceptacleFullness({
+      kind: 'absolute',
+      value: 120,
+      max: 100,
+      unit: 'other',
+    });
+    assert.deepEqual(level, { kind: 'absolute', value: 0, max: 100, unit: 'other' });
+  });
+
+  it('refuses to invert against an unusable capacity', () => {
+    assert.deepEqual(
+      toReceptacleFullness({ kind: 'absolute', value: 5, max: 0, unit: 'other' }),
+      { kind: 'unknown' },
+    );
+  });
+
+  it('leaves the sentinels alone', () => {
+    // `-3` became binary ok, meaning "some space remains" — the tank is not
+    // full, which is what ok already says. Inverting it would invent a claim.
+    assert.deepEqual(toReceptacleFullness({ kind: 'binary', state: 'ok' }), {
+      kind: 'binary',
+      state: 'ok',
+    });
+    assert.deepEqual(toReceptacleFullness({ kind: 'unknown' }), { kind: 'unknown' });
+  });
+
+  it('leaves consumables untouched, since only receptacles are inverted', () => {
+    // Guards the wiring rather than the maths: applying this to an ink tank
+    // would report every cartridge backwards.
+    const walk: SnmpWalk = {
+      '1.3.6.1.2.1.43.11.1.1.6.1.1': 'Black Cartridge',
+      '1.3.6.1.2.1.43.11.1.1.4.1.1': 3,
+      '1.3.6.1.2.1.43.11.1.1.5.1.1': 3,
+      '1.3.6.1.2.1.43.11.1.1.7.1.1': 19,
+      '1.3.6.1.2.1.43.11.1.1.8.1.1': 100,
+      '1.3.6.1.2.1.43.11.1.1.9.1.1': 15,
+    };
+
+    const [ink] = normalizeSupplies(walk);
+    assert.equal(ink?.kind, 'consumable');
+    assert.equal(levelToPercent(ink?.level ?? { kind: 'unknown' }), 15);
+  });
+
+  it('inverts a receptacle inferred from its type when the class is other(1)', () => {
+    // Agents that leave the class at other(1) still read the same MIB, so the
+    // level means the same thing; the inversion follows the classification, not
+    // the class column.
+    const walk: SnmpWalk = {
+      '1.3.6.1.2.1.43.11.1.1.6.1.1': 'Waste Toner Box',
+      '1.3.6.1.2.1.43.11.1.1.4.1.1': 1,
+      '1.3.6.1.2.1.43.11.1.1.5.1.1': 4,
+      '1.3.6.1.2.1.43.11.1.1.7.1.1': 19,
+      '1.3.6.1.2.1.43.11.1.1.8.1.1': 100,
+      '1.3.6.1.2.1.43.11.1.1.9.1.1': 95,
+    };
+
+    const [waste] = normalizeSupplies(walk);
+    assert.equal(waste?.kind, 'receptacle');
+    assert.equal(waste?.type, 'waste-toner');
+    assert.equal(levelToPercent(waste?.level ?? { kind: 'unknown' }), 5);
   });
 });
