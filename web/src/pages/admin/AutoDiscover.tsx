@@ -12,14 +12,33 @@
  * operator to retype any of it would be asking them to introduce a typo. What
  * they get instead is Edit, right afterwards, on a device that already works.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Info } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { useTranslation } from '../../i18n/i18n.js';
+import { createLocalStore } from '../../lib/localStore.js';
 import type { DiscoveredDevice, DiscoveryResponse } from '../../types.js';
 
 const PORT_LABELS: Record<number, string> = { 631: 'IPP', 161: 'SNMP' };
+
+/**
+ * The subnet this browser last swept, remembered per-browser.
+ *
+ * There is no server-side detection any more: a hub in a container cannot see
+ * the LAN from its own interfaces, and asking it to guess produced ranges with
+ * nothing on them. The operator knows their network; the job here is only to
+ * not make them retype it every visit. The first-ever visit falls back to the
+ * commonest home/office default, which they correct once and never again.
+ */
+const DEFAULT_SUBNET = '192.168.0.0/24';
+
+const lastSubnetStore = createLocalStore<string>({
+  key: 'krembonet_last_subnet',
+  parse: (raw) => (raw === null || raw.trim() === '' ? DEFAULT_SUBNET : raw.trim()),
+  serialize: (value) => value.trim(),
+  fallback: DEFAULT_SUBNET,
+});
 
 /**
  * What answered, with the SNMP dialect named.
@@ -55,8 +74,9 @@ interface AutoDiscoverProps {
 export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
-  const [subnet, setSubnet] = useState('');
-  const [detected, setDetected] = useState<string | null>(null);
+  // Seeded from the last sweep this browser ran, so the field is ready to go
+  // on the common case of re-scanning the same network.
+  const [subnet, setSubnet] = useState(() => lastSubnetStore.read());
   const [community, setCommunity] = useState('');
   const [result, setResult] = useState<DiscoveryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,37 +85,6 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
   const [added, setAdded] = useState<Set<string>>(new Set());
 
   const controllerRef = useRef<AbortController | null>(null);
-
-  /*
-   * The hub is already on the network the printers are on, so it can propose
-   * the range rather than making someone go and look theirs up. Fetched when
-   * the panel opens rather than on mount — a closed panel should not be asking
-   * the server about network interfaces.
-   *
-   * Only ever pre-filled, and only into a field the operator has not typed in:
-   * a hub with several interfaces may well be offering the wrong one, and they
-   * are the authority on which network their printers are actually on.
-   */
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const controller = new AbortController();
-    api
-      // The address this browser reached the hub on. Inside a container it is
-      // the only party that knows the real LAN — the server sees a bridge.
-      .defaultSubnet(window.location.hostname, controller.signal)
-      .then(({ subnet: local }) => {
-        if (local === null) return;
-        setDetected(local.cidr);
-        setSubnet((current) => (current === '' ? local.cidr : current));
-      })
-      .catch(() => {
-        // A hub that cannot report its own interfaces is not worth an error
-        // banner — the field keeps its placeholder and can be typed into.
-      });
-
-    return () => controller.abort();
-  }, [isOpen]);
 
   async function scan(event: React.FormEvent): Promise<void> {
     event.preventDefault();
@@ -108,11 +97,17 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
     setResult(null);
     setAdded(new Set());
 
+    const trimmed = subnet.trim();
+    // Remember what they actually swept, so next time the field opens on it.
+    // Written before the request, so an aborted or failed sweep still updates
+    // the default — the value they chose is what matters, not whether it hit.
+    if (trimmed !== '') lastSubnetStore.write(trimmed);
+
     try {
       const body =
         community.trim() === ''
-          ? { subnet: subnet.trim() }
-          : { subnet: subnet.trim(), community: community.trim() };
+          ? { subnet: trimmed }
+          : { subnet: trimmed, community: community.trim() };
 
       setResult(await api.discoverDevices(body, controller.signal));
     } catch (cause) {
@@ -192,16 +187,9 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
             <span>{t('discover.subnet')}</span>
             <input
               value={subnet}
-              placeholder={detected ?? '192.168.1.0/24'}
+              placeholder={DEFAULT_SUBNET}
               onChange={(event) => setSubnet(event.target.value)}
             />
-            {/* Says where the pre-filled value came from, so a hub with several
-                interfaces does not look like it guessed at random. */}
-            {detected !== null && (
-              <small className="field-hint">
-                {t('discover.detectedSubnet', { subnet: detected })}
-              </small>
-            )}
             <small className="field-hint">
               {t('discover.subnetHint')
                 .split('<example>')

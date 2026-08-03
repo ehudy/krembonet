@@ -60,6 +60,15 @@ export function StatusPill({ device }: { device: DeviceSummary }) {
     );
   }
 
+  if (device.wasteFull > 0) {
+    return (
+      <span className="pill is-warn">
+        <TriangleAlert {...PILL_ICON} />
+        {t('overview.wasteFullPill', { count: device.wasteFull })}
+      </span>
+    );
+  }
+
   if (device.lowSupplies > 0) {
     return (
       <span className="pill is-warn">

@@ -73,6 +73,10 @@
       "one": "{{count}} consumible bajo",
       "other": "{{count}} consumibles bajos"
     },
+    "wasteFullPill": {
+      "one": "Depósito de residuos lleno",
+      "other": "{{count}} depósitos de residuos llenos"
+    },
     "actionRequired": "Requiere atención",
     "allClearTitle": "Todos los sistemas operativos",
     "allClearBody": {
@@ -417,7 +421,6 @@
     "addByHand": "Añadir a mano",
     "addByHandTitle": "Nada aquí se identificó como un dispositivo compatible. Añádelo a mano si sabes lo que es.",
     "adding": "Añadiendo…",
-    "detectedSubnet": "Detectada en este servidor: {{subnet}}.",
     "snmpOnlyBadge": "Solo SNMP",
     "snmpOnlyTip": "Proporciona telemetría de consumibles y estado. Activa IPP en el dispositivo para seguir la cola y las bandejas de papel en directo."
   },

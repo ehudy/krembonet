@@ -73,6 +73,10 @@
       "one": "{{count}} supply low",
       "other": "{{count}} supplies low"
     },
+    "wasteFullPill": {
+      "one": "Waste box full",
+      "other": "{{count}} waste boxes full"
+    },
     "actionRequired": "Action required",
     "allClearTitle": "All systems operational",
     "allClearBody": {
@@ -417,7 +421,6 @@
     "addByHand": "Add by hand",
     "addByHandTitle": "Nothing here identified itself as a supported device. Add it by hand if you know what it is.",
     "adding": "Adding…",
-    "detectedSubnet": "Detected from this server: {{subnet}}.",
     "snmpOnlyBadge": "SNMP only",
     "snmpOnlyTip": "Provides supply & status telemetry. Enable IPP on device for live queue & paper tray tracking."
   },

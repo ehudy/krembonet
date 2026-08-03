@@ -77,15 +77,30 @@ function decorate(view: DeviceView, deviceId: number) {
 }
 
 /**
- * How many supplies are currently past their alert threshold.
+ * How many supplies are past their alert threshold, split by which way the
+ * supply runs.
  *
- * Uses the same rules the alert engine does, so the count on a card and the
- * mail an operator receives can never disagree.
+ * These are two different sentences to an operator: a low consumable is
+ * "reorder toner", a full receptacle is "empty the waste box on the way past".
+ * Counting them together produced "1 supply low" on a printer whose only issue
+ * was a full waste tank — wrong on both the number and the noun. Uses the same
+ * rules the alert engine does, so the counts and the mail can never disagree.
  */
-function countBreached(view: DeviceView, deviceId: number): number {
-  return evaluateSupplies(view.slug, deviceId, view.supplies, listAlertRules()).filter(
-    (condition) => condition.breached,
-  ).length;
+function countBreaches(
+  view: DeviceView,
+  deviceId: number,
+): { lowSupplies: number; wasteFull: number } {
+  const breached = evaluateSupplies(
+    view.slug,
+    deviceId,
+    view.supplies,
+    listAlertRules(),
+  ).filter((condition) => condition.breached);
+
+  return {
+    lowSupplies: breached.filter((c) => c.supply.kind === 'consumable').length,
+    wasteFull: breached.filter((c) => c.supply.kind === 'receptacle').length,
+  };
 }
 
 /**
@@ -112,8 +127,9 @@ function summarize(view: DeviceView, device: DeviceRow) {
     lastSuccessAt: view.lastSuccessAt,
     consecutiveFailures: view.consecutiveFailures,
     // Enough for Overview cards to show a health summary without a second
-    // request per device.
-    lowSupplies: countBreached(view, device.id),
+    // request per device. Split so a full waste tank does not read as a low
+    // consumable — they are different jobs for whoever walks over.
+    ...countBreaches(view, device.id),
     activeJobs: view.jobs.length,
     /** True when any alert category is silenced; drives the card indicator. */
     alertsSuppressed: hasAnySuppression(device),
@@ -159,6 +175,7 @@ export async function statusRoutes(app: FastifyInstance): Promise<void> {
               lastSuccessAt: null,
               consecutiveFailures: 0,
               lowSupplies: 0,
+              wasteFull: 0,
               activeJobs: 0,
               // A device configured but never polled has nothing to report, and
               // must not read as an error — it has not been asked yet.

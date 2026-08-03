@@ -16,6 +16,9 @@ export const PRINTER_ATTRIBUTES = [
   // `marker-levels` is only a percentage when the matching high level is 100.
   // RFC 8011 permits any scale, so reading levels without this is guesswork.
   'marker-high-levels',
+  // The "warn me at this level" boundary. For a waste receptacle it is the one
+  // signal that says which way the number runs — see `readReceptacleFullness`.
+  'marker-low-levels',
   'marker-colors',
   'marker-types',
   'media-ready',

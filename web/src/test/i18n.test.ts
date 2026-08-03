@@ -168,6 +168,20 @@ describe('plurals', () => {
     );
   });
 
+  it('names a full waste box distinctly from a low consumable', () => {
+    // The whole point of the split: one waste box reads "Waste box full", not
+    // "1 supply low". The singular deliberately drops the count.
+    assert.equal(translate('en', 'overview.wasteFullPill', { count: 1 }), 'Waste box full');
+    assert.equal(
+      translate('en', 'overview.wasteFullPill', { count: 2 }),
+      '2 waste boxes full',
+    );
+    assert.equal(
+      translate('es', 'overview.wasteFullPill', { count: 1 }),
+      'Depósito de residuos lleno',
+    );
+  });
+
   it('uses Intl.PluralRules rather than an n === 1 check', () => {
     // Zero is `other` in both English and Spanish. The point is that the
     // category comes from Intl, so a locale where it is not — Polish, Arabic —

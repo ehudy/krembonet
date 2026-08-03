@@ -138,8 +138,10 @@ export interface DeviceSummary {
   isOnline: boolean;
   lastSuccessAt: string | null;
   consecutiveFailures: number;
-  /** Supplies currently past their alert threshold, counted by the alert rules. */
+  /** Consumables past their low threshold — reorder, not walk-over. */
   lowSupplies: number;
+  /** Waste receptacles past their fill threshold — empty on the way past. */
+  wasteFull: number;
   activeJobs: number;
   attention: AttentionLevel;
   /** One phrase for a status pill, e.g. "Paper out" or "Paper jam +1". */
@@ -486,19 +488,6 @@ export interface SmartProbeResponse {
   identity: DeviceIdentity;
   capabilities: string[];
   notes: string[];
-}
-
-/** The hub's own network, suggested as a starting point for a sweep. */
-export interface LocalSubnet {
-  cidr: string;
-  interfaceName: string;
-  address: string;
-  /**
-   * `client` when derived from the address this browser reached the hub on —
-   * the reliable signal when the server is containerised — `interface` when it
-   * came from the host's own network adapters.
-   */
-  source: 'client' | 'interface';
 }
 
 export interface DiscoveryResponse {

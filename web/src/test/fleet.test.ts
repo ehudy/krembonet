@@ -33,6 +33,7 @@ function device(overrides: Partial<DeviceSummary> = {}): DeviceSummary {
     lastSuccessAt: null,
     consecutiveFailures: 0,
     lowSupplies: 0,
+    wasteFull: 0,
     activeJobs: 0,
     attention: 'ok',
     attentionSummary: null,

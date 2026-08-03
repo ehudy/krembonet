@@ -193,6 +193,56 @@ export function readMarkerLevel(
 }
 
 /**
+ * Reads a receptacle (waste tank) level as a *fullness*, whichever way the
+ * printer counts.
+ *
+ * This is the crux of a genuinely cross-vendor mess. RFC 8011 says nothing
+ * about which direction a waste marker runs, and vendors disagree:
+ *
+ *   - The Canon TZ-32000 reports `marker-levels` as percent **filled** — a
+ *     freshly emptied tank reads 0, a full one reads 100. See
+ *     docs/canon-tz32000-field-notes.md §4, confirmed against SNMP.
+ *   - Others (a Kyocera ECOSYS, for one) report percent **remaining space** —
+ *     a freshly emptied tank reads 100. Taken as "percent full", that empty
+ *     tank alerts at 100% full the moment it is serviced: exactly backwards.
+ *
+ * A blanket inversion would fix the Kyocera and break the Canon, so the
+ * direction has to be inferred per marker rather than hardcoded per model. The
+ * disambiguating signal is `marker-low-levels`: a positive low anchor is the
+ * printer saying "warn me when this drops to X", which is only meaningful for a
+ * number that counts *down* — i.e. remaining space, whose complement is
+ * fullness. With no low anchor (or a zero one) the number counts up and already
+ * is the fullness, which is the Canon's convention and the safe default.
+ *
+ * Negative levels are the spec's unknown sentinels (-1, -2, -3) and stay
+ * unknown — never a fabricated "full", which is the false alert this exists to
+ * prevent.
+ */
+export function readReceptacleFullness(
+  level: number | undefined,
+  highLevel: number | undefined,
+  lowLevel: number | undefined,
+): SupplyLevel {
+  if (level === undefined || !Number.isFinite(level) || level < 0) {
+    return { kind: 'unknown' };
+  }
+
+  const high = highLevel === undefined || !Number.isFinite(highLevel) ? 100 : highLevel;
+  if (high <= 0) return { kind: 'unknown' };
+
+  // A positive low anchor means the reading counts down toward it, so the tank
+  // is reporting space left; fullness is the complement.
+  const countsDown = lowLevel !== undefined && Number.isFinite(lowLevel) && lowLevel > 0;
+
+  if (high === 100) {
+    return percentLevel(countsDown ? 100 - level : level);
+  }
+
+  const value = countsDown ? Math.max(0, high - level) : Math.min(level, high);
+  return { kind: 'absolute', value, max: high, unit: 'other' };
+}
+
+/**
  * Merges the attribute groups of a response into one lookup.
  *
  * Printers may split attributes across groups; for Get-Printer-Attributes the
@@ -207,6 +257,7 @@ export function normalizeSupplies(attrs: Record<string, PlistValue>): Supply[] {
   const names = asArray(attrs['marker-names']).map((v) => asString(v) ?? '');
   const levels = asArray(attrs['marker-levels']).map((v) => asNumber(v));
   const highLevels = asArray(attrs['marker-high-levels']).map((v) => asNumber(v));
+  const lowLevels = asArray(attrs['marker-low-levels']).map((v) => asNumber(v));
   const colors = asArray(attrs['marker-colors']).map((v) => asString(v) ?? '');
   const types = asArray(attrs['marker-types']).map((v) => asString(v) ?? '');
 
@@ -220,7 +271,13 @@ export function normalizeSupplies(attrs: Record<string, PlistValue>): Supply[] {
       label: SUPPLY_LABELS[name] ?? name,
       kind,
       type,
-      level: readMarkerLevel(levels[index], highLevels[index]),
+      // Receptacles count toward full and vary in which way the number runs;
+      // consumables count down from a percentage. Reading each with the wrong
+      // one is how a healthy waste tank shows as 100% full.
+      level:
+        kind === 'receptacle'
+          ? readReceptacleFullness(levels[index], highLevels[index], lowLevels[index])
+          : readMarkerLevel(levels[index], highLevels[index]),
       // Null rather than a made-up colour: the UI owns the fallback, and a
       // device that reports no colour should not look like it reported blue.
       colorHex:

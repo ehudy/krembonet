@@ -47,8 +47,11 @@ function matchesFilter(
       return pinned.includes(device.slug);
     case 'attention':
       // What an operator actually wants: anything that needs a person, whether
-      // that is a fault the device reported or a supply past its threshold.
-      return device.attention === 'error' || device.lowSupplies > 0;
+      // that is a fault the device reported, a consumable past its threshold,
+      // or a waste tank that has filled up.
+      return (
+        device.attention === 'error' || device.lowSupplies > 0 || device.wasteFull > 0
+      );
     case 'offline':
       return !device.isOnline;
     case 'muted':

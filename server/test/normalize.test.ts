@@ -19,6 +19,7 @@ import {
   normalizeMedia,
   normalizePrinterAttributes,
   readMarkerLevel,
+  readReceptacleFullness,
   sortMediaBySlot,
 } from '../src/devices/ipp/normalize.js';
 import { levelToPercent } from '../src/devices/types.js';
@@ -229,6 +230,78 @@ describe('marker level scaling', () => {
   it('refuses to divide by an unusable capacity', () => {
     assert.deepEqual(readMarkerLevel(10, 0), { kind: 'unknown' });
     assert.deepEqual(readMarkerLevel(10, -2), { kind: 'unknown' });
+  });
+});
+
+/**
+ * Waste tanks, read as fullness whichever way the printer counts.
+ *
+ * The failure this guards against is a healthy, freshly-emptied tank showing as
+ * 100% full — and its opposite, a genuinely full tank read as empty. The two
+ * cannot be told apart from the level alone when vendors disagree on direction,
+ * so `marker-low-levels` is the tie-breaker: a positive low anchor marks a
+ * value that counts down (space remaining), whose complement is the fullness.
+ */
+describe('receptacle fullness', () => {
+  it('keeps a percent-filled tank as-is when no low anchor says otherwise', () => {
+    // The Canon convention (field notes §4): the number already is the
+    // fullness, and a freshly emptied tank reads a low number.
+    assert.deepEqual(readReceptacleFullness(20, 100, undefined), {
+      kind: 'percent',
+      percent: 20,
+    });
+    assert.deepEqual(readReceptacleFullness(0, undefined, undefined), {
+      kind: 'percent',
+      percent: 0,
+    });
+  });
+
+  it('inverts a tank that reports space remaining, marked by a low anchor', () => {
+    // A Kyocera-style empty box: 100 units of space left, warn at 10. Read
+    // literally that is "100% full" and alerts the instant it is serviced;
+    // read correctly it is 0% full and healthy.
+    assert.deepEqual(readReceptacleFullness(100, 100, 10), {
+      kind: 'percent',
+      percent: 0,
+    });
+    // The same tank nearly full: little space left, which is a real 95% and
+    // must still cross a fill threshold.
+    assert.deepEqual(readReceptacleFullness(5, 100, 10), {
+      kind: 'percent',
+      percent: 95,
+    });
+  });
+
+  it('leaves the negative sentinels unknown, never a fabricated full', () => {
+    // The exact reported symptom would be worst here: -2/-3 are "OK / normal"
+    // for many waste boxes, and must not become 100% full.
+    assert.deepEqual(readReceptacleFullness(-1, 100, undefined), { kind: 'unknown' });
+    assert.deepEqual(readReceptacleFullness(-2, 100, 10), { kind: 'unknown' });
+    assert.deepEqual(readReceptacleFullness(-3, 100, undefined), { kind: 'unknown' });
+    assert.deepEqual(readReceptacleFullness(undefined, 100, undefined), { kind: 'unknown' });
+  });
+
+  it('reads a non-percentage scale as an absolute fullness, either direction', () => {
+    // Counts up: filled directly against capacity.
+    assert.deepEqual(readReceptacleFullness(2000, 10000, undefined), {
+      kind: 'absolute',
+      value: 2000,
+      max: 10000,
+      unit: 'other',
+    });
+    // Counts down (low anchor present): 2000 of 10000 units of space left is
+    // 8000 filled.
+    assert.deepEqual(readReceptacleFullness(2000, 10000, 500), {
+      kind: 'absolute',
+      value: 8000,
+      max: 10000,
+      unit: 'other',
+    });
+  });
+
+  it('refuses an unusable capacity rather than inventing a level', () => {
+    assert.deepEqual(readReceptacleFullness(10, 0, undefined), { kind: 'unknown' });
+    assert.deepEqual(readReceptacleFullness(10, -2, 5), { kind: 'unknown' });
   });
 });
 
