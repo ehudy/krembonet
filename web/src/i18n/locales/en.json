@@ -352,7 +352,6 @@
     "updated": "Device updated.",
     "deleted": "Deleted {{name}}.",
     "addedFromDiscovery": "Device added from discovery.",
-    "confirmDelete": "Delete \"{{name}}\"? Its readings and supply history are removed too, and that history cannot be recovered.",
     "displayName": "Display name",
     "location": "Location",
     "enabled": "Enabled",
@@ -381,7 +380,19 @@
     "muteMedia": "Mute media alerts",
     "muteMediaHint": "Paper out, tray empty, jams.",
     "muteOffline": "Mute offline alerts",
-    "muteOfflineHint": "The device becoming unreachable, and recovering."
+    "muteOfflineHint": "The device becoming unreachable, and recovering.",
+    "probeIp": "Probe IP",
+    "probingIp": "Probing…",
+    "probeIpHint": "Tests the address for IPP, SNMP and a web interface, then fills in the settings that worked.",
+    "probeApplied": "Answered on {{protocols}} — configured as {{adapter}}.",
+    "probeSnmpOnlyTip": "This gives supply levels and status. Enable IPP on the device for live queue and paper tray tracking.",
+    "probeHttpOnly": "Answered on {{protocols}} only — a web interface, which this hub cannot poll. Enable IPP or SNMP on the device, then probe again.",
+    "probeNothing": "Nothing answered at that address. Check the printer is powered on and that the address is right.",
+    "deleteTitle": "Delete printer?",
+    "deleteBody": "Are you sure you want to delete \"{{name}}\"? Its readings and supply history will be removed and cannot be recovered.",
+    "deleteConfirm": "Delete printer",
+    "deleting": "Deleting…",
+    "probeUnidentified": "Answered on {{protocols}}, but nothing this hub can poll identified itself. Check the device is a printer and that IPP or SNMP is enabled on it."
   },
   "discover": {
     "title": "Auto-discover",
@@ -405,7 +416,10 @@
     "addedLabel": "Added",
     "addByHand": "Add by hand",
     "addByHandTitle": "Nothing here identified itself as a supported device. Add it by hand if you know what it is.",
-    "adding": "Adding…"
+    "adding": "Adding…",
+    "detectedSubnet": "Detected from this server: {{subnet}}.",
+    "snmpOnlyBadge": "SNMP only",
+    "snmpOnlyTip": "Provides supply & status telemetry. Enable IPP on device for live queue & paper tray tracking."
   },
   "paperTypes": {
     "addTitle": "Add or override a code",

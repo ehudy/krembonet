@@ -12,7 +12,8 @@
  * operator to retype any of it would be asking them to introduce a typo. What
  * they get instead is Edit, right afterwards, on a device that already works.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Info } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { useTranslation } from '../../i18n/i18n.js';
@@ -20,8 +21,22 @@ import type { DiscoveredDevice, DiscoveryResponse } from '../../types.js';
 
 const PORT_LABELS: Record<number, string> = { 631: 'IPP', 161: 'SNMP' };
 
-function describePorts(ports: number[]): string {
-  return ports.map((port) => PORT_LABELS[port] ?? String(port)).join(' + ');
+/**
+ * What answered, with the SNMP dialect named.
+ *
+ * "SNMP" alone is not enough once v1 is in play: an operator looking at a
+ * device that only answered v1 wants to know that, both because it says
+ * something about the age of the firmware and because it is what got written
+ * into the device's config.
+ */
+function describePorts(device: DiscoveredDevice): string {
+  return device.ports
+    .map((port) => {
+      const label = PORT_LABELS[port] ?? String(port);
+      if (port !== 161 || device.snmpVersion === null) return label;
+      return `${label} (v${device.snmpVersion})`;
+    })
+    .join(' + ');
 }
 
 /** Vendor and model, whichever the device was willing to give. */
@@ -40,7 +55,8 @@ interface AutoDiscoverProps {
 export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
-  const [subnet, setSubnet] = useState('192.168.1.0/24');
+  const [subnet, setSubnet] = useState('');
+  const [detected, setDetected] = useState<string | null>(null);
   const [community, setCommunity] = useState('');
   const [result, setResult] = useState<DiscoveryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +65,35 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
   const [added, setAdded] = useState<Set<string>>(new Set());
 
   const controllerRef = useRef<AbortController | null>(null);
+
+  /*
+   * The hub is already on the network the printers are on, so it can propose
+   * the range rather than making someone go and look theirs up. Fetched when
+   * the panel opens rather than on mount — a closed panel should not be asking
+   * the server about network interfaces.
+   *
+   * Only ever pre-filled, and only into a field the operator has not typed in:
+   * a hub with several interfaces may well be offering the wrong one, and they
+   * are the authority on which network their printers are actually on.
+   */
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const controller = new AbortController();
+    api
+      .defaultSubnet(controller.signal)
+      .then(({ subnet: local }) => {
+        if (local === null) return;
+        setDetected(local.cidr);
+        setSubnet((current) => (current === '' ? local.cidr : current));
+      })
+      .catch(() => {
+        // A hub that cannot report its own interfaces is not worth an error
+        // banner — the field keeps its placeholder and can be typed into.
+      });
+
+    return () => controller.abort();
+  }, [isOpen]);
 
   async function scan(event: React.FormEvent): Promise<void> {
     event.preventDefault();
@@ -145,9 +190,16 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
             <span>{t('discover.subnet')}</span>
             <input
               value={subnet}
-              placeholder="192.168.1.0/24"
+              placeholder={detected ?? '192.168.1.0/24'}
               onChange={(event) => setSubnet(event.target.value)}
             />
+            {/* Says where the pre-filled value came from, so a hub with several
+                interfaces does not look like it guessed at random. */}
+            {detected !== null && (
+              <small className="field-hint">
+                {t('discover.detectedSubnet', { subnet: detected })}
+              </small>
+            )}
             <small className="field-hint">
               {t('discover.subnetHint')
                 .split('<example>')
@@ -246,7 +298,23 @@ export function AutoDiscover({ onAdded }: AutoDiscoverProps) {
                             <span className="state-reason">{device.notes.join(' ')}</span>
                           )}
                         </td>
-                        <td className="muted">{describePorts(device.ports)}</td>
+                        <td className="muted">
+                          {describePorts(device)}
+                          {/* An SNMP-only device works — supplies and status
+                              are the bulk of what this hub shows — but it will
+                              never have a queue or paper trays. Said once,
+                              here, rather than leaving someone to notice the
+                              empty panels later and wonder what broke. */}
+                          {device.protocols.snmp && !device.protocols.ipp && (
+                            <span
+                              className="protocol-note"
+                              title={t('discover.snmpOnlyTip')}
+                            >
+                              <Info size={12} strokeWidth={2.5} aria-hidden="true" />
+                              {t('discover.snmpOnlyBadge')}
+                            </span>
+                          )}
+                        </td>
                         <td className="muted">
                           {device.capabilities
                             .filter((capability) => capability !== 'reachability')

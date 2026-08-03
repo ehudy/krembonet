@@ -429,10 +429,28 @@ export interface ProbeOutcome {
 }
 
 /** One address that answered a subnet sweep, after identification. */
+/** Which SNMP version answered. v3 needs credentials a sweep cannot guess. */
+export type SnmpSweepVersion = '1' | '2c';
+
+/**
+ * What an address speaks.
+ *
+ * IPP carries the live queue and paper trays as well as supplies; SNMP carries
+ * supplies and status only. The difference is worth telling an operator, since
+ * it is the reason to go and switch IPP on.
+ */
+export interface ProtocolSupport {
+  ipp: boolean;
+  snmp: boolean;
+}
+
 export interface DiscoveredDevice {
   host: string;
   /** Which of 631 (IPP) / 161 (SNMP) answered. */
   ports: number[];
+  /** The SNMP version that replied, or null when SNMP did not. */
+  snmpVersion: SnmpSweepVersion | null;
+  protocols: ProtocolSupport;
   adapter: string | null;
   adapterLabel: string | null;
   identity: DeviceIdentity;
@@ -443,6 +461,38 @@ export interface DiscoveredDevice {
   /** Ready to submit as a new device. */
   config: Record<string, unknown>;
   alreadyAdded: boolean;
+}
+
+/** Every protocol the smart probe tests against one address. */
+export interface SmartProbeProtocols {
+  ipp: boolean;
+  snmpV2c: boolean;
+  snmpV1: boolean;
+  /** Not pollable — only proof the address is a live device with a web UI. */
+  http: boolean;
+}
+
+export interface SmartProbeResponse {
+  host: string;
+  /** True when anything answered at all, web UI included. */
+  reachable: boolean;
+  protocols: SmartProbeProtocols;
+  adapter: string | null;
+  adapterLabel: string | null;
+  snmpVersion: SnmpSweepVersion | null;
+  community: string | null;
+  /** Ready to drop into the add-device form for the suggested adapter. */
+  config: Record<string, unknown>;
+  identity: DeviceIdentity;
+  capabilities: string[];
+  notes: string[];
+}
+
+/** The hub's own network, suggested as a starting point for a sweep. */
+export interface LocalSubnet {
+  cidr: string;
+  interfaceName: string;
+  address: string;
 }
 
 export interface DiscoveryResponse {

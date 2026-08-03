@@ -11,8 +11,10 @@
  * arrive.
  */
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { CircleAlert, CircleCheck, Info, Radar } from 'lucide-react';
 
 import { api } from '../../api.js';
+import { ConfirmDialog } from '../../components/ConfirmDialog.js';
 import { useTranslation } from '../../i18n/i18n.js';
 import {
   AdapterConfigForm,
@@ -20,7 +22,12 @@ import {
   visibleValues,
   type ConfigValues,
 } from '../../components/AdapterConfigForm.js';
-import type { AdapterInfo, AdminDevice, ProbeResponse } from '../../types.js';
+import type {
+  AdapterInfo,
+  AdminDevice,
+  ProbeResponse,
+  SmartProbeResponse,
+} from '../../types.js';
 import { AutoDiscover } from './AutoDiscover.js';
 
 interface Draft {
@@ -157,6 +164,82 @@ function ProbeReport({
   );
 }
 
+/**
+ * What the smart probe found, and what to do about it.
+ *
+ * Three outcomes worth distinguishing, because the next action differs for
+ * each: IPP answered and everything works; only SNMP answered, which polls
+ * fine but will never show a queue; nothing pollable answered, which is either
+ * a device with its protocols off or the wrong address entirely.
+ */
+/** True when either community version answered. */
+function hasSnmp(result: SmartProbeResponse): boolean {
+  return result.protocols.snmpV2c || result.protocols.snmpV1;
+}
+
+function SmartProbeTip({ result }: { result: SmartProbeResponse }) {
+  const { t } = useTranslation();
+
+  const answered = [
+    result.protocols.ipp ? 'IPP' : null,
+    result.protocols.snmpV2c ? 'SNMP v2c' : null,
+    result.protocols.snmpV1 ? 'SNMP v1' : null,
+    result.protocols.http ? 'HTTP' : null,
+  ].filter((entry): entry is string => entry !== null);
+
+  if (!result.reachable) {
+    return (
+      <div className="probe-tip is-bad">
+        <CircleAlert size={14} strokeWidth={2} aria-hidden="true" />
+        <span>{t('devices.probeNothing')}</span>
+      </div>
+    );
+  }
+
+  if (result.adapter === null) {
+    // Two different situations wear the same "nothing to configure" hat, and
+    // they need different advice: a device answering only on the web ports has
+    // its pollable protocols switched off, while one that answered on IPP or
+    // SNMP and still identified as nothing is reachable but not speaking a
+    // dialect this hub recognised. Calling the second one "a web interface"
+    // would be plainly wrong.
+    const webOnly = result.protocols.http && !result.protocols.ipp && !hasSnmp(result);
+
+    return (
+      <div className="probe-tip is-warn">
+        <Info size={14} strokeWidth={2} aria-hidden="true" />
+        <span>
+          {webOnly
+            ? t('devices.probeHttpOnly', { protocols: answered.join(', ') })
+            : t('devices.probeUnidentified', { protocols: answered.join(', ') })}
+        </span>
+      </div>
+    );
+  }
+
+  const snmpOnly = result.adapter === 'snmp';
+
+  return (
+    <div className={`probe-tip${snmpOnly ? ' is-warn' : ' is-good'}`}>
+      {snmpOnly ? (
+        <Info size={14} strokeWidth={2} aria-hidden="true" />
+      ) : (
+        <CircleCheck size={14} strokeWidth={2} aria-hidden="true" />
+      )}
+      <span>
+        {t('devices.probeApplied', {
+          adapter: result.adapterLabel ?? result.adapter,
+          protocols: answered.join(', '),
+        })}
+        {/* The advisory only belongs on an SNMP answer: it is the case where
+            the device works but is missing the queue and tray telemetry that
+            switching IPP on would add. */}
+        {snmpOnly && <> {t('devices.probeSnmpOnlyTip')}</>}
+      </span>
+    </div>
+  );
+}
+
 export function AdminDevices() {
   const { t } = useTranslation();
   const [devices, setDevices] = useState<AdminDevice[] | null>(null);
@@ -164,6 +247,10 @@ export function AdminDevices() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [probe, setProbe] = useState<ProbeResponse | null>(null);
   const [isProbing, setIsProbing] = useState(false);
+  const [smart, setSmart] = useState<SmartProbeResponse | null>(null);
+  const [isSmartProbing, setIsSmartProbing] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<AdminDevice | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -214,6 +301,54 @@ export function AdminDevices() {
           },
     );
     setProbe(null);
+  }
+
+  /**
+   * Works out what the address speaks, then fills the form in from the answer.
+   *
+   * The point is to spare an operator the guesswork the form otherwise demands:
+   * which adapter, which SNMP version, which URI. If something pollable
+   * answered, its adapter and config are applied outright — they came from a
+   * connection that actually worked, so there is nothing to confirm.
+   *
+   * The result is kept either way, because the useful case includes finding
+   * nothing pollable: an address with only a web UI is a live device with its
+   * protocols switched off, which is a different problem from a wrong IP.
+   */
+  async function runSmartProbe(): Promise<void> {
+    if (draft === null || draft.host.trim() === '') return;
+
+    setIsSmartProbing(true);
+    setError(null);
+    setSmart(null);
+    setProbe(null);
+
+    try {
+      const result = await api.smartProbe({ address: draft.host.trim() });
+      setSmart(result);
+
+      if (result.adapter !== null) {
+        const next = adapters.find((entry) => entry.id === result.adapter);
+        setDraft((current) =>
+          current === null
+            ? null
+            : {
+                ...current,
+                adapter: result.adapter as string,
+                // The adapter's defaults underneath, so any field the probe did
+                // not speak to still has a sensible value rather than blank.
+                config: {
+                  ...(next === undefined ? {} : defaultsFor(next.configSchema)),
+                  ...result.config,
+                },
+              },
+        );
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setIsSmartProbing(false);
+    }
   }
 
   async function runProbe(): Promise<void> {
@@ -275,18 +410,29 @@ export function AdminDevices() {
     }
   }
 
-  async function remove(device: AdminDevice): Promise<void> {
-    // Deleting a device drops its supply history, which cannot be re-read.
-    if (!window.confirm(t('devices.confirmDelete', { name: device.displayName }))) {
-      return;
-    }
+  /**
+   * Deletes the device the dialog is currently asking about.
+   *
+   * The confirmation is a real dialog rather than `window.confirm` because this
+   * drops supply history that cannot be re-read from the device — a consequence
+   * worth stating in the app's own words, with the destructive button named and
+   * coloured as such.
+   */
+  async function confirmRemove(): Promise<void> {
+    const device = pendingDelete;
+    if (device === null) return;
 
+    setIsDeleting(true);
     try {
       await api.deleteDevice(device.id);
+      setPendingDelete(null);
       setNotice(t('devices.deleted', { name: device.displayName }));
       await load();
     } catch (cause) {
+      setPendingDelete(null);
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -393,9 +539,9 @@ export function AdminDevices() {
                     <button
                       type="button"
                       className="btn-danger"
-                      onClick={() => void remove(device)}
+                      onClick={() => setPendingDelete(device)}
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
                   </td>
                 </tr>
@@ -435,20 +581,38 @@ export function AdminDevices() {
               />
             </label>
 
-            <label className="field">
+            <div className="field">
               <span>
                 {t('devices.address')}
                 <em className="field-required">{t('devices.required')}</em>
               </span>
-              <input
-                value={draft.host}
-                placeholder={t('devices.addressPlaceholder')}
-                onChange={(event) => {
-                  setDraft({ ...draft, host: event.target.value });
-                  setProbe(null);
-                }}
-              />
-            </label>
+              {/* A div rather than a label wrapping both: a label containing a
+                  button would make clicking the button focus the input too. */}
+              <div className="address-row">
+                <input
+                  aria-label={t('devices.address')}
+                  value={draft.host}
+                  placeholder={t('devices.addressPlaceholder')}
+                  onChange={(event) => {
+                    setDraft({ ...draft, host: event.target.value });
+                    setProbe(null);
+                    setSmart(null);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={draft.host.trim() === '' || isSmartProbing}
+                  onClick={() => void runSmartProbe()}
+                >
+                  <Radar size={14} strokeWidth={2} aria-hidden="true" />
+                  {isSmartProbing ? t('devices.probingIp') : t('devices.probeIp')}
+                </button>
+              </div>
+              <small className="field-hint">{t('devices.probeIpHint')}</small>
+
+              {smart !== null && <SmartProbeTip result={smart} />}
+            </div>
 
             <label className="field">
               <span>{t('devices.adapter')}</span>
@@ -562,6 +726,17 @@ export function AdminDevices() {
             </>
           )}
         </form>
+      )}
+
+      {pendingDelete !== null && (
+        <ConfirmDialog
+          title={t('devices.deleteTitle')}
+          body={t('devices.deleteBody', { name: pendingDelete.displayName })}
+          confirmLabel={isDeleting ? t('devices.deleting') : t('devices.deleteConfirm')}
+          isBusy={isDeleting}
+          onConfirm={() => void confirmRemove()}
+          onCancel={() => setPendingDelete(null)}
+        />
       )}
     </>
   );

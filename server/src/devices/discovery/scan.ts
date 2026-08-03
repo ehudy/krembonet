@@ -19,11 +19,29 @@
  */
 import { Socket } from 'node:net';
 
-import { createClient } from '../snmp/client.js';
+import { createClient, type SnmpVersion } from '../snmp/client.js';
 import { SYS } from '../snmp/oids.js';
 
 export const IPP_PORT = 631;
 export const SNMP_PORT = 161;
+
+/**
+ * The community versions a sweep will try, in order.
+ *
+ * v2c first because it is what almost everything made this century speaks and
+ * what the rest of this codebase defaults to; v1 second because a surprising
+ * number of older office printers — and a few current ones with SNMP locked
+ * down to "legacy" — answer only that. Trying v1 first would slow every modern
+ * device down for the sake of the minority.
+ *
+ * v3 is deliberately absent: it needs a username and keys, which a sweep has no
+ * way to guess, so a v3-only device is invisible here and has to be added by
+ * hand. That is a real limit, and an honest one.
+ */
+export const SWEEP_SNMP_VERSIONS: readonly Extract<SnmpVersion, '1' | '2c'>[] = [
+  '2c',
+  '1',
+];
 
 export interface SweepOptions {
   /** Per-host, per-protocol budget. Deliberately short — this is a LAN. */
@@ -50,6 +68,8 @@ export interface HostFinding {
   ports: number[];
   /** sysDescr, when SNMP answered — a free first look at what this is. */
   sysDescr: string | null;
+  /** Which SNMP version actually answered, or null when none did. */
+  snmpVersion: '1' | '2c' | null;
 }
 
 /**
@@ -93,21 +113,22 @@ export function checkTcpPort(
 }
 
 /**
- * A single SNMP GET of sysDescr, used purely as a liveness test.
+ * A single SNMP GET of sysDescr at one version, used purely as a liveness test.
  *
  * No retries: a sweep is not the place to spend three timeouts on an address
  * that is probably a printer nobody plugged in. The full probe that runs
  * afterwards is where accuracy matters.
  */
-export async function checkSnmp(
+export async function checkSnmpVersion(
   host: string,
   community: string,
+  version: '1' | '2c',
   timeoutMs: number,
 ): Promise<string | null> {
   const client = createClient({
     host,
     port: SNMP_PORT,
-    version: '2c',
+    version,
     community,
     username: '',
     authProtocol: 'none',
@@ -130,22 +151,66 @@ export async function checkSnmp(
   }
 }
 
+export interface SnmpFinding {
+  sysDescr: string;
+  version: '1' | '2c';
+}
+
+/**
+ * Tries each community version in turn and reports the first that answers.
+ *
+ * Sequential, not concurrent: two simultaneous GETs at different versions to
+ * the same UDP port is a good way to confuse an embedded agent, and the second
+ * attempt is only wanted when the first came back silent anyway.
+ *
+ * The cost is real and worth stating — an address with nothing on 161 now
+ * burns two timeouts instead of one, which roughly doubles the SNMP half of a
+ * sweep over dead space. That is the price of finding the v1-only devices,
+ * which were previously invisible.
+ */
+export async function checkSnmp(
+  host: string,
+  community: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<SnmpFinding | null> {
+  for (const version of SWEEP_SNMP_VERSIONS) {
+    if (signal?.aborted === true) return null;
+
+    const sysDescr = await checkSnmpVersion(host, community, version, timeoutMs);
+    if (sysDescr !== null) return { sysDescr, version };
+  }
+
+  return null;
+}
+
 async function inspect(host: string, options: SweepOptions): Promise<HostFinding | null> {
   if (options.signal?.aborted === true) return null;
 
-  // Concurrent per host: the two probes are independent, and a host that
-  // answers neither should cost one timeout rather than two in series.
-  const [ippOpen, sysDescr] = await Promise.all([
+  // The IPP check runs alongside the SNMP chain rather than before it. The
+  // requested order — IPP, then v2c, then v1 — is about which *answer* wins and
+  // which SNMP version is tried first, and both hold here: the SNMP versions
+  // are strictly sequential, and IPP is reported first in `ports` regardless of
+  // which returned sooner. Serialising the two protocols as well would make a
+  // dead address cost three timeouts instead of two, which on a /24 of mostly
+  // empty space is the difference between a sweep someone waits through and one
+  // they cancel.
+  const [ippOpen, snmp] = await Promise.all([
     checkTcpPort(host, IPP_PORT, options.timeoutMs, options.signal),
-    checkSnmp(host, options.community, options.timeoutMs),
+    checkSnmp(host, options.community, options.timeoutMs, options.signal),
   ]);
 
   const ports: number[] = [];
   if (ippOpen) ports.push(IPP_PORT);
-  if (sysDescr !== null) ports.push(SNMP_PORT);
+  if (snmp !== null) ports.push(SNMP_PORT);
 
   if (ports.length === 0) return null;
-  return { host, ports, sysDescr };
+  return {
+    host,
+    ports,
+    sysDescr: snmp?.sysDescr ?? null,
+    snmpVersion: snmp?.version ?? null,
+  };
 }
 
 /**

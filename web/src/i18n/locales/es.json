@@ -352,7 +352,6 @@
     "updated": "Dispositivo actualizado.",
     "deleted": "Se eliminó {{name}}.",
     "addedFromDiscovery": "Dispositivo añadido desde la detección.",
-    "confirmDelete": "¿Eliminar «{{name}}»? También se eliminan sus lecturas y su historial de consumibles, y ese historial no se puede recuperar.",
     "displayName": "Nombre visible",
     "location": "Ubicación",
     "enabled": "Activado",
@@ -381,7 +380,19 @@
     "muteMedia": "Silenciar alertas de papel",
     "muteMediaHint": "Sin papel, bandeja vacía, atascos.",
     "muteOffline": "Silenciar alertas de conexión",
-    "muteOfflineHint": "El dispositivo dejando de responder, y recuperándose."
+    "muteOfflineHint": "El dispositivo dejando de responder, y recuperándose.",
+    "probeIp": "Probar IP",
+    "probingIp": "Probando…",
+    "probeIpHint": "Comprueba si la dirección responde por IPP, SNMP o interfaz web, y rellena los ajustes que funcionaron.",
+    "probeApplied": "Respondió por {{protocols}}: configurado como {{adapter}}.",
+    "probeSnmpOnlyTip": "Esto da niveles de consumibles y estado. Activa IPP en el dispositivo para seguir la cola y las bandejas de papel en directo.",
+    "probeHttpOnly": "Solo respondió por {{protocols}}: una interfaz web, que este centro no puede consultar. Activa IPP o SNMP en el dispositivo y vuelve a probar.",
+    "probeNothing": "Nada respondió en esa dirección. Comprueba que la impresora está encendida y que la dirección es correcta.",
+    "deleteTitle": "¿Eliminar la impresora?",
+    "deleteBody": "¿Seguro que quieres eliminar «{{name}}»? Sus lecturas y su historial de consumibles se borrarán y no se podrán recuperar.",
+    "deleteConfirm": "Eliminar impresora",
+    "deleting": "Eliminando…",
+    "probeUnidentified": "Respondió por {{protocols}}, pero nada que este centro pueda consultar se identificó. Comprueba que el dispositivo es una impresora y que tiene IPP o SNMP activado."
   },
   "discover": {
     "title": "Detección automática",
@@ -405,7 +416,10 @@
     "addedLabel": "Añadido",
     "addByHand": "Añadir a mano",
     "addByHandTitle": "Nada aquí se identificó como un dispositivo compatible. Añádelo a mano si sabes lo que es.",
-    "adding": "Añadiendo…"
+    "adding": "Añadiendo…",
+    "detectedSubnet": "Detectada en este servidor: {{subnet}}.",
+    "snmpOnlyBadge": "Solo SNMP",
+    "snmpOnlyTip": "Proporciona telemetría de consumibles y estado. Activa IPP en el dispositivo para seguir la cola y las bandejas de papel en directo."
   },
   "paperTypes": {
     "addTitle": "Añadir o sustituir un código",

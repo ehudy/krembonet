@@ -16,10 +16,27 @@ import type { RawConfig } from '../config-io.js';
 import { probeAll, suggestedAdapter } from '../probe.js';
 import { IPP_PORT, SNMP_PORT, sweepSubnet, type HostFinding, type SweepOptions } from './scan.js';
 
+/**
+ * What a device answered on, as flags rather than port numbers.
+ *
+ * The UI needs to say more than "161 replied": whether a device offers a live
+ * queue and paper trays (IPP) or only supplies and status (SNMP) is the
+ * difference between two quite different dashboards, and an operator deciding
+ * whether to go turn IPP on wants that stated, not inferred from a port list.
+ */
+export interface ProtocolSupport {
+  ipp: boolean;
+  snmp: boolean;
+}
+
 export interface DiscoveredDevice {
   host: string;
   /** Which of 631/161 answered. */
   ports: number[];
+  /** Which SNMP version replied, or null when SNMP did not. */
+  snmpVersion: '1' | '2c' | null;
+  /** What the address speaks, for the UI's capability advisory. */
+  protocols: ProtocolSupport;
   /** Best-guess adapter id, or null when nothing identified it. */
   adapter: string | null;
   adapterLabel: string | null;
@@ -76,7 +93,10 @@ function candidateConfigs(finding: HostFinding, community: string): { adapter: s
   if (finding.ports.includes(SNMP_PORT)) {
     candidates.push({
       adapter: 'snmp',
-      config: { port: SNMP_PORT, version: '2c', community },
+      // The version the sweep actually got an answer at, not a hardcoded 2c —
+      // configuring a v1-only device as v2c would add it and then never read
+      // it. Falls back to 2c only if the version somehow went unrecorded.
+      config: { port: SNMP_PORT, version: finding.snmpVersion ?? '2c', community },
     });
   }
 
@@ -133,6 +153,11 @@ async function identify(
   return {
     host: finding.host,
     ports: finding.ports,
+    snmpVersion: finding.snmpVersion,
+    protocols: {
+      ipp: finding.ports.includes(IPP_PORT),
+      snmp: finding.ports.includes(SNMP_PORT),
+    },
     adapter: winner,
     adapterLabel: winner === null ? null : (best?.label ?? null),
     identity,

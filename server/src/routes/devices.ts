@@ -26,7 +26,9 @@ import {
 } from '../devices/config-io.js';
 import { parseCidr } from '../devices/discovery/cidr.js';
 import { DEFAULT_DISCOVER, discover } from '../devices/discovery/discover.js';
+import { pickLocalSubnet } from '../devices/discovery/local-subnet.js';
 import { DEFAULT_SWEEP } from '../devices/discovery/scan.js';
+import { smartProbe } from '../devices/discovery/smart-probe.js';
 import { probeAll, suggestedAdapter } from '../devices/probe.js';
 import { getAdapter, hasAdapter, listAdapters } from '../devices/registry.js';
 import { clearCache } from '../poller/cache.js';
@@ -158,6 +160,57 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
       const results = await probeAll(host, request.body?.config ?? {}, adapterId);
 
       return { host, results, suggested: suggestedAdapter(results) };
+    },
+  );
+
+  /**
+   * What one address speaks, before an adapter has been chosen.
+   *
+   * Distinct from the probe above, which asks "does this adapter recognise this
+   * config" — that assumes someone already picked both. This asks the question
+   * that comes first, and answers it by trying every protocol the hub can use.
+   *
+   * Admin-only for the same reason the probe and the sweep are: it makes the
+   * server open connections to an arbitrary address, which is a capability worth
+   * keeping behind the sign-in whatever it is called.
+   */
+  app.post<{ Body: { address?: string; community?: string } }>(
+    '/api/admin/devices/smart-probe',
+    { preHandler: requireAdmin },
+    async (request, reply) => {
+      const address = String(request.body?.address ?? '').trim();
+      if (address === '') {
+        return reply.code(400).send({ error: 'An address is required.' });
+      }
+
+      const community =
+        String(request.body?.community ?? '').trim() || DEFAULT_SWEEP.community;
+
+      const result = await smartProbe(address, community);
+
+      request.log.info(
+        { host: address, adapter: result.adapter, reachable: result.reachable },
+        'smart probe finished',
+      );
+
+      return result;
+    },
+  );
+
+  /**
+   * The subnet the hub itself is on, as a starting point for the sweep field.
+   *
+   * A suggestion only — the form pre-fills it and the operator can replace it.
+   * Returns null rather than a guess when no interface offers a usable answer,
+   * so the UI falls back to its own placeholder instead of proposing a range
+   * that does not exist.
+   */
+  app.get(
+    '/api/admin/devices/default-subnet',
+    { preHandler: requireAdmin },
+    async () => {
+      const { networkInterfaces } = await import('node:os');
+      return { subnet: pickLocalSubnet(networkInterfaces()) };
     },
   );
 

@@ -20,7 +20,9 @@ import type {
   DeviceListResponse,
   DeviceStatus,
   DiscoveryResponse,
+  LocalSubnet,
   ProbeResponse,
+  SmartProbeResponse,
   SessionInfo,
   SetupStatus,
   SupplyMatrixResponse,
@@ -193,6 +195,26 @@ export const api = {
     request<ProbeResponse>('/api/admin/devices/probe', {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+
+  /**
+   * Works out what one address speaks, before an adapter has been chosen.
+   *
+   * Tries IPP, both community SNMP versions, and the web ports, and comes back
+   * with the adapter and config to use. Takes a second or two — every protocol
+   * that does not answer costs a timeout.
+   */
+  smartProbe: (body: { address: string; community?: string }, signal?: AbortSignal) =>
+    request<SmartProbeResponse>('/api/admin/devices/smart-probe', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      signal,
+    }),
+
+  /** The hub's own subnet, to pre-fill the sweep field. Null when unknown. */
+  defaultSubnet: (signal?: AbortSignal) =>
+    request<{ subnet: LocalSubnet | null }>('/api/admin/devices/default-subnet', {
+      signal,
     }),
 
   /**
