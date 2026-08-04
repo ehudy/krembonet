@@ -19,11 +19,12 @@
  * the stored rows back into mappings. See `lib/mediaScopes.ts`.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Info, Pencil, Plus, Trash2, Wand2 } from 'lucide-react';
+import { Info, Plus, Wand2 } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
 import { InfoDialog } from '../../components/InfoDialog.js';
+import { DeleteButton, EditButton } from '../../components/RowActions.js';
 import { SortableHeader } from '../../components/SortableHeader.js';
 import { useTranslation } from '../../i18n/i18n.js';
 import { compareText, toggleSort, type SortState } from '../../lib/tableSort.js';
@@ -356,9 +357,8 @@ export function AdminPaperTypes() {
                     </span>
                   </td>
                   <td className="row-actions">
-                    <button
-                      type="button"
-                      className="btn-secondary btn-small"
+                    <EditButton
+                      name={mapping.code}
                       onClick={() => {
                         setFeedback(null);
                         setEditor({
@@ -367,22 +367,15 @@ export function AdminPaperTypes() {
                           name: mapping.friendlyName,
                         });
                       }}
-                    >
-                      <Pencil size={13} strokeWidth={2} aria-hidden="true" />
-                      {t('common.edit')}
-                    </button>
+                    />
                     {/* Offered on every row, not only the edited ones: a
                         factory name that is wrong for this shop is exactly
                         the thing somebody needs to remove, and the media-pack
                         reset in Settings puts the seeded set back. */}
-                    <button
-                      type="button"
-                      className="btn-danger btn-small"
+                    <DeleteButton
+                      name={mapping.code}
                       onClick={() => setPendingDelete(mapping)}
-                    >
-                      <Trash2 size={13} strokeWidth={2} aria-hidden="true" />
-                      <span className="visually-hidden">{t('common.delete')}</span>
-                    </button>
+                    />
                   </td>
                 </tr>
               ))}
@@ -483,30 +476,27 @@ export function AdminPaperTypes() {
                         )}
                       </td>
                       <td className="row-actions">
-                        {/* Naming an unknown code, or overriding a name that is
-                            not the stock actually loaded — including a standard
-                            keyword, which has no saved row until this is used. */}
-                        <button
-                          type="button"
-                          className={
-                            name === null
-                              ? 'btn-primary btn-small'
-                              : 'btn-secondary btn-small'
-                          }
-                          onClick={() => mapDiscovered(entry)}
-                        >
-                          {name === null ? (
-                            <>
-                              <Wand2 size={13} strokeWidth={2} aria-hidden="true" />
-                              {t('paperTypes.mapCode')}
-                            </>
-                          ) : (
-                            <>
-                              <Pencil size={13} strokeWidth={2} aria-hidden="true" />
-                              {t('common.edit')}
-                            </>
-                          )}
-                        </button>
+                        {/* Two doors into one dialog. Naming an unknown code is
+                            the job this table exists for, so it keeps a primary
+                            button of its own; changing a name that is already
+                            there — including a standard keyword's, which has no
+                            saved row until this is used — is the same Edit as
+                            every other table's. */}
+                        {name === null ? (
+                          <button
+                            type="button"
+                            className="btn-primary btn-small"
+                            onClick={() => mapDiscovered(entry)}
+                          >
+                            <Wand2 size={13} strokeWidth={2} aria-hidden="true" />
+                            {t('paperTypes.mapCode')}
+                          </button>
+                        ) : (
+                          <EditButton
+                            name={entry.code}
+                            onClick={() => mapDiscovered(entry)}
+                          />
+                        )}
                       </td>
                     </tr>
                   );

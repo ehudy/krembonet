@@ -379,7 +379,7 @@ export function DeviceFormModal({
       headerAction={
         <ToggleSwitch
           checked={draft.enabled}
-          label={t('devices.enabled')}
+          label={draft.enabled ? t('devices.enabledOn') : t('devices.enabledOff')}
           hint={t('devices.enabledHint')}
           onChange={(next) => setDraft({ ...draft, enabled: next })}
         />

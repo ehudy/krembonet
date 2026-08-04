@@ -77,6 +77,18 @@ export function compareNumber(
   return direction === 'asc' ? a - b : b - a;
 }
 
+/**
+ * Two states, ordered off-first when ascending.
+ *
+ * Which way round is not obvious, so it is fixed here rather than guessed per
+ * table: the question a reader asks of a column of switches is "what is turned
+ * off" — the rule that will not fire, the printer that is not being polled — and
+ * the first click on the header should answer it.
+ */
+export function compareBoolean(a: boolean, b: boolean, direction: SortDirection): number {
+  return compareNumber(a ? 1 : 0, b ? 1 : 0, direction);
+}
+
 /** Timestamps as numbers, with anything unparseable treated as absent. */
 export function toTimestamp(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined) return null;

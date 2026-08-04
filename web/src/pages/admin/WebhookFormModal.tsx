@@ -102,7 +102,7 @@ export function WebhookFormModal({
       headerAction={
         <ToggleSwitch
           checked={draft.enabled}
-          label={t('webhooks.enabled')}
+          label={draft.enabled ? t('webhooks.enabledOn') : t('webhooks.enabledOff')}
           hint={t('webhooks.enabledHint')}
           onChange={(next) => update('enabled', next)}
         />

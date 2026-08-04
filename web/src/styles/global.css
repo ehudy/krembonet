@@ -1293,6 +1293,25 @@ td code {
   border-radius: 0 0 var(--radius) var(--radius);
 }
 
+/* On a `<td>` this has to stay a table cell. `display: flex` takes the cell out
+   of the table's row box, so it stops stretching to the row's height and its
+   bottom border floats mid-row the moment any other cell wraps to two lines —
+   which is exactly what the rules table does. Inline layout with a margin
+   instead, since a flex gap is not available here. */
+td.row-actions {
+  display: table-cell;
+  text-align: right;
+  white-space: nowrap;
+}
+
+td.row-actions > * {
+  vertical-align: middle;
+}
+
+td.row-actions > * + * {
+  margin-left: 8px;
+}
+
 /* Right-aligned in a row with a gap, so a cell with two buttons — Edit and
    Delete — does not run them together. Flex rather than text-align so the gap
    is real spacing between the controls, not just their inline whitespace. */
@@ -1520,11 +1539,22 @@ a.alert-device:focus-visible {
   line-height: 1.5;
 }
 
-/* Small enough to sit beside a Save in a table cell without the row growing a
-   line. Used by the paper-types actions, where three controls share one cell. */
+/* Small enough to sit beside another control in a table cell without the row
+   growing a line. Every admin table's row actions are this size. */
 .btn-danger.btn-small {
   padding: 5px 9px;
   font-size: 12px;
+}
+
+/* Icon alone — the delete on every row. Square rather than the pill shape a
+   labelled button takes, so a column of them reads as one control repeated
+   rather than as buttons of drifting width. */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  line-height: 0;
 }
 
 /* The switch column on the admin devices and webhooks tables. Narrow, and
@@ -1548,69 +1578,28 @@ tr.is-muted td {
 
 /* Alert rules -------------------------------------------------------------- */
 
-.rule-list {
-  list-style: none;
-  margin: 14px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
+/* A table cell holding badges. Wraps rather than truncating, and carries the
+   full list in a tooltip — which is what the help cursor is announcing. */
+.pill-cell {
+  cursor: help;
 }
 
-/* Switch, name, condition, channels, actions — read left to right, which is the
-   order the questions come in: is it on, what is it called, what does it watch,
-   how does it reach me, and can I change it. */
-.rule-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.rule-row:last-child {
-  border-bottom: 0;
-}
-
-/* Dimmed rather than hidden. A rule switched off is still a rule someone wrote,
-   and hiding it would make "why am I not getting alerts" unanswerable. */
-.rule-row.is-off .rule-body strong {
-  color: var(--text-muted);
-}
-
-.rule-toggle {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.rule-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.rule-body strong {
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Short answers that must not break across two lines. "3 printers" split over
+   a line break reads as a fault in the table rather than as an answer. */
+.nowrap {
   white-space: nowrap;
 }
 
-.rule-body small {
+/* A second line under a cell's main value — the numbers a rule fires on, under
+   its name. Its own line rather than trailing the name inline, so a long name
+   and its note do not wrap into one another mid-phrase. */
+.cell-note {
+  display: block;
   font-size: 11px;
 }
 
-/* The condition pills. Wraps rather than truncating: at two plus an overflow
-   they fit a laptop row, and on a phone the row already wraps around them. */
-.rule-conditions {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-  cursor: help;
+.pill-cell .alert-pill {
+  margin: 1px 4px 1px 0;
 }
 
 /* The overflow counter and the unreadable marker. Neutral on purpose — neither
@@ -1713,28 +1702,6 @@ tr.is-muted td {
 
   .condition-threshold {
     padding-left: 28px;
-  }
-}
-
-.rule-channels {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  color: var(--text-faint);
-}
-
-@media (max-width: 720px) {
-  /* The five-across row does not survive a phone. The condition and channels
-     drop under the name rather than being hidden — what a rule watches is the
-     thing worth keeping when space runs out. */
-  .rule-row {
-    flex-wrap: wrap;
-    row-gap: 8px;
-  }
-
-  .rule-body {
-    flex-basis: calc(100% - 40px);
   }
 }
 

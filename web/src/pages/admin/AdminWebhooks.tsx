@@ -11,11 +11,13 @@ import { Plus } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
+import { DeleteButton, EditButton } from '../../components/RowActions.js';
 import { SortableHeader } from '../../components/SortableHeader.js';
 import { ToggleSwitch } from '../../components/ToggleSwitch.js';
 import { useTranslation } from '../../i18n/i18n.js';
 import { relativeTime } from '../../lib/format.js';
 import {
+  compareBoolean,
   compareNumber,
   compareText,
   toggleSort,
@@ -31,16 +33,18 @@ interface Feedback {
   message: string;
 }
 
-type SortField = 'name' | 'format' | 'url' | 'lastResult';
+type SortField = 'enabled' | 'name' | 'format' | 'url' | 'lastResult';
 
 /**
  * Which direction each column is most useful in on the first click.
  *
- * Names and formats read A-Z. "Last result" is a question about recency, where
- * the interesting end is the top — the destination that fired a minute ago is
- * the one somebody is looking for after a test.
+ * Names and formats read A-Z, and the switch reads off-first — a paused
+ * destination is the reason nothing arrived. "Last result" is a question about
+ * recency, where the interesting end is the top: the destination that fired a
+ * minute ago is the one somebody is looking for after a test.
  */
 const NATURAL_DIRECTION: Record<SortField, SortDirection> = {
+  enabled: 'asc',
   name: 'asc',
   format: 'asc',
   url: 'asc',
@@ -65,6 +69,8 @@ function compareWebhooks(
   const byName = compareText(a.name, b.name, 'asc');
 
   switch (sort.field) {
+    case 'enabled':
+      return compareBoolean(a.enabled, b.enabled, sort.direction) || byName;
     case 'name':
       return compareText(a.name, b.name, sort.direction);
     case 'format':
@@ -250,11 +256,13 @@ export function AdminWebhooks() {
             <table>
               <thead>
                 <tr>
-                  {/* No visible header: the column is a row of switches, and any
-                      word over them would be wider than the control itself. */}
-                  <th scope="col" className="enabled-column">
-                    <span className="visually-hidden">{t('webhooks.enabled')}</span>
-                  </th>
+                  <SortableHeader
+                    field="enabled"
+                    sort={sort}
+                    onSort={sortBy}
+                    className="enabled-column"
+                    label={t('common.enabled')}
+                  />
                   <SortableHeader
                     field="name"
                     sort={sort}
@@ -335,30 +343,24 @@ export function AdminWebhooks() {
                         </>
                       )}
                     </td>
-                    <td className="inline-actions">
+                    <td className="row-actions">
+                      {/* This table's third action, and the only one of its
+                          kind: it posts to the saved row rather than opening
+                          anything. */}
                       <button
                         type="button"
-                        className="btn-secondary"
+                        className="btn-secondary btn-small"
                         disabled={busyId === webhook.id}
                         onClick={() => void test(webhook)}
                       >
                         {busyId === webhook.id ? t('common.testing') : t('common.test')}
                       </button>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => open(webhook)}
-                      >
-                        {t('common.edit')}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-secondary is-danger"
+                      <EditButton name={webhook.name} onClick={() => open(webhook)} />
+                      <DeleteButton
+                        name={webhook.name}
                         disabled={busyId === webhook.id}
                         onClick={() => setPendingDelete(webhook)}
-                      >
-                        {t('common.delete')}
-                      </button>
+                      />
                     </td>
                   </tr>
                 ))}

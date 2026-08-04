@@ -187,7 +187,7 @@ export function RuleFormModal({
       headerAction={
         <ToggleSwitch
           checked={draft.enabled}
-          label={t('alertRules.enabled')}
+          label={draft.enabled ? t('alertRules.enabledOn') : t('alertRules.enabledOff')}
           onChange={(next) => setDraft({ ...draft, enabled: next })}
         />
       }

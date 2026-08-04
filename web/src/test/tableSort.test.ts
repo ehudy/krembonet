@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 
 import {
   ariaSort,
+  compareBoolean,
   compareNumber,
   compareText,
   sortIndicator,
@@ -97,6 +98,21 @@ describe('compareNumber', () => {
       assert.ok(compareNumber(5, null, direction) < 0, direction);
     }
     assert.equal(compareNumber(null, null, 'desc'), 0);
+  });
+});
+
+describe('compareBoolean', () => {
+  it('puts the switched-off rows first on the first click', () => {
+    // The direction the header starts in, and the question the column answers:
+    // which of these is not going to fire.
+    assert.ok(compareBoolean(false, true, 'asc') < 0);
+    assert.ok(compareBoolean(true, false, 'asc') > 0);
+  });
+
+  it('reverses, and ties', () => {
+    assert.ok(compareBoolean(false, true, 'desc') > 0);
+    assert.equal(compareBoolean(true, true, 'asc'), 0);
+    assert.equal(compareBoolean(false, false, 'desc'), 0);
   });
 });
 

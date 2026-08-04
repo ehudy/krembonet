@@ -12,25 +12,34 @@ import { Plus } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
+import { DeleteButton, EditButton } from '../../components/RowActions.js';
 import { SortableHeader } from '../../components/SortableHeader.js';
 import { ToggleSwitch } from '../../components/ToggleSwitch.js';
 import { useTranslation } from '../../i18n/i18n.js';
-import { compareText, toggleSort, type SortState } from '../../lib/tableSort.js';
+import {
+  compareBoolean,
+  compareText,
+  toggleSort,
+  type SortState,
+} from '../../lib/tableSort.js';
 import type { AdapterInfo, AdminDevice } from '../../types.js';
 import { AutoDiscover } from './AutoDiscover.js';
 import { DeviceFormModal } from './DeviceFormModal.js';
 
-type SortField = 'name' | 'address' | 'adapter' | 'reports';
+type SortField = 'enabled' | 'name' | 'address' | 'adapter' | 'reports';
 
 /**
- * What each column sorts on.
+ * What each text column sorts on.
  *
- * Every one is text, so they all share `compareText` — which matters most for
- * the address column, where a character-by-character comparison files
- * `192.168.1.10` above `192.168.1.9`. `Reports` is a list, joined in the same
- * order the cell renders it so what sorts is what is read.
+ * All four share `compareText` — which matters most for the address column,
+ * where a character-by-character comparison files `192.168.1.10` above
+ * `192.168.1.9`. `Reports` is a list, joined in the same order the cell renders
+ * it so what sorts is what is read.
  */
-function sortValue(device: AdminDevice, field: SortField): string | null {
+function sortValue(
+  device: AdminDevice,
+  field: Exclude<SortField, 'enabled'>,
+): string | null {
   switch (field) {
     case 'name':
       return device.displayName;
@@ -51,13 +60,22 @@ function compareDevices(
   b: AdminDevice,
   sort: SortState<SortField>,
 ): number {
+  const byName = compareText(a.displayName, b.displayName, 'asc');
+
+  // The switch column is the one question the text comparator cannot answer,
+  // and the one worth asking of a long table: which of these is not being
+  // polled at all.
+  if (sort.field === 'enabled') {
+    return compareBoolean(a.enabled, b.enabled, sort.direction) || byName;
+  }
+
   const ordered = compareText(
     sortValue(a, sort.field),
     sortValue(b, sort.field),
     sort.direction,
   );
   if (sort.field === 'name') return ordered;
-  return ordered || compareText(a.displayName, b.displayName, 'asc');
+  return ordered || byName;
 }
 
 export function AdminDevices() {
@@ -103,8 +121,9 @@ export function AdminDevices() {
   const sorted = [...(devices ?? [])].sort((a, b) => compareDevices(a, b, sort));
 
   function sortBy(field: SortField): void {
-    // Every column here is text, so ascending is the useful first click on all
-    // four — no per-column natural direction to look up.
+    // Ascending is the useful first click on every column here: the four text
+    // ones read A-Z, and the switch reads off-first, which is what ascending
+    // means for a boolean.
     setSort((current) => toggleSort(current, field));
   }
 
@@ -205,11 +224,13 @@ export function AdminDevices() {
           <table className="data-table">
             <thead>
               <tr>
-                {/* No visible header: the column is a row of switches, and any
-                    word over them would be wider than the control itself. */}
-                <th scope="col" className="enabled-column">
-                  <span className="visually-hidden">{t('devices.enabled')}</span>
-                </th>
+                <SortableHeader
+                  field="enabled"
+                  sort={sort}
+                  onSort={sortBy}
+                  className="enabled-column"
+                  label={t('common.enabled')}
+                />
                 <SortableHeader
                   field="name"
                   sort={sort}
@@ -234,7 +255,9 @@ export function AdminDevices() {
                   onSort={sortBy}
                   label={t('devices.reports')}
                 />
-                <th />
+                <th scope="col">
+                  <span className="visually-hidden">{t('common.actions')}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -281,23 +304,17 @@ export function AdminDevices() {
                       .join(', ') || t('common.none')}
                   </td>
                   <td className="row-actions">
-                    <button
-                      type="button"
-                      className="btn-secondary"
+                    <EditButton
+                      name={device.displayName}
                       onClick={() => {
                         setEditor({ device });
                         setNotice(null);
                       }}
-                    >
-                      {t('common.edit')}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-danger"
+                    />
+                    <DeleteButton
+                      name={device.displayName}
                       onClick={() => setPendingDelete(device)}
-                    >
-                      {t('common.delete')}
-                    </button>
+                    />
                   </td>
                 </tr>
               ))}
