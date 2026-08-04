@@ -11,8 +11,7 @@ import { eq } from 'drizzle-orm';
 
 import { decryptSecret } from '../crypto/secrets.js';
 import { db } from '../db/client.js';
-import { devices, webhooks } from '../db/schema.js';
-import { parseDeviceRouting, serializeWebhookIds } from './routing.js';
+import { webhooks } from '../db/schema.js';
 import {
   buildWebhookRequest,
   isWebhookFormat,
@@ -89,38 +88,6 @@ export function listEnabledTargets(): WebhookTarget[] {
   return listWebhooks()
     .filter((row) => row.enabled)
     .map(toTarget);
-}
-
-/**
- * Drops a deleted destination from every device that routed to it.
- *
- * Without this a device left holding only dead ids would route its alerts at
- * nothing, and the routing card would show an empty selection that reads as
- * "using the defaults" — which is the one thing it would not be doing. Cheap:
- * this runs on an operator deleting a webhook, over a table of tens of rows.
- */
-export function forgetWebhookRouting(id: number): void {
-  const rows = db
-    .select({
-      id: devices.id,
-      alertEmailRecipients: devices.alertEmailRecipients,
-      alertWebhookIds: devices.alertWebhookIds,
-    })
-    .from(devices)
-    .all();
-
-  for (const row of rows) {
-    const { webhookIds } = parseDeviceRouting(row);
-    if (!webhookIds.includes(id)) continue;
-
-    db.update(devices)
-      .set({
-        alertWebhookIds: serializeWebhookIds(webhookIds.filter((each) => each !== id)),
-        updatedAt: new Date(),
-      })
-      .where(eq(devices.id, row.id))
-      .run();
-  }
 }
 
 export interface WebhookDeliveryResult {

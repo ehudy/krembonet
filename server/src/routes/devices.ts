@@ -10,15 +10,7 @@ import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 
 import { clearAlertStateFor } from '../alerts/engine.js';
-import {
-  looksLikeEmail,
-  parseDeviceRouting,
-  parseRecipients,
-  parseWebhookIds,
-  serializeRecipients,
-  serializeWebhookIds,
-} from '../alerts/routing.js';
-import { listWebhooks } from '../alerts/webhooks.js';
+import { forgetDeviceInRules } from '../alerts/notification-store.js';
 import { requireAdmin } from '../auth/session.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
@@ -54,10 +46,6 @@ interface DeviceBody {
   muteSupplyAlerts?: boolean;
   muteMediaAlerts?: boolean;
   muteOfflineAlerts?: boolean;
-  /** Addresses for this device only. Blank falls back to the global list. */
-  alertEmailRecipients?: string | string[] | null;
-  /** Webhook ids for this device only. Empty falls back to every enabled one. */
-  alertWebhookIds?: unknown;
 }
 
 /** Suppression flags, as booleans, from whatever the form sent. */
@@ -76,43 +64,6 @@ function mutePatch(
     if (body[key] !== undefined) patch[key] = body[key] === true;
   }
   return patch;
-}
-
-interface RoutingPatch {
-  alertEmailRecipients?: string | null;
-  alertWebhookIds?: string | null;
-}
-
-/**
- * Validates and serialises the routing overrides, if the body carries any.
- *
- * Omitted keys produce no patch entry, so a partial update cannot blank a
- * device's routing by not mentioning it. An explicitly empty value *does* clear
- * it, which is how an operator goes back to the hub-wide destinations.
- *
- * Webhook ids are filtered against the destinations that currently exist rather
- * than trusted: a stale browser tab offering a since-deleted checkbox must not
- * be able to store an id that routes at nothing.
- */
-function routingPatch(body: DeviceBody): { patch: RoutingPatch } | { error: string } {
-  const patch: RoutingPatch = {};
-
-  if (body.alertEmailRecipients !== undefined) {
-    const recipients = parseRecipients(body.alertEmailRecipients);
-    const bad = recipients.filter((entry) => !looksLikeEmail(entry));
-    if (bad.length > 0) {
-      return { error: `Not valid email addresses: ${bad.join(', ')}` };
-    }
-    patch.alertEmailRecipients = serializeRecipients(recipients);
-  }
-
-  if (body.alertWebhookIds !== undefined) {
-    const known = new Set(listWebhooks().map((row) => row.id));
-    const ids = parseWebhookIds(body.alertWebhookIds).filter((id) => known.has(id));
-    patch.alertWebhookIds = serializeWebhookIds(ids);
-  }
-
-  return { patch };
 }
 
 interface ProbeBody {
@@ -169,10 +120,6 @@ function presentDevice(row: typeof devices.$inferSelect) {
     muteSupplyAlerts: row.muteSupplyAlerts,
     muteMediaAlerts: row.muteMediaAlerts,
     muteOfflineAlerts: row.muteOfflineAlerts,
-    // Sent as parsed lists rather than the stored blobs, so the form is not
-    // re-implementing the comma-splitting and JSON-parsing the server already
-    // owns — and an empty list reads unambiguously as "using the defaults".
-    ...parseDeviceRouting(row),
   };
 }
 
@@ -345,9 +292,6 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
           .send({ error: error instanceof DeviceError ? error.message : String(error) });
       }
 
-      const routing = routingPatch(body);
-      if ('error' in routing) return reply.code(400).send({ error: routing.error });
-
       const slug = slugify(displayName, existingSlugs());
 
       const [created] = db
@@ -364,7 +308,6 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
           config: serializeConfig(adapter, normalized),
           enabled: body.enabled !== false,
           ...mutePatch(body),
-          ...routing.patch,
           capabilities:
             body.capabilities === undefined || body.capabilities === null
               ? null
@@ -435,9 +378,6 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
           .send({ error: error instanceof DeviceError ? error.message : String(error) });
       }
 
-      const routing = routingPatch(body);
-      if ('error' in routing) return reply.code(400).send({ error: routing.error });
-
       db.update(devices)
         .set({
           displayName,
@@ -452,7 +392,6 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
           config: serializeConfig(adapter, merged),
           enabled: body.enabled === undefined ? existing.enabled : body.enabled !== false,
           ...mutePatch(body),
-          ...routing.patch,
           capabilities:
             body.capabilities === undefined
               ? existing.capabilities
@@ -492,6 +431,9 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
       // would otherwise start out believing it is already alerting — and never
       // announce the next real crossing.
       clearAlertStateFor(existing.slug);
+      // A rule scoped to two printers, one of which is going away, should watch
+      // the one that remains rather than keep a dangling id.
+      forgetDeviceInRules(id);
       db.delete(devices).where(eq(devices.id, id)).run();
 
       clearCache();

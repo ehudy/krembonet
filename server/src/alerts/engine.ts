@@ -1,20 +1,25 @@
 /**
- * Alerting I/O shell: reads stored alert state, applies the pure rules in
- * `rules.ts`, `reachability.ts` and `mute.ts`, sends mail, and records what
- * happened.
+ * Alerting I/O shell: reads stored state, applies the pure logic in
+ * `notification-rules.ts`, `rules.ts`, `reachability.ts` and `mute.ts`, sends
+ * mail, and records what happened.
  *
- * Three categories share one dispatch path — supplies crossing a threshold,
- * media faults the device reports, and the device going unreachable. They
- * differ only in how the condition is detected; once something needs saying,
- * the edge-triggering, muting, delivery and logging are identical, and having
- * three copies of that is how they drift.
+ * Two things happen on every poll and they are deliberately independent:
  *
- * Every edge this file detects is also written to `activity_events`, which is
- * the dashboard's timeline rather than a delivery record. That happens beside
- * dispatch and not inside it: the history has to be complete on a hub that
- * mutes a device, has no SMTP configured, or has alerting switched off
- * entirely — those are precisely the hubs where the dashboard is the only
- * record of what the fleet did.
+ *  - **The timeline.** Conditions are detected against the hub's own thresholds
+ *    and written to `activity_events` — offline, recovered, a supply past its
+ *    mark, a fault the device reported. This happens whether or not anybody is
+ *    notified, because a hub that has muted a device, has no SMTP, or has
+ *    alerting switched off entirely is precisely the hub where the dashboard is
+ *    the only record of what the fleet did.
+ *  - **Notification.** Every enabled row in `notification_rules` is matched
+ *    against the current reading, and only the rules that match send anything.
+ *    No rules means no mail and no webhooks, which is the whole point: alerting
+ *    is opt-in now rather than something a fleet of thirty printers has to be
+ *    talked out of one mute switch at a time.
+ *
+ * Rules own their own edges. State is keyed by rule *and* device *and* subject,
+ * so two rules watching the same cartridge at different thresholds each announce
+ * themselves once, and neither silences the other.
  */
 import { sql } from 'drizzle-orm';
 import { eq, inArray } from 'drizzle-orm';
@@ -25,16 +30,21 @@ import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { alertLogs, alertState, deviceStatus } from '../db/schema.js';
 import { assessAttention } from '../devices/attention.js';
+import { levelToPercent } from '../devices/types.js';
 import type { DeviceView } from '../poller/cache.js';
 import type { DeviceRow } from '../poller/pollDevice.js';
 import { getSettings, isSmtpTransportConfigured } from '../settings/settings.js';
 import { sendMail } from './mailer.js';
-import { suppressionReason, type AlertCategory, type MuteFlags } from './mute.js';
+import { suppressionReason, type MuteFlags } from './mute.js';
 import {
-  parseDeviceRouting,
-  resolveEmailRecipients,
-  resolveWebhookTargets,
-} from './routing.js';
+  categoryOf,
+  destinationsFor,
+  matchRules,
+  ruleStateKey,
+  type NotificationRule,
+  type Observation,
+} from './notification-rules.js';
+import { listNotificationRules } from './notification-store.js';
 import {
   buildOfflineMail,
   buildRecoveryMail,
@@ -42,7 +52,7 @@ import {
   offlineRuleKey,
 } from './reachability.js';
 import { dispatchWebhooks, listEnabledTargets } from './webhooks.js';
-import { buildAlertMail, decideTransitions, evaluateSupplies } from './rules.js';
+import { decideTransitions, evaluateSupplies } from './rules.js';
 import { listAlertRules } from './store.js';
 
 /**
@@ -115,7 +125,7 @@ function markCleared(ruleKey: string): void {
     .run();
 }
 
-/** When an offline alert was raised, for the recovery message. */
+/** When an alert was raised, for the recovery message. */
 function triggeredAt(ruleKey: string): string | null {
   const row = db
     .select({ triggeredAt: alertState.triggeredAt })
@@ -151,8 +161,7 @@ function logAlert(
 }
 
 export interface Notification {
-  category: AlertCategory;
-  /** Every rule key this notification covers; each gets its own log row. */
+  /** Every state key this notification covers; each gets its own log row. */
   ruleKeys: string[];
   subject: string;
   text: string;
@@ -160,7 +169,7 @@ export interface Notification {
 }
 
 /**
- * Sends one notification over every configured channel, or explains why not.
+ * Sends one notification to one rule's destinations, or explains why not.
  *
  * Returns whether anything actually carried it, which is what decides if the
  * alert counts as "notified" — a single dead webhook must not re-arm the alert
@@ -168,17 +177,17 @@ export interface Notification {
  */
 async function dispatch(
   device: DeviceRow,
+  rule: NotificationRule,
   notification: Notification,
   log: FastifyBaseLogger,
 ): Promise<boolean> {
   const settings = getSettings();
 
-  // Alerting switched off hub-wide. Checked here rather than at the top of each
-  // evaluator so the evaluators still run: they are what detect the edges the
-  // activity timeline is built from, and a hub that only wants a dashboard
-  // should still get a history. Recorded as skipped for the same reason the
-  // no-destination case below is — an unlogged condition looks like one that
-  // never happened.
+  // Alerting switched off hub-wide. Checked here rather than before evaluation
+  // so the evaluators still run: they are what detect the edges the activity
+  // timeline is built from, and a hub that only wants a dashboard should still
+  // get a history. Recorded as skipped for the same reason the no-destination
+  // case below is — an unlogged condition looks like one that never happened.
   if (!settings.alertsEnabled) {
     for (const ruleKey of notification.ruleKeys) {
       logAlert(
@@ -194,48 +203,24 @@ async function dispatch(
     return false;
   }
 
-  // Muted: recorded, never sent. The dashboard keeps showing the condition —
-  // suppression silences the notification, not the monitoring.
-  const reason = suppressionReason(device, notification.category);
-  if (reason !== null) {
-    for (const ruleKey of notification.ruleKeys) {
-      logAlert(ruleKey, device.id, notification.subject, [], 'muted', 'none', reason);
-    }
-    log.info(
-      { device: device.slug, category: notification.category, reason },
-      'alert suppressed by device mute',
-    );
-    return false;
-  }
+  const { recipients, webhookIds } = destinationsFor([rule], settings.alertRecipients);
+  const targets = listEnabledTargets().filter((target) => webhookIds.includes(target.id));
+  const smtpReady =
+    rule.notifyEmail && isSmtpTransportConfigured(settings) && recipients.length > 0;
 
-  // Per-device routing, falling back to the hub-wide destinations wherever the
-  // device has nothing to say — which is every device on a hub that has never
-  // opened the routing card. See alerts/routing.ts for why blank means "the
-  // default" rather than "nowhere".
-  const routing = parseDeviceRouting(device);
-  const recipients = resolveEmailRecipients(routing, settings.alertRecipients);
-  const targets = resolveWebhookTargets(routing, listEnabledTargets());
-
-  const smtpReady = isSmtpTransportConfigured(settings) && recipients.length > 0;
-
-  // Record the condition even when nothing can carry it, otherwise a hub with
-  // no destination configured would retry — and re-log — on every single poll.
+  // Record the condition even when nothing can carry it, otherwise a rule with
+  // no reachable destination would retry — and re-log — on every single poll.
   if (!smtpReady && targets.length === 0) {
-    // Two different problems wearing the same hat, and they send an operator to
-    // different screens: nothing is configured at all, or this device's routing
-    // points at destinations that are all switched off. Saying which is the
-    // difference between a legible log line and a scavenger hunt.
-    const isRouted = routing.emailRecipients.length > 0 || routing.webhookIds.length > 0;
-    const reason = isRouted
-      ? 'No reachable destination for this device — check its alert routing'
-      : 'No destination configured (no SMTP, no webhooks)';
+    const reason = rule.notifyEmail
+      ? `Rule "${rule.name}" has no reachable destination (check SMTP and its webhooks)`
+      : `Rule "${rule.name}" sends to no destination`;
 
     for (const ruleKey of notification.ruleKeys) {
       logAlert(ruleKey, device.id, notification.subject, [], 'skipped', 'email', reason);
     }
     log.warn(
-      { device: device.slug, category: notification.category, routed: isRouted },
-      'alert raised but no destination is configured',
+      { device: device.slug, rule: rule.name },
+      'alert matched a rule with no reachable destination',
     );
     return false;
   }
@@ -306,7 +291,7 @@ async function dispatch(
     log.info(
       {
         device: device.slug,
-        category: notification.category,
+        rule: rule.name,
         recipients: mail?.ok === true ? mail.recipients.length : 0,
         webhooks: deliveries.filter((result) => result.ok).length,
         ...(failures.length > 0 ? { failures } : {}),
@@ -315,7 +300,7 @@ async function dispatch(
     );
   } else {
     log.error(
-      { device: device.slug, category: notification.category, failures },
+      { device: device.slug, rule: rule.name, failures },
       'alert failed on every destination',
     );
   }
@@ -323,73 +308,141 @@ async function dispatch(
   return delivered;
 }
 
+// --- notification rules ---------------------------------------------------
+
+/** One rule's worth of firings this cycle, batched into a single message. */
+interface Firing {
+  rule: NotificationRule;
+  observations: Observation[];
+  ruleKeys: string[];
+}
+
 /**
- * Evaluates a fresh reading and sends at most one mail per poll, covering
- * every supply that crossed its threshold this cycle. Batching matters: a
- * device with four low tanks should produce one mail, not four.
+ * Matches every enabled rule against this poll's observations and sets or
+ * clears each rule's own edge.
  *
- * Supplies whose level cannot be compared — unknown readings, or supplies no
- * rule covers — are dropped by `evaluateSupplies` rather than defaulted, so a
- * device that declines to report a level stays quiet instead of alerting as if
- * it were empty.
+ * Returns only the rules that just became true. A rule already active on the
+ * same subject stays silent — a printer that has been offline for six hours has
+ * been reported once and does not need reporting again every poll.
  */
-async function evaluateSupplyAlerts(
+function decideFirings(
   device: DeviceRow,
-  view: DeviceView,
+  observations: readonly Observation[],
+  rules: readonly NotificationRule[],
+): Firing[] {
+  const active = readActiveRuleKeys();
+  const byRule = new Map<string, Firing>();
+
+  for (const observation of observations) {
+    for (const rule of rules) {
+      const key = ruleStateKey(rule.id, device.slug, observation);
+      const matched = matchRules([rule], device.id, observation).length > 0;
+
+      if (!matched) {
+        // Recovered, or narrowed out of this rule's range. Cleared so the next
+        // crossing announces itself.
+        if (active.has(key)) markCleared(key);
+        continue;
+      }
+      if (active.has(key)) continue;
+
+      const existing = byRule.get(rule.id);
+      if (existing === undefined) {
+        byRule.set(rule.id, { rule, observations: [observation], ruleKeys: [key] });
+      } else {
+        existing.observations.push(observation);
+        existing.ruleKeys.push(key);
+      }
+    }
+  }
+
+  return [...byRule.values()];
+}
+
+/** The message one rule sends about everything that crossed for it this cycle. */
+function buildRuleMail(
+  device: DeviceRow,
+  firing: Firing,
+  hubTitle: string,
+): { subject: string; text: string; lines: string[] } {
+  const lines = firing.observations.map((observation) => observation.description);
+  const first = lines[0] as string;
+
+  const subject =
+    lines.length === 1
+      ? `[${hubTitle}] ${device.displayName}: ${first}`
+      : `[${hubTitle}] ${device.displayName}: ${lines.length} conditions`;
+
+  return {
+    subject,
+    lines,
+    text: [
+      `${device.displayName} (${device.host}) matched the alert rule "${firing.rule.name}":`,
+      '',
+      ...lines.map((line) => `  - ${line}`),
+      '',
+      'This is sent once per crossing. You will not get another message for the',
+      'same condition until it clears.',
+      '',
+      `Checked ${new Date().toLocaleString()}`,
+    ].join('\n'),
+  };
+}
+
+/**
+ * Runs this poll's observations past every rule and sends what matched.
+ *
+ * Maintenance mode short-circuits the whole pass: a device under maintenance is
+ * exempt from rule evaluation entirely, which is what the switch promises. The
+ * condition is still recorded — the timeline above this call has already done
+ * that — and the suppression is logged against each rule that would otherwise
+ * have fired, so the history says what was withheld rather than going blank.
+ */
+async function runNotificationRules(
+  device: DeviceRow,
+  observations: readonly Observation[],
   log: FastifyBaseLogger,
 ): Promise<void> {
-  if (view.supplies.length === 0) return;
+  if (observations.length === 0) return;
 
-  const conditions = evaluateSupplies(
-    device.slug,
-    device.id,
-    view.supplies,
-    listAlertRules(),
-  );
-  if (conditions.length === 0) return;
+  const rules = listNotificationRules().filter((rule) => rule.enabled);
+  if (rules.length === 0) return;
 
-  const { toNotify, toClear } = decideTransitions(conditions, readActiveRuleKeys());
+  const hubTitle = getSettings().hubTitle;
 
-  for (const condition of toClear) {
-    markCleared(condition.ruleKey);
-    log.info({ ruleKey: condition.ruleKey }, 'alert cleared');
+  for (const firing of decideFirings(device, observations, rules)) {
+    const category = categoryOf(firing.rule.conditionType);
+    const reason = suppressionReason(device, category);
+
+    if (reason !== null) {
+      const { subject } = buildRuleMail(device, firing, hubTitle);
+      for (const ruleKey of firing.ruleKeys) {
+        logAlert(ruleKey, device.id, subject, [], 'muted', 'none', reason);
+      }
+      // Still marked active, so the condition does not re-log every poll and
+      // does not re-announce itself the moment the mute is lifted — the
+      // dashboard has been showing it the whole time. See mute.ts.
+      for (const ruleKey of firing.ruleKeys) markActive(ruleKey, false);
+      log.info(
+        { device: device.slug, rule: firing.rule.name, reason },
+        'alert suppressed by device mute',
+      );
+      continue;
+    }
+
+    const message = buildRuleMail(device, firing, hubTitle);
+    const delivered = await dispatch(
+      device,
+      firing.rule,
+      { ruleKeys: firing.ruleKeys, ...message },
+      log,
+    );
+
+    for (const ruleKey of firing.ruleKeys) markActive(ruleKey, delivered);
   }
-
-  if (toNotify.length === 0) return;
-
-  // One event per supply rather than one per notification. The mail batches
-  // four low tanks into a single message because four emails would be noise;
-  // a timeline has the opposite requirement, since "which cartridge" is the
-  // whole reason to look at it later.
-  for (const condition of toNotify) {
-    recordActivity({
-      deviceId: device.id,
-      deviceName: device.displayName,
-      type: 'supply_low',
-      message: condition.description,
-    });
-  }
-
-  const { subject, text, lines } = buildAlertMail(
-    device,
-    toNotify,
-    getSettings().hubTitle,
-  );
-
-  const delivered = await dispatch(
-    device,
-    {
-      category: 'supply',
-      ruleKeys: toNotify.map((condition) => condition.ruleKey),
-      subject,
-      text,
-      lines,
-    },
-    log,
-  );
-
-  for (const condition of toNotify) markActive(condition.ruleKey, delivered);
 }
+
+// --- condition detection --------------------------------------------------
 
 /** One rule key for the whole device: media faults are a single condition. */
 function mediaRuleKey(slug: string): string {
@@ -397,67 +450,109 @@ function mediaRuleKey(slug: string): string {
 }
 
 /**
- * Alerts on media faults the device reports about itself.
+ * Records supply threshold crossings on the timeline, and returns what the
+ * rules should be matched against.
  *
- * Distinct from supply thresholds, which are numbers this hub compares against
- * operator settings. These are the device asserting it cannot print — an empty
- * tray, a jam — and no threshold covers them. Only `error` level conditions
- * notify; warnings like "paper low" are visible on the dashboard and do not
- * earn a 3am email.
+ * The timeline edge is the hub's own threshold and is keyed by condition, not
+ * by rule: it is a record of what the fleet did, and it must read the same on a
+ * hub with no rules at all.
  */
-async function evaluateMediaAlerts(
+function observeSupplies(device: DeviceRow, view: DeviceView): Observation[] {
+  if (view.supplies.length === 0) return [];
+
+  const conditions = evaluateSupplies(
+    device.slug,
+    device.id,
+    view.supplies,
+    listAlertRules(),
+  );
+
+  const { toNotify, toClear } = decideTransitions(conditions, readActiveRuleKeys());
+
+  for (const condition of toClear) markCleared(condition.ruleKey);
+
+  // One event per supply rather than one per message. A mail batches four low
+  // tanks because four mails would be noise; a timeline has the opposite
+  // requirement, since "which cartridge" is the whole reason to look at it.
+  for (const condition of toNotify) {
+    recordActivity({
+      deviceId: device.id,
+      deviceName: device.displayName,
+      type: 'supply_low',
+      message: condition.description,
+    });
+    markActive(condition.ruleKey, false);
+  }
+
+  // Every supply is offered to the rules, not just the ones that crossed: a
+  // rule may carry a stricter threshold than the hub's, and it owns its own
+  // edge. `breached` rides along so a rule with no threshold of its own means
+  // the same thing the dashboard does.
+  const breached = new Set(
+    conditions.filter((c) => c.breached).map((c) => c.supply.name),
+  );
+
+  return view.supplies.map((supply) => ({
+    type:
+      supply.kind === 'receptacle' ? ('waste_full' as const) : ('supply_low' as const),
+    supplyName: supply.name,
+    percent: levelToPercent(supply.level),
+    breached: breached.has(supply.name),
+    description:
+      conditions.find((c) => c.supply.name === supply.name)?.description ??
+      `${supply.label} is at ${levelToPercent(supply.level) ?? '?'}%`,
+  }));
+}
+
+/**
+ * Records media faults on the timeline and returns the observation.
+ *
+ * Only `error` level counts. Warnings like "paper low" are visible on the
+ * dashboard and do not earn a 3am email whatever any rule says.
+ */
+function observeMedia(device: DeviceRow, view: DeviceView): Observation[] {
+  const attention = assessAttention(view.state, view.stateReasons);
+  const ruleKey = mediaRuleKey(device.slug);
+  const wasActive = isActive(ruleKey);
+
+  if (attention.level !== 'error') {
+    if (wasActive) markCleared(ruleKey);
+    return [];
+  }
+
+  const lines = attention.conditions.map((condition) => condition.label);
+  const headline = attention.summary ?? 'Needs attention';
+
+  if (!wasActive) {
+    recordActivity({
+      deviceId: device.id,
+      deviceName: device.displayName,
+      // Every condition, not just the headline: an operator reading the
+      // timeline the next morning wants to know it was jammed *and* out of
+      // paper.
+      message: lines.length > 0 ? lines.join(', ') : headline,
+      type: 'media_error',
+    });
+    markActive(ruleKey, false);
+  }
+
+  return [{ type: 'media_out', description: lines.join(', ') || headline }];
+}
+
+/**
+ * Everything evaluated from a successful reading.
+ *
+ * There is deliberately no `alertsEnabled` check here. Turning alerts off means
+ * "stop sending", not "stop noticing" — the timeline is built from these edges,
+ * so the gate lives in `dispatch` where the sending happens.
+ */
+export async function evaluateAlerts(
   device: DeviceRow,
   view: DeviceView,
   log: FastifyBaseLogger,
 ): Promise<void> {
-  const attention = assessAttention(view.state, view.stateReasons);
-  const ruleKey = mediaRuleKey(device.slug);
-  const active = isActive(ruleKey);
-
-  if (attention.level !== 'error') {
-    if (active) {
-      markCleared(ruleKey);
-      log.info({ ruleKey }, 'media alert cleared');
-    }
-    return;
-  }
-
-  // Edge-triggered: a device that has been jammed for six hours has already
-  // been reported once, and does not need reporting again every poll.
-  if (active) return;
-
-  const hubTitle = getSettings().hubTitle;
-  const lines = attention.conditions.map((condition) => condition.label);
-  const headline = attention.summary ?? 'Needs attention';
-
-  recordActivity({
-    deviceId: device.id,
-    deviceName: device.displayName,
-    type: 'media_error',
-    // Every condition, not just the headline: an operator reading the timeline
-    // the next morning wants to know it was jammed *and* out of paper.
-    message: lines.length > 0 ? lines.join(', ') : headline,
-  });
-
-  const delivered = await dispatch(
-    device,
-    {
-      category: 'media',
-      ruleKeys: [ruleKey],
-      subject: `[${hubTitle}] ${device.displayName}: ${headline}`,
-      text: [
-        `${device.displayName} (${device.host}) needs attention:`,
-        '',
-        ...lines.map((line) => `  - ${line}`),
-        '',
-        'This is sent once per fault. You will not get another message until it clears.',
-      ].join('\n'),
-      lines,
-    },
-    log,
-  );
-
-  markActive(ruleKey, delivered);
+  const observations = [...observeSupplies(device, view), ...observeMedia(device, view)];
+  await runNotificationRules(device, observations, log);
 }
 
 /**
@@ -497,6 +592,33 @@ export async function evaluateReachability(
     isOfflineAlertActive: wasActive,
   });
 
+  // Offline is a standing condition, not just an edge: a rule with a "60
+  // minutes" threshold has to be able to fire on a device that went down at
+  // minute two, which is long after the transition. So the observation is
+  // offered on every failing poll and each rule decides for itself.
+  if (!succeeded && consecutiveFailures > 0) {
+    const lastSuccess = status?.lastSuccessAt ?? null;
+    const minutesOffline =
+      lastSuccess === null
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, Math.round((Date.now() - lastSuccess.getTime()) / 60_000));
+
+    await runNotificationRules(
+      device,
+      [
+        {
+          type: 'offline',
+          minutesOffline,
+          description:
+            status?.lastError == null
+              ? `Unreachable after ${consecutiveFailures} failed attempts`
+              : `Unreachable after ${consecutiveFailures} failed attempts: ${status.lastError}`,
+        },
+      ],
+      log,
+    );
+  }
+
   if (transition === null) return;
 
   if (transition === 'offline') {
@@ -505,26 +627,12 @@ export async function evaluateReachability(
       deviceName: device.displayName,
       type: 'offline',
       message:
-        status?.lastError === null || status?.lastError === undefined
+        status?.lastError == null
           ? `Unreachable after ${consecutiveFailures} failed attempts`
           : `Unreachable after ${consecutiveFailures} failed attempts: ${status.lastError}`,
     });
 
-    const { subject, text, lines } = buildOfflineMail(
-      device,
-      settings.hubTitle,
-      consecutiveFailures,
-      status?.lastError ?? null,
-      status?.lastSuccessAt?.toISOString() ?? null,
-    );
-
-    const delivered = await dispatch(
-      device,
-      { category: 'offline', ruleKeys: [ruleKey], subject, text, lines },
-      log,
-    );
-
-    markActive(ruleKey, delivered);
+    markActive(ruleKey, false);
     log.warn(
       { device: device.slug, failures: consecutiveFailures },
       'device marked offline',
@@ -532,9 +640,9 @@ export async function evaluateReachability(
     return;
   }
 
-  // Recovered. The clear happens whether or not the message got out: the
-  // device is demonstrably back, and leaving the alert active would mean the
-  // next outage never announces itself.
+  // Recovered. The clear happens whether or not any message got out: the device
+  // is demonstrably back, and leaving the alert active would mean the next
+  // outage never announces itself.
   const downSince = triggeredAt(ruleKey);
 
   recordActivity({
@@ -547,37 +655,44 @@ export async function evaluateReachability(
         : `Reachable again after being down since ${downSince}`,
   });
 
-  const { subject, text, lines } = buildRecoveryMail(
-    device,
-    settings.hubTitle,
-    downSince,
-  );
-
-  await dispatch(
-    device,
-    { category: 'offline', ruleKeys: [ruleKey], subject, text, lines },
-    log,
-  );
-
+  await announceRecovery(device, settings.hubTitle, downSince, log);
   markCleared(ruleKey);
   log.info({ device: device.slug }, 'device recovered');
 }
 
 /**
- * Everything evaluated from a successful reading.
+ * Tells whoever heard about the outage that it is over.
  *
- * There is deliberately no `alertsEnabled` check here. Turning alerts off means
- * "stop sending", not "stop noticing" — the evaluators own the edge detection
- * that the dashboard's timeline is built from, so the gate lives in `dispatch`
- * where the sending actually happens.
+ * Only the rules that actually fired: "you will get one more message when it
+ * comes back" is a promise the offline mail makes, and sending the all-clear to
+ * an audience that was never told about the outage is worse than not sending it.
+ * There is no `recovered` condition type for the same reason — a recovery is
+ * the other half of an offline alert, not a thing to subscribe to separately.
  */
-export async function evaluateAlerts(
+async function announceRecovery(
   device: DeviceRow,
-  view: DeviceView,
+  hubTitle: string,
+  downSince: string | null,
   log: FastifyBaseLogger,
 ): Promise<void> {
-  await evaluateSupplyAlerts(device, view, log);
-  await evaluateMediaAlerts(device, view, log);
+  const offlineObservation: Observation = {
+    type: 'offline',
+    minutesOffline: 0,
+    description: 'Reachable again',
+  };
+
+  for (const rule of listNotificationRules()) {
+    if (rule.conditionType !== 'offline') continue;
+
+    const key = ruleStateKey(rule.id, device.slug, offlineObservation);
+    if (!isActive(key)) continue;
+
+    markCleared(key);
+    if (suppressionReason(device, 'offline') !== null) continue;
+
+    const { subject, text, lines } = buildRecoveryMail(device, hubTitle, downSince);
+    await dispatch(device, rule, { ruleKeys: [key], subject, text, lines }, log);
+  }
 }
 
 /** Recent alert history for the admin portal. */
@@ -596,15 +711,31 @@ export function activeAlerts() {
 }
 
 /**
- * Drops alert state for a device whose suppression flags just changed.
+ * Drops alert state for a device that is going away.
  *
- * Not used for muting — a mute should not forget an outstanding condition —
- * but exported for the device delete path, where leaving state behind would
- * let a re-added device with the same slug start out believing it is already
- * alerting.
+ * Matches both key shapes — the condition keys the timeline uses
+ * (`device:<slug>:…`) and the per-rule keys notifications use
+ * (`rule:<id>:device:<slug>:…`) — because a device re-added under the same name
+ * would otherwise start out believing it is already alerting, and never announce
+ * the next real crossing.
  */
 export function clearAlertStateFor(slug: string): void {
-  const prefix = `device:${slug}:`;
+  const marker = `device:${slug}:`;
+  const keys = db
+    .select({ ruleKey: alertState.ruleKey })
+    .from(alertState)
+    .all()
+    .filter((row) => row.ruleKey.includes(marker))
+    .map((row) => row.ruleKey);
+
+  if (keys.length > 0) {
+    db.delete(alertState).where(inArray(alertState.ruleKey, keys)).run();
+  }
+}
+
+/** Drops the per-rule state a deleted or edited rule leaves behind. */
+export function clearAlertStateForRule(ruleId: string): void {
+  const prefix = `rule:${ruleId}:`;
   const keys = db
     .select({ ruleKey: alertState.ruleKey })
     .from(alertState)
@@ -619,3 +750,6 @@ export function clearAlertStateFor(slug: string): void {
 
 /** Suppression flags are read straight off the device row. */
 export type { MuteFlags };
+
+/** Unbuilt offline mail is still used by the reachability tests. */
+export { buildOfflineMail };

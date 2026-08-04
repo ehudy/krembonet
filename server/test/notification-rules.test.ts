@@ -1,0 +1,257 @@
+/**
+ * Opt-in alert routing.
+ *
+ * The behaviour that matters most here is the absence of one: a hub with no
+ * rules must send nothing at all. Everything else in this file is a variation
+ * on "and only the rules that asked for it", which is the other half of the same
+ * promise — a rule scoped to one printer must not page anyone about the other
+ * twenty-nine.
+ */
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import {
+  categoryOf,
+  coversDevice,
+  destinationsFor,
+  looksLikeEmail,
+  matchRules,
+  meetsThreshold,
+  parseIdList,
+  parseRecipients,
+  ruleStateKey,
+  type NotificationRule,
+  type Observation,
+} from '../src/alerts/notification-rules.js';
+
+function rule(overrides: Partial<NotificationRule> = {}): NotificationRule {
+  return {
+    id: 'r1',
+    name: 'Test rule',
+    enabled: true,
+    scope: 'all',
+    deviceIds: [],
+    conditionType: 'supply_low',
+    threshold: null,
+    notifyEmail: true,
+    customRecipients: [],
+    webhookIds: [],
+    ...overrides,
+  };
+}
+
+const GLOBAL = ['it@example.com'];
+
+function lowSupply(percent: number | null, breached: boolean): Observation {
+  return {
+    type: 'supply_low',
+    supplyName: 'MBK',
+    description: `Matte Black is at ${percent ?? '?'}%`,
+    percent,
+    breached,
+  };
+}
+
+describe('an empty rule set', () => {
+  it('matches nothing, so a hub with no rules notifies nobody', () => {
+    // The whole premise. Before this table existed the engine mailed on every
+    // crossing on every device the moment SMTP was configured.
+    assert.deepEqual(matchRules([], 1, lowSupply(4, true)), []);
+    assert.deepEqual(
+      matchRules([], 1, { type: 'offline', minutesOffline: 90, description: 'down' }),
+      [],
+    );
+  });
+
+  it('resolves to no destinations, so nothing is even attempted', () => {
+    assert.deepEqual(destinationsFor([], GLOBAL), { recipients: [], webhookIds: [] });
+  });
+});
+
+describe('scope', () => {
+  it('covers every device when scoped to all', () => {
+    assert.equal(coversDevice(rule({ scope: 'all' }), 7), true);
+  });
+
+  it('covers only the named devices when scoped to a selection', () => {
+    const scoped = rule({ scope: 'selected', deviceIds: [2, 5] });
+    assert.equal(coversDevice(scoped, 2), true);
+    assert.equal(coversDevice(scoped, 5), true);
+    assert.equal(coversDevice(scoped, 3), false);
+  });
+
+  it('covers nothing when scoped to a selection that is empty', () => {
+    // A rule that names no printers watches no printers. Treating an empty
+    // selection as "all" would turn a half-finished rule into a fleet-wide one.
+    assert.equal(coversDevice(rule({ scope: 'selected', deviceIds: [] }), 1), false);
+  });
+
+  it('skips a rule that is switched off', () => {
+    const off = rule({ enabled: false });
+    assert.deepEqual(matchRules([off], 1, lowSupply(4, true)), []);
+  });
+});
+
+describe('thresholds', () => {
+  it('falls back to the hub threshold when the rule names no number', () => {
+    // "Tell me when a supply runs low" has to mean the same thing here as the
+    // red bar on the dashboard does, or a rule with a blank threshold would
+    // fire on a full cartridge.
+    const any = rule({ threshold: null });
+    assert.equal(meetsThreshold(any, lowSupply(80, false)), false);
+    assert.equal(meetsThreshold(any, lowSupply(8, true)), true);
+  });
+
+  it('uses its own number when given one, ignoring the hub threshold', () => {
+    const strict = rule({ threshold: 5 });
+    assert.equal(meetsThreshold(strict, lowSupply(12, true)), false);
+    assert.equal(meetsThreshold(strict, lowSupply(5, true)), true);
+    assert.equal(meetsThreshold(strict, lowSupply(2, true)), true);
+  });
+
+  it('reads a waste box the other way up', () => {
+    const waste = rule({ conditionType: 'waste_full', threshold: 90 });
+    const at = (percent: number): Observation => ({
+      type: 'waste_full',
+      supplyName: 'MC',
+      description: `${percent}% full`,
+      percent,
+      breached: true,
+    });
+
+    assert.equal(meetsThreshold(waste, at(95)), true);
+    assert.equal(meetsThreshold(waste, at(40)), false);
+  });
+
+  it('will not compare a supply that reported no number', () => {
+    // The same refusal the threshold engine makes: a device that declines to
+    // say is not a device saying zero.
+    assert.equal(meetsThreshold(rule({ threshold: 10 }), lowSupply(null, true)), false);
+    // ...but a rule with no number of its own still trusts the breach flag,
+    // which is how a binary "needs attention" reading gets through.
+    assert.equal(meetsThreshold(rule({ threshold: null }), lowSupply(null, true)), true);
+  });
+
+  it('measures an outage in minutes', () => {
+    const slow = rule({ conditionType: 'offline', threshold: 60 });
+    const down = (minutesOffline: number): Observation => ({
+      type: 'offline',
+      minutesOffline,
+      description: 'down',
+    });
+
+    assert.equal(meetsThreshold(slow, down(15)), false);
+    assert.equal(meetsThreshold(slow, down(60)), true);
+    // A device that has never once answered is offline by any measure.
+    assert.equal(meetsThreshold(slow, down(Number.POSITIVE_INFINITY)), true);
+  });
+
+  it('ignores a threshold on a condition that has no number', () => {
+    const media = rule({ conditionType: 'media_out', threshold: 42 });
+    assert.equal(
+      meetsThreshold(media, { type: 'media_out', description: 'Paper out' }),
+      true,
+    );
+  });
+
+  it('never matches a condition of a different type', () => {
+    assert.equal(
+      meetsThreshold(rule({ conditionType: 'offline' }), lowSupply(1, true)),
+      false,
+    );
+  });
+});
+
+describe('destinations', () => {
+  it('uses the global list when a rule names no addresses', () => {
+    assert.deepEqual(destinationsFor([rule()], GLOBAL).recipients, GLOBAL);
+  });
+
+  it('replaces the global list rather than adding to it', () => {
+    const floor = rule({ customRecipients: ['floor2@example.com'] });
+    assert.deepEqual(destinationsFor([floor], GLOBAL).recipients, ['floor2@example.com']);
+  });
+
+  it('sends no mail for a webhook-only rule', () => {
+    const hookOnly = rule({ notifyEmail: false, webhookIds: [3] });
+    assert.deepEqual(destinationsFor([hookOnly], GLOBAL), {
+      recipients: [],
+      webhookIds: [3],
+    });
+  });
+
+  it('unions two rules rather than picking a winner', () => {
+    // Both audiences asked to be told. Resolving to the more specific one would
+    // silently drop the other.
+    const a = rule({ id: 'a', webhookIds: [1] });
+    const b = rule({
+      id: 'b',
+      customRecipients: ['floor2@example.com'],
+      webhookIds: [2],
+    });
+
+    assert.deepEqual(destinationsFor([a, b], GLOBAL), {
+      recipients: ['it@example.com', 'floor2@example.com'],
+      webhookIds: [1, 2],
+    });
+  });
+
+  it('collapses duplicates, so three rules on the global list send one mail', () => {
+    const three = [rule({ id: 'a' }), rule({ id: 'b' }), rule({ id: 'c' })];
+    assert.deepEqual(destinationsFor(three, GLOBAL).recipients, GLOBAL);
+  });
+});
+
+describe('per-rule state keys', () => {
+  it('keys by rule as well as device, so two rules edge independently', () => {
+    // A "below 20%" rule announcing itself must not silence a "below 5%" rule
+    // that has not fired yet.
+    const observation = lowSupply(4, true);
+    assert.notEqual(
+      ruleStateKey('loose', 'plotter', observation),
+      ruleStateKey('strict', 'plotter', observation),
+    );
+  });
+
+  it('carries the device slug, so deleting a device clears its state', () => {
+    assert.ok(
+      ruleStateKey('r1', 'plotter', lowSupply(4, true)).includes('device:plotter:'),
+    );
+  });
+
+  it('separates two supplies on the same device', () => {
+    const mbk = lowSupply(4, true);
+    const cyan: Observation = { ...mbk, supplyName: 'C' };
+    assert.notEqual(
+      ruleStateKey('r1', 'plotter', mbk),
+      ruleStateKey('r1', 'plotter', cyan),
+    );
+  });
+});
+
+describe('mute categories', () => {
+  it('maps each condition onto the switch that silences it', () => {
+    assert.equal(categoryOf('offline'), 'offline');
+    assert.equal(categoryOf('media_out'), 'media');
+    assert.equal(categoryOf('supply_low'), 'supply');
+    assert.equal(categoryOf('waste_full'), 'supply');
+  });
+});
+
+describe('operator-typed lists', () => {
+  it('splits addresses however they were typed', () => {
+    for (const raw of ['a@x.com,b@x.com', 'a@x.com; b@x.com', 'a@x.com\nb@x.com']) {
+      assert.deepEqual(parseRecipients(raw), ['a@x.com', 'b@x.com'], raw);
+    }
+  });
+
+  it('catches the address typos worth catching', () => {
+    assert.equal(looksLikeEmail('it@example.com'), true);
+    assert.equal(looksLikeEmail('it@example'), false);
+  });
+
+  it('drops ids that are not ids, and de-duplicates the rest', () => {
+    assert.deepEqual(parseIdList([3, '1', 1, 0, -2, 'x', null]), [1, 3]);
+    assert.deepEqual(parseIdList('not an array'), []);
+  });
+});

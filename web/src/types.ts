@@ -312,6 +312,37 @@ export interface Webhook {
   updatedAt: string | number;
 }
 
+/** The four things an alert rule can watch for. */
+export type AlertConditionType = 'offline' | 'supply_low' | 'waste_full' | 'media_out';
+
+export type AlertRuleScope = 'all' | 'selected';
+
+/**
+ * One delivery policy: what to watch, on which printers, and who to tell.
+ *
+ * Distinct from the hub's supply *thresholds*, which live on the Settings page
+ * and decide when a bar turns red. These decide whether that condition is worth
+ * a message. A hub with no rules sends nothing at all.
+ */
+export interface AlertRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  conditionType: AlertConditionType | string;
+  /** False for a rule this build has no name for — listed so it can be deleted. */
+  isKnownCondition: boolean;
+  scope: AlertRuleScope;
+  deviceIds: number[];
+  /** Minutes for offline, percent for a supply. Null means the hub's own mark. */
+  threshold: number | null;
+  notifyEmail: boolean;
+  /** Empty falls back to the global SMTP recipients. */
+  customRecipients: string[];
+  webhookIds: number[];
+  createdAt: string | number;
+  updatedAt: string | number;
+}
+
 export interface MediaType {
   id: number;
   /** Null for a global mapping; a device id for a per-device override. */
@@ -408,15 +439,6 @@ export interface AdminDevice {
   muteSupplyAlerts: boolean;
   muteMediaAlerts: boolean;
   muteOfflineAlerts: boolean;
-  /**
-   * Where this device's alerts go, when that differs from the hub's.
-   *
-   * Both empty on a device that has never been routed, which is the normal
-   * state: empty means "use the global SMTP recipients and every enabled
-   * webhook", not "send nowhere". See server/src/alerts/routing.ts.
-   */
-  emailRecipients: string[];
-  webhookIds: number[];
 }
 
 export interface DeviceIdentity {

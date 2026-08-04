@@ -238,7 +238,8 @@
       "paperTypes": "Paper types",
       "alerts": "Alerts",
       "history": "History",
-      "webhooks": "Webhooks"
+      "webhooks": "Webhooks",
+      "rules": "Rules"
     }
   },
   "settings": {
@@ -382,22 +383,13 @@
     "suppression": "Alert suppression",
     "suppressionHint": "Silences notification, never monitoring. A muted device is still polled, still evaluated, and still shown as failing here — only the email and webhooks stop.",
     "maintenanceMode": "Maintenance mode",
-    "maintenanceModeHint": "Silences every alert for this device.",
+    "maintenanceModeHint": "Silences every alert rule for this device. It is still polled, still evaluated, and still shown as failing here — only the notifications stop.",
     "muteSupply": "Mute supply alerts",
     "muteSupplyHint": "Ink and toner crossing their thresholds.",
     "muteMedia": "Mute media alerts",
     "muteMediaHint": "Paper out, tray empty, jams.",
     "muteOffline": "Mute offline alerts",
     "muteOfflineHint": "The device becoming unreachable, and recovering.",
-    "routing": "Alert routing",
-    "routingHint": "Where this printer's alerts go, when that differs from the hub. Leave both blank and it uses the hub-wide destinations, which is what you want for almost every printer.",
-    "routeEmail": "Custom email recipients",
-    "routeEmailPlaceholder": "floor2-support@company.com",
-    "routeEmailHint": "Leave blank to fall back to global SMTP recipients. Addresses here replace the global list for this printer rather than adding to it. Separate several with commas.",
-    "routeWebhooks": "Webhook destinations",
-    "routeWebhooksHint": "Select none to send to every enabled webhook, as configured under Alerts → Webhooks. Selecting some routes this printer to those only.",
-    "routeWebhooksNone": "No webhooks are configured yet. Add one under Alerts → Webhooks and it appears here.",
-    "routeWebhookDisabled": "Disabled hub-wide",
     "probeIp": "Probe IP",
     "probingIp": "Probing…",
     "probeIpHint": "Tests the address for IPP, SNMP and a web interface, then fills in the settings that worked.",
@@ -512,6 +504,80 @@
     "alreadyMuted": "In maintenance",
     "mutedNotice": "{{name}} is in maintenance mode. The condition is still tracked and still shown here — only the email and webhooks stop.",
     "deviceGone": "This printer has been removed."
+  },
+  "alertRules": {
+    "title": "Alert rules",
+    "intro": "Alerting is opt-in. Each rule says what to watch, on which printers, and who to tell — and a hub with no rules sends nothing at all.",
+    "loading": "Loading alert rules…",
+    "add": "Add alert rule",
+    "addTitle": "Add alert rule",
+    "editTitle": "Edit alert rule",
+    "added": "Alert rule created.",
+    "updated": "Alert rule saved.",
+    "deleted": "Deleted “{{name}}”.",
+    "emptyTitle": "No alert rules yet.",
+    "emptyBody": "Nothing will be emailed or posted to a webhook until you add one. Conditions are still detected, recorded on the activity log, and shown on the dashboard.",
+    "emptyHint": "Add a rule to start being told about the things this hub already notices.",
+    "name": "Rule name",
+    "namePlaceholder": "Plotters offline out of hours",
+    "saveRule": "Save rule",
+    "enabled": "Rule is active",
+    "enabledHint": "Turn off to stop this rule firing without deleting it.",
+    "disabled": "off",
+    "toggleAria": "Turn the rule “{{name}}” on or off",
+    "deleteTitle": "Delete this alert rule?",
+    "deleteBody": "“{{name}}” will stop firing and cannot be recovered. Nothing else about your printers changes.",
+    "condition": {
+      "label": "Condition",
+      "offline": "Device offline",
+      "supply_low": "Supply level low",
+      "waste_full": "Waste box full",
+      "media_out": "Paper out / tray empty"
+    },
+    "threshold": {
+      "minutes": "After (minutes)",
+      "percent": "At (%)"
+    },
+    "thresholdHint": {
+      "minutes": "How long a printer must stay unreachable before this rule fires. Leave blank to fire as soon as it is called offline.",
+      "percent": "Leave blank to use the hub threshold from Settings — the same number that turns the bar red."
+    },
+    "thresholdDefault": "hub threshold",
+    "afterMinutes": {
+      "one": "after {{count}} min",
+      "other": "after {{count}} min"
+    },
+    "atPercent": "at {{percent}}%",
+    "scope": "Which printers",
+    "scopeAll": "All printers",
+    "scopeCount": {
+      "one": "{{count}} printer",
+      "other": "{{count}} printers"
+    },
+    "scopeAllOption": "All printers",
+    "scopeAllHint": "Every printer now registered, and any added later.",
+    "scopeSomeOption": "Selected printers",
+    "scopeSomeHint": "Only the ones ticked below.",
+    "printers": "Printers",
+    "noPrinters": "No printers are registered yet. Add one under Admin → Devices.",
+    "destinations": "Where it goes",
+    "destinationsHint": "A rule needs at least one destination. Without one it would match conditions and then do nothing.",
+    "sendEmail": "Send email",
+    "sendEmailHint": "Uses the SMTP settings from the Settings tab.",
+    "recipients": "Custom recipients",
+    "recipientsPlaceholder": "floor2-support@company.com",
+    "recipientsHint": "Leave blank to use the global alert recipients. Addresses here replace that list for this rule rather than adding to it.",
+    "webhooks": "Webhook destinations",
+    "webhooksHint": "Configured under Alerts → Webhooks. Tick the ones this rule should post to.",
+    "noWebhooks": "No webhooks configured yet. Add one under Alerts → Webhooks.",
+    "channelEmail": "Email",
+    "channelEmailGlobal": "Email to the global recipients",
+    "channelWebhook": "Webhook",
+    "channelWebhookCount": {
+      "one": "{{count}} webhook",
+      "other": "{{count}} webhooks"
+    },
+    "webhookDisabled": "Disabled hub-wide"
   },
   "webhooks": {
     "title": "Webhook destinations",

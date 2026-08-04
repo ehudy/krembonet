@@ -91,27 +91,6 @@ export const devices = sqliteTable('devices', {
   muteOfflineAlerts: integer('mute_offline_alerts', { mode: 'boolean' })
     .notNull()
     .default(false),
-
-  /*
-   * Alert routing.
-   *
-   * Where this device's alerts go, when that differs from the hub-wide
-   * destinations. Null — and, for the address list, blank — means "no opinion",
-   * and the global SMTP recipients and every enabled webhook are used. That
-   * default is what keeps a fleet of thirty printers configured once rather
-   * than thirty times; the override exists for the handful where the second
-   * floor's own support address is the one that will actually walk over.
-   *
-   * Both are stored as text for the same reason the mute flags sit at the end
-   * of the table: they arrive via `ALTER TABLE ... ADD COLUMN`, which appends
-   * physically, and the migration test compares the real column order against
-   * the snapshot.
-   */
-
-  /** Comma-separated addresses. Blank or null falls back to the global list. */
-  alertEmailRecipients: text('alert_email_recipients'),
-  /** JSON array of webhook ids. Null or empty falls back to every enabled one. */
-  alertWebhookIds: text('alert_webhook_ids'),
 });
 
 /**
@@ -340,6 +319,57 @@ export const alertRules = sqliteTable(
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
   },
   (table) => [index('alert_rules_device_idx').on(table.deviceId, table.scope)],
+);
+
+/**
+ * Who gets told about what, and when.
+ *
+ * Distinct from `alert_rules` above, and the two are easy to confuse because
+ * both could be called an alert rule. `alert_rules` holds *thresholds* — the
+ * measurement that turns a bar red and files a supply under "needs re-order",
+ * which applies whether or not anyone is being notified. This holds *delivery
+ * policy*: whether a condition is worth a message, and who receives it.
+ *
+ * Alerting is opt-in through this table. An empty table means the hub sends
+ * nothing, however loudly its printers complain — which is what makes a fleet
+ * of thirty printers configurable at all, rather than paging everyone about the
+ * spare in the store room until someone mutes it by hand.
+ *
+ * See alerts/notification-rules.ts for the matching logic and why the two
+ * tables are deliberately not one.
+ */
+export const notificationRules = sqliteTable(
+  'notification_rules',
+  {
+    /** A UUID rather than a rowid: rules are addressed from the browser. */
+    id: text('id').primaryKey(),
+    /** Operator label, e.g. "Plotters offline out of hours". */
+    name: text('name').notNull(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    /** `all` | `selected`. */
+    scope: text('scope').notNull().default('all'),
+    /** JSON array of device ids. Only read when `scope` is `selected`. */
+    deviceIds: text('device_ids'),
+    /** `offline` | `supply_low` | `waste_full` | `media_out`. */
+    conditionType: text('condition_type').notNull(),
+    /**
+     * Minutes for `offline`, percent for the supply conditions. Null means the
+     * rule fires whenever the condition holds at all, which is the default.
+     */
+    threshold: integer('threshold'),
+    notifyEmail: integer('notify_email', { mode: 'boolean' }).notNull().default(true),
+    /** Comma-separated addresses. Blank falls back to the global SMTP list. */
+    customRecipients: text('custom_recipients'),
+    /** JSON array of webhook ids. Empty means this rule posts to none. */
+    webhookDestinationIds: text('webhook_destination_ids'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now),
+  },
+  (table) => [
+    // Every poll asks "which enabled rules watch this condition", so the
+    // condition leads and the enabled flag narrows it.
+    index('notification_rules_condition_idx').on(table.conditionType, table.enabled),
+  ],
 );
 
 /**

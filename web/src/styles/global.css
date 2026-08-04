@@ -1413,6 +1413,103 @@ a.alert-device:focus-visible {
   color: color-mix(in srgb, var(--danger) 45%, var(--warning-text));
 }
 
+/* A rule's condition, in the same palette the alert cards use — the tone means
+   the same thing in both places. Keyed off the stored condition type, so the
+   class names carry underscores translated to hyphens at the call site. */
+.alert-pill.is-offline,
+.alert-pill.is-media-out {
+  background: var(--error-bg);
+  color: var(--danger);
+}
+
+.alert-pill.is-supply-low {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.alert-pill.is-waste-full {
+  background: color-mix(in srgb, var(--error-bg) 50%, var(--warning-bg));
+  color: color-mix(in srgb, var(--danger) 45%, var(--warning-text));
+}
+
+/* Alert rules -------------------------------------------------------------- */
+
+.rule-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Switch, name, condition, channels, actions — read left to right, which is the
+   order the questions come in: is it on, what is it called, what does it watch,
+   how does it reach me, and can I change it. */
+.rule-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.rule-row:last-child {
+  border-bottom: 0;
+}
+
+/* Dimmed rather than hidden. A rule switched off is still a rule someone wrote,
+   and hiding it would make "why am I not getting alerts" unanswerable. */
+.rule-row.is-off .rule-body strong {
+  color: var(--text-muted);
+}
+
+.rule-toggle {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.rule-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.rule-body strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-body small {
+  font-size: 11px;
+}
+
+.rule-channels {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+@media (max-width: 720px) {
+  /* The five-across row does not survive a phone. The condition and channels
+     drop under the name rather than being hidden — what a rule watches is the
+     thing worth keeping when space runs out. */
+  .rule-row {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .rule-body {
+    flex-basis: calc(100% - 40px);
+  }
+}
+
 /* Relative in the cell, absolute on hover — so the column scans and still
    answers "what time exactly" without a second column for it. */
 .alert-when {

@@ -238,7 +238,8 @@
       "paperTypes": "Tipos de papel",
       "alerts": "Alertas",
       "history": "Historial",
-      "webhooks": "Webhooks"
+      "webhooks": "Webhooks",
+      "rules": "Reglas"
     }
   },
   "settings": {
@@ -382,22 +383,13 @@
     "suppression": "Supresión de alertas",
     "suppressionHint": "Silencia la notificación, nunca la monitorización. Un dispositivo silenciado se sigue sondeando, se sigue evaluando y se sigue mostrando aquí como fallido — solo se detienen el correo y los webhooks.",
     "maintenanceMode": "Modo mantenimiento",
-    "maintenanceModeHint": "Silencia todas las alertas de este dispositivo.",
+    "maintenanceModeHint": "Silencia todas las reglas de alerta de este dispositivo. Se sigue sondeando, se sigue evaluando y se sigue mostrando aquí como fallido; solo se detienen las notificaciones.",
     "muteSupply": "Silenciar alertas de consumibles",
     "muteSupplyHint": "Tinta y tóner que cruzan sus umbrales.",
     "muteMedia": "Silenciar alertas de papel",
     "muteMediaHint": "Sin papel, bandeja vacía, atascos.",
     "muteOffline": "Silenciar alertas de conexión",
     "muteOfflineHint": "El dispositivo dejando de responder, y recuperándose.",
-    "routing": "Enrutado de alertas",
-    "routingHint": "A dónde van las alertas de esta impresora, cuando difiere del centro. Déjalo todo en blanco y usará los destinos generales, que es lo adecuado para casi todas las impresoras.",
-    "routeEmail": "Destinatarios de correo propios",
-    "routeEmailPlaceholder": "soporte-planta2@empresa.com",
-    "routeEmailHint": "Déjalo en blanco para usar los destinatarios SMTP globales. Las direcciones que pongas aquí sustituyen a la lista global para esta impresora, no se suman a ella. Separa varias con comas.",
-    "routeWebhooks": "Destinos de webhook",
-    "routeWebhooksHint": "Si no marcas ninguno, se envía a todos los webhooks activados, tal como estén configurados en Alertas → Webhooks. Si marcas alguno, esta impresora se enruta solo a esos.",
-    "routeWebhooksNone": "Todavía no hay webhooks configurados. Añade uno en Alertas → Webhooks y aparecerá aquí.",
-    "routeWebhookDisabled": "Desactivado en todo el centro",
     "probeIp": "Probar IP",
     "probingIp": "Probando…",
     "probeIpHint": "Comprueba si la dirección responde por IPP, SNMP o interfaz web, y rellena los ajustes que funcionaron.",
@@ -512,6 +504,80 @@
     "alreadyMuted": "En mantenimiento",
     "mutedNotice": "{{name}} está en modo mantenimiento. La condición se sigue registrando y se sigue mostrando aquí; solo se detienen el correo y los webhooks.",
     "deviceGone": "Esta impresora ha sido eliminada."
+  },
+  "alertRules": {
+    "title": "Reglas de alerta",
+    "intro": "Las alertas son opcionales. Cada regla indica qué vigilar, en qué impresoras y a quién avisar; un centro sin reglas no envía nada.",
+    "loading": "Cargando reglas de alerta…",
+    "add": "Añadir regla",
+    "addTitle": "Añadir regla de alerta",
+    "editTitle": "Editar regla de alerta",
+    "added": "Regla creada.",
+    "updated": "Regla guardada.",
+    "deleted": "Se eliminó «{{name}}».",
+    "emptyTitle": "Todavía no hay reglas de alerta.",
+    "emptyBody": "No se enviará ningún correo ni webhook hasta que añadas una. Las condiciones se siguen detectando, se registran en el historial de actividad y se muestran en el panel.",
+    "emptyHint": "Añade una regla para que te avisen de lo que este centro ya detecta.",
+    "name": "Nombre de la regla",
+    "namePlaceholder": "Plóteres sin conexión fuera de horario",
+    "saveRule": "Guardar regla",
+    "enabled": "Regla activa",
+    "enabledHint": "Desactívala para que deje de dispararse sin borrarla.",
+    "disabled": "desactivada",
+    "toggleAria": "Activar o desactivar la regla «{{name}}»",
+    "deleteTitle": "¿Eliminar esta regla de alerta?",
+    "deleteBody": "«{{name}}» dejará de dispararse y no se podrá recuperar. Nada más de tus impresoras cambia.",
+    "condition": {
+      "label": "Condición",
+      "offline": "Dispositivo sin conexión",
+      "supply_low": "Nivel de consumible bajo",
+      "waste_full": "Depósito de residuos lleno",
+      "media_out": "Sin papel / bandeja vacía"
+    },
+    "threshold": {
+      "minutes": "Tras (minutos)",
+      "percent": "Al (%)"
+    },
+    "thresholdHint": {
+      "minutes": "Cuánto tiempo debe seguir sin responder una impresora antes de que salte la regla. Déjalo en blanco para que salte en cuanto se la dé por desconectada.",
+      "percent": "Déjalo en blanco para usar el umbral del centro definido en Ajustes: el mismo número que pone la barra en rojo."
+    },
+    "thresholdDefault": "umbral del centro",
+    "afterMinutes": {
+      "one": "tras {{count}} min",
+      "other": "tras {{count}} min"
+    },
+    "atPercent": "al {{percent}} %",
+    "scope": "Qué impresoras",
+    "scopeAll": "Todas las impresoras",
+    "scopeCount": {
+      "one": "{{count}} impresora",
+      "other": "{{count}} impresoras"
+    },
+    "scopeAllOption": "Todas las impresoras",
+    "scopeAllHint": "Todas las registradas ahora, y las que se añadan después.",
+    "scopeSomeOption": "Impresoras seleccionadas",
+    "scopeSomeHint": "Solo las marcadas abajo.",
+    "printers": "Impresoras",
+    "noPrinters": "Todavía no hay impresoras registradas. Añade una en Admin → Dispositivos.",
+    "destinations": "A dónde va",
+    "destinationsHint": "Una regla necesita al menos un destino. Sin ninguno detectaría condiciones y luego no haría nada.",
+    "sendEmail": "Enviar correo",
+    "sendEmailHint": "Usa los ajustes SMTP de la pestaña Ajustes.",
+    "recipients": "Destinatarios propios",
+    "recipientsPlaceholder": "soporte-planta2@empresa.com",
+    "recipientsHint": "Déjalo en blanco para usar los destinatarios globales. Las direcciones que pongas aquí sustituyen a esa lista para esta regla, no se suman a ella.",
+    "webhooks": "Destinos de webhook",
+    "webhooksHint": "Se configuran en Alertas → Webhooks. Marca aquellos a los que debe publicar esta regla.",
+    "noWebhooks": "Todavía no hay webhooks configurados. Añade uno en Alertas → Webhooks.",
+    "channelEmail": "Correo",
+    "channelEmailGlobal": "Correo a los destinatarios globales",
+    "channelWebhook": "Webhook",
+    "channelWebhookCount": {
+      "one": "{{count}} webhook",
+      "other": "{{count}} webhooks"
+    },
+    "webhookDisabled": "Desactivado en todo el centro"
   },
   "webhooks": {
     "title": "Destinos de webhook",

@@ -33,6 +33,7 @@ be turned off. Everything else stays on your network.
 | `/admin/devices`         | Add, edit and remove devices; test a connection before saving               |
 | `/admin/paper-types`     | Media code → friendly name mapping                                          |
 | `/admin/alerts`          | Alert history and what is currently alerting                                |
+| `/admin/alerts/rules`    | Alert rules — what to watch, on which printers, and who to tell             |
 | `/admin/alerts/webhooks` | Webhook destinations — Discord, Slack, ntfy, generic JSON                   |
 
 ## Architecture
@@ -120,11 +121,19 @@ alerting rather than defaulted to zero.
 
 ### Alerting
 
-Thresholds live in the `alert_rules` table, not in settings. A row with no
-device is the default for everything; a row naming a device overrides it, and a
-row naming a supply overrides that. The API and the UI both read the evaluated
-result, so the number shown on a bar and the number that sends mail cannot
-drift apart.
+Two tables, and the distinction is the whole design.
+
+`alert_rules` holds **thresholds** — the measurement. A row with no device is
+the default for everything; a row naming a device overrides it, and a row naming
+a supply overrides that. This is what turns a bar red and files a cartridge
+under "needs re-order", and it applies whether or not anyone is being notified.
+The API and the UI both read the evaluated result, so the number shown on a bar
+and the number the engine acts on cannot drift apart.
+
+`notification_rules` holds **delivery policy** — who gets told, covered under
+[Alert rules](#alert-rules) below. Turning off an email must never stop the
+dashboard telling the truth, which is why collapsing the two into one table
+would be wrong however tempting the shared name is.
 
 Alerts are **edge-triggered**: mail goes out when a supply crosses its threshold, not on
 every poll where it happens to be past it. Otherwise a cartridge sitting at 10% would
@@ -154,6 +163,9 @@ comes back, and nothing in between however long the outage lasts.
 Each device carries four switches under **Admin → Devices → Alert suppression**:
 maintenance mode (everything), and one each for supply, media and offline
 alerts.
+
+Maintenance mode exempts a device from rule evaluation entirely; the three
+category switches narrow that to one kind of condition.
 
 Suppression silences _notification_, never monitoring. A muted device is still
 polled, still evaluated, still shown as failing on the dashboard, and its alerts
@@ -187,31 +199,56 @@ Configure them under **Admin → Alerts → Webhooks**, where each has a Test bu
 The test posts to the _saved_ row, not to the form, so a green result means the
 destination that will actually fire at 2am works.
 
-#### Per-printer routing
+#### Alert rules
 
-The destinations above are hub-wide, which is right for almost every printer.
-A single machine can override them under **Admin → Devices → Alert routing**:
-its own email recipients, and a subset of the configured webhooks — the second
-floor's plotter paging the second floor's support address rather than the whole
-IT list.
+Notification is **opt-in**. Nothing is emailed or posted to a webhook unless a
+rule under **Admin → Alerts → Rules** asks for it — a hub with no rules is
+silent, however loudly its printers complain.
 
-Blank means _the hub-wide destinations_, not _nowhere_. Clearing the address
-field or unchecking every webhook goes back to the default rather than silencing
-the printer, because a device that quietly stopped alerting when a field was
-emptied is the exact failure this subsystem exists to prevent. Silencing is what
-the mute switches above are for, and they say so on the tin.
+That is a deliberate reversal of how this used to work. The old engine mailed on
+every threshold crossing on every device the moment SMTP was configured, which
+is right for three printers and unusable for thirty: the only way to stop being
+paged about the spare in the store room was to mute it by hand.
 
-Addresses entered here **replace** the global list for that printer rather than
-adding to it. Deleting a webhook removes it from every printer that routed to
-it, so a selection never points at a destination that is gone.
+> **Upgrading?** Existing installs go quiet until you add a rule. One rule —
+> all printers, "supply level low", no threshold, send email — reproduces the
+> old behaviour for supplies; add a second for "device offline" to match it
+> fully.
+
+A rule names four things:
+
+|                  |                                                                                                                                              |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Scope**        | All printers, or a chosen few.                                                                                                               |
+| **Condition**    | Device offline, supply level low, waste box full, or paper out.                                                                              |
+| **Threshold**    | Minutes for offline, percent for a supply. Blank means "whenever the hub already calls it a problem" — the same mark that turns the bar red. |
+| **Destinations** | Email (optionally to addresses of the rule's own) and any of the configured webhooks.                                                        |
+
+Rules own their own edges, so two rules watching the same cartridge at different
+percentages each announce themselves once and neither silences the other. Where
+two rules cover the same printer, their destinations are unioned rather than
+resolved to the more specific — both audiences asked to be told.
+
+Two things are called a rule in this codebase and they are not the same. This
+table is _delivery policy_. The thresholds on the Settings page are
+_measurement_: they decide when a bar turns red and what the Supplies page files
+under "needs re-order", and they apply whether or not anyone is being notified.
+Turning off an email must never stop the dashboard telling the truth.
+
+#### What still happens without rules
+
+Everything except the message. Conditions are detected, the activity log records
+them, bars go red, and the Overview counts them. A hub configured with no rules
+at all is a working dashboard that never interrupts anyone — which is a
+reasonable way to run one.
 
 #### Reading what is alerting
 
-**Admin → Alerts** lists every outstanding condition as a card: the printer,
-what kind of alert it is, how long it has been going, and how many times it has
-been notified. Each card carries a **Put in maintenance mode** button, since
-that is what an operator does next about nine times in ten and it otherwise
-meant navigating to the device form to find a checkbox.
+**Admin → Alerts → History** lists every outstanding condition as a card: the
+printer, what kind of alert it is, how long it has been going, and how many
+times it has been notified. Each card carries a **Put in maintenance mode**
+button, since that is what an operator does next about nine times in ten and it
+otherwise meant navigating to the device form to find a checkbox.
 
 ## Requirements
 

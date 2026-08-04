@@ -4,19 +4,37 @@
  * Everything under /api/admin (except the login/session endpoints) is behind
  * `requireAdmin`.
  */
+import { randomUUID } from 'node:crypto';
+
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 
-import { activeAlerts, recentAlertLogs } from '../alerts/engine.js';
+import {
+  activeAlerts,
+  clearAlertStateForRule,
+  recentAlertLogs,
+} from '../alerts/engine.js';
 import { sendTestEmail } from '../alerts/mailer.js';
 import {
   dispatchWebhooks,
-  forgetWebhookRouting,
   getWebhook,
   listWebhooks,
   toTarget,
 } from '../alerts/webhooks.js';
-import { looksLikeEmail, parseRecipients } from '../alerts/routing.js';
+import {
+  CONDITION_TYPES,
+  isConditionType,
+  isRuleScope,
+  looksLikeEmail,
+  parseIdList,
+  parseRecipients,
+} from '../alerts/notification-rules.js';
+import {
+  forgetWebhookInRules,
+  getNotificationRule,
+  listNotificationRuleRows,
+  toRule,
+} from '../alerts/notification-store.js';
 import {
   isWebhookFormat,
   WEBHOOK_FORMAT_LABELS,
@@ -36,6 +54,7 @@ import {
   jobs,
   mediaSources,
   mediaTypes,
+  notificationRules,
   settings,
   supplies,
   supplyHistory,
@@ -158,6 +177,156 @@ function parseLogoUrl(raw: unknown): { url: string } | { error: string } {
     return { error: `Logo URL cannot use the "${parsed.protocol}" scheme.` };
   }
   return { url: parsed.toString() };
+}
+
+// --- notification rules ------------------------------------------------
+
+interface RuleBody {
+  name?: string;
+  enabled?: boolean;
+  scope?: string;
+  deviceIds?: unknown;
+  conditionType?: string;
+  threshold?: unknown;
+  notifyEmail?: boolean;
+  customRecipients?: string | string[] | null;
+  webhookDestinationIds?: unknown;
+}
+
+type RuleValues = {
+  name: string;
+  enabled: boolean;
+  scope: string;
+  deviceIds: string | null;
+  conditionType: string;
+  threshold: number | null;
+  notifyEmail: boolean;
+  customRecipients: string | null;
+  webhookDestinationIds: string | null;
+};
+
+/** The lists come back parsed, so the editor never re-implements the splitting. */
+function presentRule(row: typeof notificationRules.$inferSelect) {
+  const rule = toRule(row);
+
+  return {
+    id: row.id,
+    name: row.name,
+    enabled: row.enabled,
+    // A row whose condition this build does not recognise is still listed, so it
+    // can be seen and deleted rather than silently doing nothing forever.
+    conditionType: row.conditionType,
+    isKnownCondition: rule !== null,
+    scope: rule?.scope ?? 'all',
+    deviceIds: rule?.deviceIds ?? [],
+    threshold: row.threshold,
+    notifyEmail: row.notifyEmail,
+    customRecipients: rule?.customRecipients ?? [],
+    webhookIds: rule?.webhookIds ?? [],
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/**
+ * Validates a create or update body.
+ *
+ * On update every field is optional, so a partial patch cannot blank a rule's
+ * name by omission — but anything present is validated exactly as on create.
+ *
+ * Ids are filtered against the rows that exist rather than trusted: a stale
+ * browser tab offering a since-deleted printer must not be able to store a rule
+ * that watches nothing.
+ */
+function parseRuleBody(
+  body: RuleBody,
+  options: { isCreate: true },
+): { values: RuleValues } | { error: string };
+function parseRuleBody(
+  body: RuleBody,
+  options: { isCreate: false },
+): { values: Partial<RuleValues> } | { error: string };
+function parseRuleBody(
+  body: RuleBody,
+  options: { isCreate: boolean },
+): { values: Partial<RuleValues> } | { error: string } {
+  const values: Partial<RuleValues> = {};
+
+  if (options.isCreate || body.name !== undefined) {
+    const name = String(body.name ?? '').trim();
+    if (name === '') return { error: 'A rule name is required.' };
+    if (name.length > 80) return { error: 'Name must be 80 characters or fewer.' };
+    values.name = name;
+  }
+
+  if (options.isCreate || body.conditionType !== undefined) {
+    if (!isConditionType(body.conditionType)) {
+      return { error: `Condition must be one of: ${CONDITION_TYPES.join(', ')}.` };
+    }
+    values.conditionType = body.conditionType;
+  }
+
+  if (options.isCreate || body.scope !== undefined) {
+    const scope = body.scope ?? 'all';
+    if (!isRuleScope(scope)) return { error: 'Scope must be "all" or "selected".' };
+    values.scope = scope;
+  }
+
+  if (options.isCreate || body.deviceIds !== undefined) {
+    const known = new Set(
+      db
+        .select({ id: devices.id })
+        .from(devices)
+        .all()
+        .map((r) => r.id),
+    );
+    const ids = parseIdList(body.deviceIds).filter((id) => known.has(id));
+    values.deviceIds = ids.length === 0 ? null : JSON.stringify(ids);
+  }
+
+  if (options.isCreate || body.threshold !== undefined) {
+    // Blank is a real answer — "whenever the condition holds" — and is not the
+    // same as zero, which for a supply rule would mean "only when empty".
+    const raw = body.threshold;
+    if (raw === null || raw === undefined || raw === '') {
+      values.threshold = null;
+    } else {
+      const threshold = clampNumber(raw, 0, 10_000);
+      if (threshold === undefined) return { error: 'Threshold must be a number.' };
+      values.threshold = threshold;
+    }
+  }
+
+  if (options.isCreate || body.notifyEmail !== undefined) {
+    values.notifyEmail = body.notifyEmail !== false;
+  }
+
+  if (options.isCreate || body.customRecipients !== undefined) {
+    const recipients = parseRecipients(body.customRecipients);
+    const bad = recipients.filter((entry) => !looksLikeEmail(entry));
+    if (bad.length > 0) {
+      return { error: `Not valid email addresses: ${bad.join(', ')}` };
+    }
+    values.customRecipients = recipients.length === 0 ? null : recipients.join(', ');
+  }
+
+  if (options.isCreate || body.webhookDestinationIds !== undefined) {
+    const known = new Set(listWebhooks().map((row) => row.id));
+    const ids = parseIdList(body.webhookDestinationIds).filter((id) => known.has(id));
+    values.webhookDestinationIds = ids.length === 0 ? null : JSON.stringify(ids);
+  }
+
+  // A rule that reaches nobody is a rule that will never do anything, and the
+  // silence would look like the engine being broken rather than the rule being
+  // half-finished.
+  const notifyEmail = values.notifyEmail ?? true;
+  const hasWebhooks =
+    values.webhookDestinationIds !== undefined && values.webhookDestinationIds !== null;
+  if (options.isCreate && !notifyEmail && !hasWebhooks) {
+    return { error: 'Pick at least one destination: email, a webhook, or both.' };
+  }
+
+  return { values };
 }
 
 // --- webhooks ----------------------------------------------------------
@@ -644,9 +813,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       let deviceId: number | null = null;
       if (rawDeviceId !== undefined && rawDeviceId !== null) {
         if (typeof rawDeviceId !== 'number' || !Number.isInteger(rawDeviceId)) {
-          return reply
-            .code(400)
-            .send({ error: 'deviceId must be a device id or null.' });
+          return reply.code(400).send({ error: 'deviceId must be a device id or null.' });
         }
         const exists = db
           .select({ id: devices.id })
@@ -725,6 +892,83 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .all(),
   }));
 
+  // --- notification rules ----------------------------------------------
+  //
+  // Alerting is opt-in through these. An empty table means the hub sends
+  // nothing, which is why the list endpoint is what the Rules tab opens on and
+  // why it says so when it comes back empty.
+
+  app.get('/api/admin/alert-rules', { preHandler: requireAdmin }, async () => ({
+    conditions: CONDITION_TYPES,
+    rules: listNotificationRuleRows().map(presentRule),
+  }));
+
+  app.post<{ Body: RuleBody }>(
+    '/api/admin/alert-rules',
+    { preHandler: requireAdmin },
+    async (request, reply) => {
+      const parsed = parseRuleBody(request.body ?? {}, { isCreate: true });
+      if ('error' in parsed) return reply.code(400).send({ error: parsed.error });
+
+      const now = new Date();
+      const created = db
+        .insert(notificationRules)
+        .values({
+          ...parsed.values,
+          id: randomUUID(),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .all()[0];
+
+      request.log.info({ rule: parsed.values.name }, 'alert rule created');
+      return reply
+        .code(201)
+        .send(presentRule(created as typeof notificationRules.$inferSelect));
+    },
+  );
+
+  app.put<{ Params: { id: string }; Body: RuleBody }>(
+    '/api/admin/alert-rules/:id',
+    { preHandler: requireAdmin },
+    async (request, reply) => {
+      const { id } = request.params;
+      if (getNotificationRule(id) === undefined) {
+        return reply.code(404).send({ error: 'No such alert rule.' });
+      }
+
+      const parsed = parseRuleBody(request.body ?? {}, { isCreate: false });
+      if ('error' in parsed) return reply.code(400).send({ error: parsed.error });
+
+      db.update(notificationRules)
+        .set({ ...parsed.values, updatedAt: new Date() })
+        .where(eq(notificationRules.id, id))
+        .run();
+
+      // An edited rule starts fresh. Its threshold or its scope may have moved,
+      // and state left over from the old shape would either hold back an alert
+      // the new rule should raise or clear one it never raised.
+      clearAlertStateForRule(id);
+
+      return presentRule(
+        getNotificationRule(id) as typeof notificationRules.$inferSelect,
+      );
+    },
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    '/api/admin/alert-rules/:id',
+    { preHandler: requireAdmin },
+    async (request) => {
+      const { id } = request.params;
+      db.delete(notificationRules).where(eq(notificationRules.id, id)).run();
+      clearAlertStateForRule(id);
+      request.log.info({ rule: id }, 'alert rule deleted');
+      return { ok: true };
+    },
+  );
+
   // --- webhook destinations --------------------------------------------
 
   app.get('/api/admin/webhooks', { preHandler: requireAdmin }, async () => ({
@@ -779,10 +1023,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     async (request) => {
       const id = Number.parseInt(request.params.id, 10);
       db.delete(webhooks).where(eq(webhooks.id, id)).run();
-      // Devices routing at this destination lose it from their selection. A
-      // device left holding only dead ids would route at nothing while its
-      // routing card showed an empty — that is, defaulted — selection.
-      forgetWebhookRouting(id);
+      // Rules posting to this destination lose it from their selection. A rule
+      // left holding only dead ids would post nowhere while its editor showed
+      // an empty — that is, "none chosen" — selection.
+      forgetWebhookInRules(id);
       return { ok: true };
     },
   );
@@ -870,33 +1114,38 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
    * tables (alert_logs, activity_events) only null their device reference on a
    * device delete, so they would survive a devices-only wipe.
    */
-  app.post('/api/admin/reset/factory', { preHandler: requireAdmin }, async (request, reply) => {
-    db.transaction((tx) => {
-      for (const table of [
-        activityEvents,
-        alertLogs,
-        alertState,
-        alertRules,
-        jobs,
-        supplyHistory,
-        supplies,
-        mediaSources,
-        mediaTypes,
-        deviceStatus,
-        webhooks,
-        devices,
-        settings,
-      ]) {
-        tx.delete(table).run();
-      }
-    });
+  app.post(
+    '/api/admin/reset/factory',
+    { preHandler: requireAdmin },
+    async (request, reply) => {
+      db.transaction((tx) => {
+        for (const table of [
+          activityEvents,
+          alertLogs,
+          alertState,
+          alertRules,
+          notificationRules,
+          jobs,
+          supplyHistory,
+          supplies,
+          mediaSources,
+          mediaTypes,
+          deviceStatus,
+          webhooks,
+          devices,
+          settings,
+        ]) {
+          tx.delete(table).run();
+        }
+      });
 
-    clearCache();
-    // Ends this session, so the redirect to onboarding lands as a fresh visitor
-    // rather than an admin whose hub has vanished underneath them.
-    clearSession(reply);
-    request.log.warn({ ip: request.ip }, 'admin performed a FACTORY RESET');
+      clearCache();
+      // Ends this session, so the redirect to onboarding lands as a fresh visitor
+      // rather than an admin whose hub has vanished underneath them.
+      clearSession(reply);
+      request.log.warn({ ip: request.ip }, 'admin performed a FACTORY RESET');
 
-    return { ok: true };
-  });
+      return { ok: true };
+    },
+  );
 }

@@ -21,6 +21,7 @@ import { useAuth } from '../../auth/AuthContext.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { useTranslation } from '../../i18n/i18n.js';
 import { Link, matchPath, useRouter } from '../../router.js';
+import { AdminAlertRules } from './AdminAlertRules.js';
 import { AdminAlerts } from './AdminAlerts.js';
 import { AdminDevices } from './AdminDevices.js';
 import { AdminLogin } from './AdminLogin.js';
@@ -36,9 +37,16 @@ const TABS: { to: string; key: string; icon: LucideIcon }[] = [
   { to: '/admin/alerts', key: 'alerts', icon: Bell },
 ];
 
-/** Sections under the Alerts tab. */
+/**
+ * Sections under the Alerts tab.
+ *
+ * History leads because it answers the question that brings people here — "did
+ * it actually send?" — but Rules is where the answer usually is, since a hub
+ * with none sends nothing at all.
+ */
 const ALERT_TABS = [
   { to: '/admin/alerts', key: 'history' },
+  { to: '/admin/alerts/rules', key: 'rules' },
   { to: '/admin/alerts/webhooks', key: 'webhooks' },
 ];
 
@@ -127,7 +135,8 @@ export function AdminPortal() {
   const isDevices = matchPath('/admin/devices', path) !== null;
   const isPaperTypes = matchPath('/admin/paper-types', path) !== null;
   const isWebhooks = matchPath('/admin/alerts/webhooks', path) !== null;
-  const isAlerts = matchPath('/admin/alerts', path) !== null || isWebhooks;
+  const isRules = matchPath('/admin/alerts/rules', path) !== null;
+  const isAlerts = matchPath('/admin/alerts', path) !== null || isWebhooks || isRules;
   const isSettings = !isDevices && !isPaperTypes && !isAlerts;
 
   return (
@@ -167,7 +176,15 @@ export function AdminPortal() {
               key={tab.to}
               to={tab.to}
               className={`tab${
-                (tab.to === '/admin/alerts/webhooks') === isWebhooks ? ' is-active' : ''
+                (
+                  tab.to === '/admin/alerts/webhooks'
+                    ? isWebhooks
+                    : tab.to === '/admin/alerts/rules'
+                      ? isRules
+                      : !isWebhooks && !isRules
+                )
+                  ? ' is-active'
+                  : ''
               }`}
             >
               {t(`admin.tabs.${tab.key}`)}
@@ -182,6 +199,8 @@ export function AdminPortal() {
         <AdminPaperTypes />
       ) : isWebhooks ? (
         <AdminWebhooks />
+      ) : isRules ? (
+        <AdminAlertRules />
       ) : isAlerts ? (
         <AdminAlerts />
       ) : (

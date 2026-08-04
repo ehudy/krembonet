@@ -12,6 +12,7 @@ import type {
   AdminDevice,
   AdminSettings,
   AlertLogRow,
+  AlertRule,
   AlertStateRow,
   DiscoveredMediaCode,
   HubBranding,
@@ -249,6 +250,33 @@ export const api = {
   alerts: (signal?: AbortSignal) =>
     request<{ active: AlertStateRow[]; recent: AlertLogRow[] }>('/api/admin/alerts', {
       signal,
+    }),
+
+  /**
+   * Alert rules — the opt-in delivery policy. An empty list means the hub
+   * notifies nobody, which is why the Rules tab says so rather than showing a
+   * bare empty state.
+   */
+  listAlertRules: (signal?: AbortSignal) =>
+    request<{ conditions: string[]; rules: AlertRule[] }>('/api/admin/alert-rules', {
+      signal,
+    }),
+
+  createAlertRule: (body: Record<string, unknown>) =>
+    request<AlertRule>('/api/admin/alert-rules', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateAlertRule: (id: string, body: Record<string, unknown>) =>
+    request<AlertRule>(`/api/admin/alert-rules/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  deleteAlertRule: (id: string) =>
+    request<{ ok: true }>(`/api/admin/alert-rules/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
     }),
 
   listWebhooks: (signal?: AbortSignal) =>
