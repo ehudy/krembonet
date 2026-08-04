@@ -354,7 +354,6 @@
     "address": "Address",
     "adapter": "Adapter",
     "reports": "Reports",
-    "disabled": "Disabled",
     "unknownAdapter": "unknown",
     "unknownAdapterTitle": "No adapter is registered under this id",
     "added": "Device added.",
@@ -395,7 +394,8 @@
     "deleteBody": "Are you sure you want to delete \"{{name}}\"? Its readings and supply history will be removed and cannot be recovered.",
     "deleteConfirm": "Delete printer",
     "deleting": "Deleting…",
-    "probeUnidentified": "Answered on {{protocols}}, but nothing this hub can poll identified itself. Check the device is a printer and that IPP or SNMP is enabled on it."
+    "probeUnidentified": "Answered on {{protocols}}, but nothing this hub can poll identified itself. Check the device is a printer and that IPP or SNMP is enabled on it.",
+    "pollingAria": "Poll “{{name}}” or leave it paused"
   },
   "discover": {
     "title": "Auto-discover",
@@ -595,7 +595,9 @@
       "one": "+{{count}} more",
       "other": "+{{count}} more"
     },
-    "unreadable": "Unreadable"
+    "unreadable": "Unreadable",
+    "noThreshold": "No threshold",
+    "thresholdBlankHint": "Leave a threshold blank to use the hub’s own mark from Settings — the same number that turns the bar red."
   },
   "webhooks": {
     "title": "Webhook destinations",

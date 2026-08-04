@@ -518,71 +518,78 @@ export function AdminAlertRules() {
             </label>
           </div>
 
-          {/* A checkbox group rather than a dropdown, because a rule can watch
-              for several things at once and "offline or out of ink on the
-              plotters" is one rule an operator maintains, not two that share a
-              name and a destination list and then drift apart. */}
+          {/* One row per condition, each paired with the number it fires on.
+              They used to be a row of checkboxes with the threshold inputs
+              collected underneath, which meant reading left to right to find
+              what was ticked and then down to find which box belonged to it —
+              and the inputs appeared and disappeared as boxes moved, shifting
+              everything below them. A row that is always present, with its
+              input dimmed until the condition is on, holds still. */}
           <h3 className="card-subtitle">{t('alertRules.condition.label')}</h3>
           <p className="field-hint">{t('alertRules.conditionHint')}</p>
 
-          <div className="checkbox-list is-inline">
-            {CONDITIONS.map((condition) => (
-              <label key={condition} className="field field-check">
-                <input
-                  type="checkbox"
-                  checked={draft.conditions.includes(condition)}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      conditions: event.target.checked
-                        ? [...draft.conditions, condition]
-                        : draft.conditions.filter((entry) => entry !== condition),
-                    })
-                  }
-                />
-                <span>{t(`alertRules.condition.${condition}`)}</span>
-              </label>
-            ))}
-          </div>
+          <ul className="condition-rows">
+            {CONDITIONS.map((condition) => {
+              const checked = draft.conditions.includes(condition);
+              const field = takesThreshold(condition)
+                ? THRESHOLD_FIELDS[condition]
+                : null;
 
-          {/* One input per checked condition that takes a number, side by side.
-              They are not interchangeable — minutes for an outage, a floor for a
-              consumable, a ceiling for a waste box — so each carries its own
-              label and its own hint rather than one field changing meaning
-              under the cursor. */}
-          {draft.conditions.some(takesThreshold) && (
-            <div className="field-grid threshold-grid">
-              {CONDITIONS.filter(takesThreshold)
-                .filter((condition) => draft.conditions.includes(condition))
-                .map((condition) => {
-                  const { key, unit } = THRESHOLD_FIELDS[condition];
-                  return (
-                    <label key={condition} className="field field-narrow">
+              return (
+                <li key={condition} className={`condition-row${checked ? ' is-on' : ''}`}>
+                  <label className="field field-check condition-toggle">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          conditions: event.target.checked
+                            ? [...draft.conditions, condition]
+                            : draft.conditions.filter((entry) => entry !== condition),
+                        })
+                      }
+                    />
+                    <span>{t(`alertRules.condition.${condition}`)}</span>
+                  </label>
+
+                  {field === null ? (
+                    // Paper is either out or it is not. Saying so beats an empty
+                    // column that reads as a field somebody forgot to build.
+                    <span className="condition-threshold is-none muted">
+                      {t('alertRules.noThreshold')}
+                    </span>
+                  ) : (
+                    <label className="condition-threshold">
                       <span>{t(`alertRules.threshold.${condition}`)}</span>
                       <input
                         type="number"
                         min={0}
-                        max={unit === 'percent' ? 100 : 10_000}
-                        value={draft.thresholds[key]}
+                        max={field.unit === 'percent' ? 100 : 10_000}
+                        value={draft.thresholds[field.key]}
                         placeholder={t('alertRules.thresholdDefault')}
+                        // Not merely dimmed: a box that takes a number the rule
+                        // will never read is a box that invites typing one.
+                        disabled={!checked}
+                        title={t(`alertRules.thresholdHint.${condition}`)}
                         onChange={(event) =>
                           setDraft({
                             ...draft,
                             thresholds: {
                               ...draft.thresholds,
-                              [key]: event.target.value,
+                              [field.key]: event.target.value,
                             },
                           })
                         }
                       />
-                      <small className="field-hint">
-                        {t(`alertRules.thresholdHint.${condition}`)}
-                      </small>
                     </label>
-                  );
-                })}
-            </div>
-          )}
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          <p className="field-hint">{t('alertRules.thresholdBlankHint')}</p>
 
           <h3 className="card-subtitle">{t('alertRules.scope')}</h3>
 

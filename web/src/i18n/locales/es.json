@@ -354,7 +354,6 @@
     "address": "Dirección",
     "adapter": "Adaptador",
     "reports": "Informa de",
-    "disabled": "Desactivado",
     "unknownAdapter": "desconocido",
     "unknownAdapterTitle": "No hay ningún adaptador registrado con este identificador",
     "added": "Dispositivo añadido.",
@@ -395,7 +394,8 @@
     "deleteBody": "¿Seguro que quieres eliminar «{{name}}»? Sus lecturas y su historial de consumibles se borrarán y no se podrán recuperar.",
     "deleteConfirm": "Eliminar impresora",
     "deleting": "Eliminando…",
-    "probeUnidentified": "Respondió por {{protocols}}, pero nada que este centro pueda consultar se identificó. Comprueba que el dispositivo es una impresora y que tiene IPP o SNMP activado."
+    "probeUnidentified": "Respondió por {{protocols}}, pero nada que este centro pueda consultar se identificó. Comprueba que el dispositivo es una impresora y que tiene IPP o SNMP activado.",
+    "pollingAria": "Sondear «{{name}}» o dejarla en pausa"
   },
   "discover": {
     "title": "Detección automática",
@@ -595,7 +595,9 @@
       "one": "+{{count}} más",
       "other": "+{{count}} más"
     },
-    "unreadable": "Ilegible"
+    "unreadable": "Ilegible",
+    "noThreshold": "Sin umbral",
+    "thresholdBlankHint": "Deja un umbral en blanco para usar el valor del centro definido en Ajustes: el mismo número que pone la barra en rojo."
   },
   "webhooks": {
     "title": "Destinos de webhook",

@@ -281,6 +281,8 @@ export function AdminDevices() {
   const [smart, setSmart] = useState<SmartProbeResponse | null>(null);
   const [isSmartProbing, setIsSmartProbing] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AdminDevice | null>(null);
+  /** The device whose switch is mid-flight, so only its own row shows busy. */
+  const [togglingId, setTogglingId] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -409,6 +411,30 @@ export function AdminDevices() {
     }
   }
 
+  /**
+   * Pauses or resumes polling from the table, without opening the form.
+   *
+   * A one-field patch: the update route leaves every column the body does not
+   * mention alone, so this cannot disturb a config or a mute flag on its way
+   * past. Reloads rather than patching the row in place — the server clears and
+   * rehydrates its cache on a device update, and a row that disagreed with what
+   * the next poll will do is worse than a moment's wait.
+   */
+  async function toggleEnabled(device: AdminDevice): Promise<void> {
+    setTogglingId(device.id);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await api.updateDevice(device.id, { enabled: !device.enabled });
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   async function save(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (draft === null) return;
@@ -519,6 +545,11 @@ export function AdminDevices() {
           <table className="data-table">
             <thead>
               <tr>
+                {/* No visible header: the column is a row of switches, and any
+                    word over them would be wider than the control itself. */}
+                <th scope="col" className="enabled-column">
+                  <span className="visually-hidden">{t('devices.enabled')}</span>
+                </th>
                 <SortableHeader
                   field="name"
                   sort={sort}
@@ -549,6 +580,18 @@ export function AdminDevices() {
             <tbody>
               {sorted.map((device) => (
                 <tr key={device.id} className={device.enabled ? '' : 'is-muted'}>
+                  <td className="enabled-column">
+                    {/* Takes effect on the click. The row dims when it goes
+                        off, which is the badge this replaces — a pill saying
+                        "Disabled" beside a switch that is visibly off says the
+                        same thing twice. */}
+                    <ToggleSwitch
+                      checked={device.enabled}
+                      disabled={togglingId !== null}
+                      ariaLabel={t('devices.pollingAria', { name: device.displayName })}
+                      onChange={() => void toggleEnabled(device)}
+                    />
+                  </td>
                   <td>
                     <strong>{device.displayName}</strong>
                     {device.location !== null && (
@@ -556,9 +599,6 @@ export function AdminDevices() {
                     )}
                     {device.model !== null && (
                       <small className="muted"> · {device.model}</small>
-                    )}
-                    {!device.enabled && (
-                      <span className="pill is-warn">{t('devices.disabled')}</span>
                     )}
                   </td>
                   <td>
@@ -609,9 +649,20 @@ export function AdminDevices() {
 
       {draft !== null && (
         <form className="card" onSubmit={(event) => void save(event)}>
-          <h2 className="card-title">
-            {draft.id === null ? 'Add device' : `Edit ${draft.displayName}`}
-          </h2>
+          {/* Whether the printer is polled at all sits in the header, next to
+              its name, rather than as the fifth field down. It is the switch
+              that decides whether any of the settings below it run. */}
+          <div className="card-head">
+            <h2 className="card-title">
+              {draft.id === null ? 'Add device' : `Edit ${draft.displayName}`}
+            </h2>
+            <ToggleSwitch
+              checked={draft.enabled}
+              label={t('devices.enabled')}
+              hint={t('devices.enabledHint')}
+              onChange={(next) => setDraft({ ...draft, enabled: next })}
+            />
+          </div>
 
           <div className="field-grid">
             <label className="field">
@@ -682,20 +733,6 @@ export function AdminDevices() {
                   </option>
                 ))}
               </select>
-            </label>
-
-            <label className="field field-check">
-              <input
-                type="checkbox"
-                checked={draft.enabled}
-                onChange={(event) =>
-                  setDraft({ ...draft, enabled: event.target.checked })
-                }
-              />
-              <span>
-                {t('devices.enabled')}
-                <small>{t('devices.enabledHint')}</small>
-              </span>
             </label>
           </div>
 

@@ -1510,6 +1510,18 @@ a.alert-device:focus-visible {
   line-height: 1.5;
 }
 
+/* The switch column on the admin devices table. Narrow, and exempt from the
+   row dimming below — a control that looks disabled on the rows it exists to
+   re-enable is the one thing it must not do. */
+.enabled-column {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.data-table tr.is-muted td.enabled-column {
+  opacity: 1;
+}
+
 /* Alert rules -------------------------------------------------------------- */
 
 .rule-list {
@@ -1585,20 +1597,99 @@ a.alert-device:focus-visible {
   color: var(--text-muted);
 }
 
-/* Conditions read across rather than down: four short labels stacked is a tall
-   column of mostly whitespace, and they are alternatives to each other. */
-.checkbox-list.is-inline {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 8px 22px;
+/* Conditions, one per row, each paired with the number it fires on.
+   Two tracks rather than a flex row: the inputs line up down the right whatever
+   length the condition names are, so the column reads as a column. */
+.condition-rows {
+  list-style: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 20px;
+  margin: 12px 0 0;
+  padding: 0;
 }
 
-/* One narrow input per checked condition, side by side. `auto-fit` rather than
-   the field grid's `1fr` tracks: two number boxes stretched across a wide card
-   look like they take long values, and they take two digits. */
-.threshold-grid {
-  grid-template-columns: repeat(auto-fit, minmax(190px, 220px));
-  margin-top: 14px;
+.condition-row {
+  display: grid;
+  grid-column: span 2;
+  grid-template-columns: subgrid;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.condition-row:last-child {
+  border-bottom: 0;
+}
+
+.condition-toggle {
+  margin: 0;
+}
+
+/* The paired input. Label and box on one line, because the label is two words
+   and stacking them would double the row height for nothing. */
+.condition-threshold {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.condition-threshold > span {
+  flex-shrink: 0;
+}
+
+/* Wide enough for the "hub threshold" placeholder, which is longer than any
+   value it will ever hold — the values are two or three digits, and clipping
+   the word that explains a blank box defeats the point of the placeholder. */
+.condition-threshold input {
+  width: 132px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Dimmed *and* disabled while its condition is off. Dimming alone leaves a box
+   that still takes a number the rule will never read. */
+.condition-threshold input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.condition-row:not(.is-on) .condition-threshold {
+  opacity: 0.55;
+}
+
+/* A condition with nothing to compare. Said out loud rather than left blank,
+   which reads as a field somebody forgot to build. */
+.condition-threshold.is-none {
+  font-weight: 400;
+  font-style: italic;
+}
+
+@media (max-width: 720px) {
+  /* The pairing is the point, but not at the cost of a 40px-wide number box.
+     The input drops under its own condition and keeps the row it belongs to. */
+  .condition-rows,
+  .condition-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .condition-row {
+    grid-column: auto;
+    row-gap: 8px;
+  }
+
+  .condition-threshold {
+    padding-left: 28px;
+  }
 }
 
 .rule-channels {
