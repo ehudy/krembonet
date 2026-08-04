@@ -1590,16 +1590,15 @@ a.alert-device:focus-visible {
   color: var(--danger);
 }
 
-.feedback.is-dirty {
-  color: var(--warning-text);
-}
-
 /* Settings action bar ------------------------------------------------------ */
 
-/* Sticky, so Save is reachable from anywhere on a form seven cards long. It
-   sticks to the bottom of the viewport while the form is on screen and scrolls
-   away once the reset section arrives underneath it, which is the right place
-   to stop following.
+/* Mounted only while the form is dirty or has just been saved — see
+   AdminSettings.tsx — so on a settled form it takes no space at all rather than
+   sitting there as a permanent strip of chrome.
+
+   Sticky rather than at the foot of the page: Save is otherwise seven cards
+   down, and it stops following once the reset section scrolls up underneath it,
+   which is the right place to stop.
 
    The safe-area inset is what makes it usable on a phone: on iOS the home
    indicator sits over the bottom ~34px of the viewport, and a button padded to
@@ -1611,30 +1610,64 @@ a.alert-device:focus-visible {
   z-index: 20;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
-  margin-top: 4px;
-  padding: 14px 18px;
-  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  margin-top: 12px;
+  padding: 12px 20px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  /* Upward, because the thing it has to separate itself from is above it. */
-  box-shadow: 0 -4px 12px rgb(0 0 0 / 22%);
+  border-top: 1px solid var(--border);
+  /* Upward, because the thing it separates itself from is above it, and light:
+     the background change and the hairline already do the work, and a heavy
+     shadow on a bar that appears and disappears reads as a layer being thrown
+     at the page. Barely visible on the dark theme by design; on the light one
+     it is what lifts a white bar off a near-white canvas. */
+  box-shadow: 0 -2px 8px rgb(0 0 0 / 12%);
+  animation: action-bar-in 140ms ease-out;
 }
 
-/* Amber hairline while there is something to lose — the same signal the label
-   carries, for anyone reading the shape of the page rather than its words. */
-.settings-action-bar.is-dirty {
-  border-color: var(--warning-border);
+/* Rises into place rather than appearing mid-form. Flattened wholesale by the
+   prefers-reduced-motion rule at the top of this file. */
+@keyframes action-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 
-/* Takes the slack so the button stays pinned right whether or not there is a
-   message beside it, instead of sliding as feedback appears and clears. */
+/* Takes the slack so the buttons stay pinned right whether or not there is a
+   message beside them, instead of sliding as feedback appears and clears. */
 .settings-action-state {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.settings-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* The unsaved marker. Quieter than the amber border it replaces: the bar only
+   exists when there is something to save, so its presence is already most of
+   the signal and the dot only has to say which kind. */
+.unsaved-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.unsaved-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent-hover);
 }
 
 /* Danger zone -------------------------------------------------------------- */

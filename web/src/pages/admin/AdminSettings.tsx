@@ -49,6 +49,9 @@ interface Feedback {
   message: string;
 }
 
+/** How long the save confirmation holds the action bar open. */
+const SAVED_NOTICE_MS = 4000;
+
 /**
  * Whether anything on the form differs from what was last loaded or saved.
  *
@@ -136,8 +139,43 @@ export function AdminSettings() {
     return () => controller.abort();
   }, []);
 
+  /*
+   * Clears the "saved" confirmation after a moment.
+   *
+   * The bar is only on screen while there is something to say, so once a save
+   * lands the confirmation is the sole thing holding it there — without this it
+   * would sit on a form with nothing left to do, which is the state the bar was
+   * made conditional to avoid.
+   *
+   * Failures are exempt. A failed save leaves the draft differing from what is
+   * stored, so the bar is staying regardless, and why it failed is the one thing
+   * worth keeping on screen until the operator does something about it.
+   */
+  useEffect(() => {
+    if (saveFeedback === null || saveFeedback.kind !== 'ok') return;
+
+    const timer = window.setTimeout(() => setSaveFeedback(null), SAVED_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [saveFeedback]);
+
   function update<K extends keyof Draft>(key: K, value: Draft[K]): void {
     setDraft((current) => (current === null ? current : { ...current, [key]: value }));
+  }
+
+  /**
+   * Puts every field back to the last loaded or saved state.
+   *
+   * Not behind a confirmation. It only ever discards edits that have not left
+   * the browser, the bar it sits in is proof those edits exist, and a dialog in
+   * front of an undo is the kind of friction that gets clicked through without
+   * reading — which is what makes the dialogs that matter stop working.
+   */
+  function discard(): void {
+    if (saved === null) return;
+    setDraft(saved);
+    setClearPasscode(false);
+    setSaveFeedback(null);
+    setCssWarnings([]);
   }
 
   async function save(event: React.FormEvent): Promise<void> {
@@ -208,6 +246,11 @@ export function AdminSettings() {
   // state — so it has to be counted separately, or the one destructive option on
   // the form would save without ever lighting the bar.
   const isDirty = saved === null || !isSameDraft(draft, saved) || clearPasscode;
+
+  // Feedback keeps the bar open past the edit that produced it: a save whose
+  // confirmation vanished with the bar in the same frame is a save nobody saw
+  // happen.
+  const showActionBar = isDirty || saveFeedback !== null;
 
   return (
     <>
@@ -637,34 +680,58 @@ export function AdminSettings() {
         </label>
       </section>
 
-      {/* Sticky, so Save is reachable from anywhere on a form this long. It
-          used to sit at the very bottom, which on a phone meant scrolling past
-          seven cards to commit a one-character edit — and back up again to
-          check it had not been lost. Sticking to the bottom of the viewport
-          puts the button where the thumb already is; it scrolls away of its own
-          accord once the reset section arrives, which is exactly where it
-          should stop following. */}
-      <div className={`settings-action-bar${isDirty ? ' is-dirty' : ''}`}>
-        <span className="settings-action-state">
-          {saveFeedback !== null ? (
-            <span
-              className={
-                saveFeedback.kind === 'ok' ? 'feedback is-ok' : 'feedback is-error'
-              }
-            >
-              {saveFeedback.message}
-            </span>
-          ) : (
-            // Only when there is something to lose. A bar that says "unsaved
-            // changes" on a form nobody has touched teaches people to ignore it.
-            isDirty && <span className="feedback is-dirty">{t('settings.unsaved')}</span>
-          )}
-        </span>
+      {/* Only on screen when there is something to do about it.
 
-        <button type="submit" className="btn-primary" disabled={isSaving}>
-          {isSaving ? t('common.saving') : t('settings.saveButton')}
-        </button>
-      </div>
+          Sticky rather than at the foot of the page, because Save was seven
+          cards down and committing a one-character edit on a phone meant
+          scrolling past all of them and back up to check it had landed. But a
+          bar that is always there is a permanent strip of chrome over a form
+          that is usually already saved — so it is mounted only while the form
+          is dirty or has just been saved, and takes no vertical space the rest
+          of the time. It stops following once the reset section scrolls up
+          underneath it, which is exactly where it should stop. */}
+      {showActionBar && (
+        <div className="settings-action-bar">
+          <span className="settings-action-state">
+            {saveFeedback !== null ? (
+              <span
+                className={
+                  saveFeedback.kind === 'ok' ? 'feedback is-ok' : 'feedback is-error'
+                }
+              >
+                {saveFeedback.message}
+              </span>
+            ) : (
+              <span className="unsaved-note">
+                {/* The dot carries the state at a glance; the words are for
+                    anyone who needs them, and for a screen reader, which gets
+                    the sentence and not the decoration. */}
+                <span className="unsaved-dot" aria-hidden="true" />
+                {t('settings.unsaved')}
+              </span>
+            )}
+          </span>
+
+          <span className="settings-action-buttons">
+            {/* Absent once the save has landed: there is nothing left to
+                discard, and a live undo button beside "Settings saved" invites
+                exactly the wrong reading of what it would undo. */}
+            {isDirty && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={discard}
+                disabled={isSaving}
+              >
+                {t('settings.discard')}
+              </button>
+            )}
+            <button type="submit" className="btn-primary" disabled={isSaving || !isDirty}>
+              {isSaving ? t('common.saving') : t('settings.saveButton')}
+            </button>
+          </span>
+        </div>
+      )}
       </form>
 
       {/* Outside the settings form, and set well below it: these are their own
