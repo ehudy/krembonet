@@ -11,7 +11,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  categoryOf,
   coversDevice,
   destinationsFor,
   looksLikeEmail,
@@ -20,6 +19,7 @@ import {
   parseIdList,
   parseRecipients,
   ruleStateKey,
+  shouldRepeat,
   type NotificationRule,
   type Observation,
 } from '../src/alerts/notification-rules.js';
@@ -33,6 +33,7 @@ function rule(overrides: Partial<NotificationRule> = {}): NotificationRule {
     deviceIds: [],
     conditionType: 'supply_low',
     threshold: null,
+    repeatInterval: 'once',
     notifyEmail: true,
     customRecipients: [],
     webhookIds: [],
@@ -229,12 +230,45 @@ describe('per-rule state keys', () => {
   });
 });
 
-describe('mute categories', () => {
-  it('maps each condition onto the switch that silences it', () => {
-    assert.equal(categoryOf('offline'), 'offline');
-    assert.equal(categoryOf('media_out'), 'media');
-    assert.equal(categoryOf('supply_low'), 'supply');
-    assert.equal(categoryOf('waste_full'), 'supply');
+describe('repeat intervals', () => {
+  const HOUR = 60 * 60 * 1000;
+  const NOW = 1_800_000_000_000;
+
+  it('never repeats a `once` rule, however long the condition holds', () => {
+    // The default, and the behaviour that stops a cartridge sitting at 10%
+    // mailing every hour forever.
+    const once = rule({ repeatInterval: 'once' });
+    assert.equal(shouldRepeat(once, NOW - 365 * 24 * HOUR, NOW), false);
+  });
+
+  it('waits the full interval before saying it again', () => {
+    const daily = rule({ repeatInterval: '24h' });
+    assert.equal(shouldRepeat(daily, NOW - 23 * HOUR, NOW), false);
+    assert.equal(shouldRepeat(daily, NOW - 24 * HOUR, NOW), true);
+    assert.equal(shouldRepeat(daily, NOW - 49 * HOUR, NOW), true);
+  });
+
+  it('measures each interval from its own clock', () => {
+    assert.equal(
+      shouldRepeat(rule({ repeatInterval: '1h' }), NOW - 61 * 60_000, NOW),
+      true,
+    );
+    assert.equal(
+      shouldRepeat(rule({ repeatInterval: '12h' }), NOW - 61 * 60_000, NOW),
+      false,
+    );
+    assert.equal(
+      shouldRepeat(rule({ repeatInterval: '12h' }), NOW - 13 * HOUR, NOW),
+      true,
+    );
+  });
+
+  it('stays quiet when there is nothing to measure from', () => {
+    // A repeating rule whose destination is unreachable has never recorded a
+    // delivery. Treating that as "notify now" would turn a broken SMTP host
+    // into a log entry every poll; the engine passes the trigger time instead,
+    // and a genuinely absent clock means silence.
+    assert.equal(shouldRepeat(rule({ repeatInterval: '1h' }), null, NOW), false);
   });
 });
 

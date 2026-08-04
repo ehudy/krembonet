@@ -150,21 +150,8 @@ function compareDevices(
 function MuteBadge({ device, t }: { device: DeviceSummary; t: Translate }) {
   if (!device.alertsSuppressed) return null;
 
-  const categories = device.suppressedAlerts
-    .map((category) =>
-      t(`devicesPage.category${category.charAt(0).toUpperCase()}${category.slice(1)}`),
-    )
-    .join(', ');
-
   return (
-    <span
-      className="mute-badge"
-      title={
-        device.isMuted
-          ? t('devicesPage.muted')
-          : t('devicesPage.mutedCategories', { categories })
-      }
-    >
+    <span className="mute-badge" title={t('devicesPage.muted')}>
       <BellOff size={13} strokeWidth={2} aria-hidden="true" />
       <span className="visually-hidden">{t('devicesPage.muted')}</span>
     </span>

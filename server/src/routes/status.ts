@@ -15,7 +15,6 @@ import {
 import { listAlertRules } from '../alerts/store.js';
 import { evaluateSupplies } from '../alerts/rules.js';
 import { requireViewer } from '../auth/session.js';
-import { hasAnySuppression, suppressedCategories } from '../alerts/mute.js';
 import { assessAttention } from '../devices/attention.js';
 import { levelToPercent } from '../devices/types.js';
 import {
@@ -132,8 +131,12 @@ function summarize(view: DeviceView, device: DeviceRow) {
     ...countBreaches(view, device.id),
     activeJobs: view.jobs.length,
     /** True when any alert category is silenced; drives the card indicator. */
-    alertsSuppressed: hasAnySuppression(device),
-    suppressedAlerts: suppressedCategories(device),
+    // One flag now: maintenance mode is the whole of per-device suppression.
+    // `alertsSuppressed` is kept as its own field rather than folded into
+    // `isMuted` because the card and the row read it as "this device will not
+    // shout", which is a question about behaviour and not about which switch is
+    // set — and a future second form of suppression would answer it too.
+    alertsSuppressed: device.isMuted,
     isMuted: device.isMuted,
     attention: attention.level,
     /** One phrase for the card, e.g. "Paper out" or "Paper jam +1". */
@@ -182,8 +185,7 @@ export async function statusRoutes(app: FastifyInstance): Promise<void> {
               attention: 'ok' as const,
               attentionSummary: null,
               attentionReasons: [],
-              alertsSuppressed: hasAnySuppression(device),
-              suppressedAlerts: suppressedCategories(device),
+              alertsSuppressed: device.isMuted,
               isMuted: device.isMuted,
             }
           : summarize(view, device);

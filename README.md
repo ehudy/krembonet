@@ -160,12 +160,15 @@ comes back, and nothing in between however long the outage lasts.
 
 #### Muting
 
-Each device carries four switches under **Admin → Devices → Alert suppression**:
-maintenance mode (everything), and one each for supply, media and offline
-alerts.
+One switch per device, under **Admin → Devices → Alert suppression**:
+**maintenance mode**, for the machine with its lid off on a bench. While it is
+on, no rule fires for that printer.
 
-Maintenance mode exempts a device from rule evaluation entirely; the three
-category switches narrow that to one kind of condition.
+It used to be four — maintenance mode plus one per category. The three category
+switches went when notification became rule-driven: "mute supply alerts for
+this printer" is now something you express by scoping a rule, in the one place
+the rest of the routing lives, rather than by a flag on the device that
+silently overrode it from somewhere else.
 
 Suppression silences _notification_, never monitoring. A muted device is still
 polled, still evaluated, still shown as failing on the dashboard, and its alerts

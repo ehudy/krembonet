@@ -24,10 +24,12 @@ import {
 import {
   CONDITION_TYPES,
   isConditionType,
+  isRepeatInterval,
   isRuleScope,
   looksLikeEmail,
   parseIdList,
   parseRecipients,
+  REPEAT_INTERVALS,
 } from '../alerts/notification-rules.js';
 import {
   forgetWebhookInRules,
@@ -188,6 +190,7 @@ interface RuleBody {
   deviceIds?: unknown;
   conditionType?: string;
   threshold?: unknown;
+  repeatInterval?: string;
   notifyEmail?: boolean;
   customRecipients?: string | string[] | null;
   webhookDestinationIds?: unknown;
@@ -200,9 +203,34 @@ type RuleValues = {
   deviceIds: string | null;
   conditionType: string;
   threshold: number | null;
+  repeatInterval: string;
   notifyEmail: boolean;
   customRecipients: string | null;
   webhookDestinationIds: string | null;
+};
+
+/**
+ * Every column a create has to fill in.
+ *
+ * A `Record` rather than a list, so the compiler requires one entry per field.
+ * This exists because `enabled` was missing from the parser for a whole release:
+ * the create overload promised a complete `RuleValues` while the implementation
+ * returned a partial one, TypeScript does not check an overload implementation
+ * against its signatures, and the column default quietly filled the gap. Adding
+ * a field to `RuleValues` now fails to compile until it is named here, and the
+ * check in `parseRuleBody` fails loudly if it is named but never parsed.
+ */
+const CREATE_FIELDS: Record<keyof RuleValues, true> = {
+  name: true,
+  enabled: true,
+  scope: true,
+  deviceIds: true,
+  conditionType: true,
+  threshold: true,
+  repeatInterval: true,
+  notifyEmail: true,
+  customRecipients: true,
+  webhookDestinationIds: true,
 };
 
 /** The lists come back parsed, so the editor never re-implements the splitting. */
@@ -220,6 +248,7 @@ function presentRule(row: typeof notificationRules.$inferSelect) {
     scope: rule?.scope ?? 'all',
     deviceIds: rule?.deviceIds ?? [],
     threshold: row.threshold,
+    repeatInterval: rule?.repeatInterval ?? 'once',
     notifyEmail: row.notifyEmail,
     customRecipients: rule?.customRecipients ?? [],
     webhookIds: rule?.webhookIds ?? [],
@@ -257,6 +286,15 @@ function parseRuleBody(
     if (name === '') return { error: 'A rule name is required.' };
     if (name.length > 80) return { error: 'Name must be 80 characters or fewer.' };
     values.name = name;
+  }
+
+  // Was missing entirely, which made the list's on/off switch a no-op — the
+  // patch it sent contained one key and that key was never read — and let a rule
+  // created with "active" unticked come back on, because the column default
+  // filled the gap. `!== false` rather than `=== true` so a body that omits the
+  // field on create still means active, which is what the form intends.
+  if (options.isCreate || body.enabled !== undefined) {
+    values.enabled = body.enabled !== false;
   }
 
   if (options.isCreate || body.conditionType !== undefined) {
@@ -297,6 +335,14 @@ function parseRuleBody(
     }
   }
 
+  if (options.isCreate || body.repeatInterval !== undefined) {
+    const interval = body.repeatInterval ?? 'once';
+    if (!isRepeatInterval(interval)) {
+      return { error: `Repeat must be one of: ${REPEAT_INTERVALS.join(', ')}.` };
+    }
+    values.repeatInterval = interval;
+  }
+
   if (options.isCreate || body.notifyEmail !== undefined) {
     values.notifyEmail = body.notifyEmail !== false;
   }
@@ -324,6 +370,18 @@ function parseRuleBody(
     values.webhookDestinationIds !== undefined && values.webhookDestinationIds !== null;
   if (options.isCreate && !notifyEmail && !hasWebhooks) {
     return { error: 'Pick at least one destination: email, a webhook, or both.' };
+  }
+
+  if (options.isCreate) {
+    const missing = (Object.keys(CREATE_FIELDS) as (keyof RuleValues)[]).filter(
+      (key) => !(key in values),
+    );
+    if (missing.length > 0) {
+      // A programming error, not an operator one, so it says so rather than
+      // pretending the submitted rule was at fault. Failing beats letting the
+      // column defaults invent the missing half of a rule.
+      return { error: `Rule fields were not parsed: ${missing.join(', ')}.` };
+    }
   }
 
   return { values };
@@ -900,6 +958,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/admin/alert-rules', { preHandler: requireAdmin }, async () => ({
     conditions: CONDITION_TYPES,
+    repeatIntervals: REPEAT_INTERVALS,
     rules: listNotificationRuleRows().map(presentRule),
   }));
 

@@ -18,10 +18,12 @@ import { Bell, Mail, Pencil, Plus, Trash2, Webhook } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
+import { ToggleSwitch } from '../../components/ToggleSwitch.js';
 import { useTranslation, type Translate } from '../../i18n/i18n.js';
 import type {
   AdminDevice,
   AlertConditionType,
+  AlertRepeatInterval,
   AlertRule,
   Webhook as WebhookRow,
 } from '../../types.js';
@@ -32,6 +34,8 @@ const CONDITIONS: AlertConditionType[] = [
   'waste_full',
   'media_out',
 ];
+
+const REPEATS: AlertRepeatInterval[] = ['once', '1h', '12h', '24h'];
 
 /** Which conditions take a number, and in what unit. */
 const THRESHOLD_UNIT: Record<AlertConditionType, 'minutes' | 'percent' | null> = {
@@ -51,6 +55,7 @@ interface Draft {
   deviceIds: number[];
   /** As typed, so an empty box stays empty rather than becoming a zero. */
   threshold: string;
+  repeatInterval: AlertRepeatInterval;
   notifyEmail: boolean;
   customRecipients: string;
   webhookIds: number[];
@@ -65,6 +70,7 @@ function blankDraft(): Draft {
     scope: 'all',
     deviceIds: [],
     threshold: '',
+    repeatInterval: 'once',
     notifyEmail: true,
     customRecipients: '',
     webhookIds: [],
@@ -82,6 +88,9 @@ function draftFrom(rule: AlertRule): Draft {
     scope: rule.scope,
     deviceIds: [...rule.deviceIds],
     threshold: rule.threshold === null ? '' : String(rule.threshold),
+    repeatInterval: (REPEATS as string[]).includes(rule.repeatInterval)
+      ? (rule.repeatInterval as AlertRepeatInterval)
+      : 'once',
     notifyEmail: rule.notifyEmail,
     customRecipients: rule.customRecipients.join(', '),
     webhookIds: [...rule.webhookIds],
@@ -163,6 +172,7 @@ export function AdminAlertRules() {
       // rule back to "all printers" does not leave a stale list behind it.
       deviceIds: draft.scope === 'selected' ? draft.deviceIds : [],
       threshold: draft.threshold.trim() === '' ? null : Number(draft.threshold),
+      repeatInterval: draft.repeatInterval,
       notifyEmail: draft.notifyEmail,
       customRecipients: draft.notifyEmail ? draft.customRecipients : '',
       webhookDestinationIds: draft.webhookIds,
@@ -253,15 +263,17 @@ export function AdminAlertRules() {
           <ul className="rule-list">
             {(rules ?? []).map((rule) => (
               <li key={rule.id} className={`rule-row${rule.enabled ? '' : ' is-off'}`}>
-                <label className="rule-toggle">
-                  <input
-                    type="checkbox"
+                {/* Takes effect on the click, not on a save: the switch is the
+                    action, so there is nothing to confirm and nothing to
+                    submit. */}
+                <span className="rule-toggle">
+                  <ToggleSwitch
                     checked={rule.enabled}
                     disabled={busyId !== null}
-                    aria-label={t('alertRules.toggleAria', { name: rule.name })}
+                    ariaLabel={t('alertRules.toggleAria', { name: rule.name })}
                     onChange={() => void toggle(rule)}
                   />
-                </label>
+                </span>
 
                 <div className="rule-body">
                   <strong>{rule.name}</strong>
@@ -269,6 +281,9 @@ export function AdminAlertRules() {
                     {scopeSummary(rule, t)}
                     {thresholdSummary(rule, t) !== null && (
                       <> · {thresholdSummary(rule, t)}</>
+                    )}
+                    {rule.repeatInterval !== 'once' && (
+                      <> · {t(`alertRules.repeatShort.${rule.repeatInterval}`)}</>
                     )}
                     {!rule.enabled && <> · {t('alertRules.disabled')}</>}
                   </small>
@@ -338,9 +353,19 @@ export function AdminAlertRules() {
 
       {draft !== null && (
         <form className="card" onSubmit={(event) => void save(event)}>
-          <h2 className="card-title">
-            {draft.id === null ? t('alertRules.addTitle') : t('alertRules.editTitle')}
-          </h2>
+          {/* The switch sits in the header rather than at the foot of the form:
+              whether a rule is on is the first thing someone checks when they
+              open it, and it was previously eight fields below the fold. */}
+          <div className="card-head">
+            <h2 className="card-title">
+              {draft.id === null ? t('alertRules.addTitle') : t('alertRules.editTitle')}
+            </h2>
+            <ToggleSwitch
+              checked={draft.enabled}
+              label={t('alertRules.enabled')}
+              onChange={(next) => setDraft({ ...draft, enabled: next })}
+            />
+          </div>
 
           <div className="field-grid">
             <label className="field">
@@ -396,6 +421,26 @@ export function AdminAlertRules() {
                 </small>
               </label>
             )}
+
+            <label className="field">
+              <span>{t('alertRules.repeat')}</span>
+              <select
+                value={draft.repeatInterval}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    repeatInterval: event.target.value as AlertRepeatInterval,
+                  })
+                }
+              >
+                {REPEATS.map((interval) => (
+                  <option key={interval} value={interval}>
+                    {t(`alertRules.repeatOption.${interval}`)}
+                  </option>
+                ))}
+              </select>
+              <small className="field-hint">{t('alertRules.repeatHint')}</small>
+            </label>
           </div>
 
           <h3 className="card-subtitle">{t('alertRules.scope')}</h3>
@@ -523,18 +568,6 @@ export function AdminAlertRules() {
               )}
             </div>
           </div>
-
-          <label className="field field-check">
-            <input
-              type="checkbox"
-              checked={draft.enabled}
-              onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-            />
-            <span>
-              {t('alertRules.enabled')}
-              <small>{t('alertRules.enabledHint')}</small>
-            </span>
-          </label>
 
           <div className="inline-actions">
             <button type="submit" className="btn-primary" disabled={isSaving}>

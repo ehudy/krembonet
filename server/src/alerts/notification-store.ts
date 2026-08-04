@@ -13,6 +13,7 @@ import { db } from '../db/client.js';
 import { notificationRules } from '../db/schema.js';
 import {
   isConditionType,
+  isRepeatInterval,
   isRuleScope,
   parseIdList,
   parseRecipients,
@@ -52,6 +53,10 @@ export function toRule(row: NotificationRuleRow): NotificationRule | null {
     deviceIds: parseIdList(parseIds(row.deviceIds)),
     conditionType: row.conditionType,
     threshold: row.threshold,
+    // Narrowed rather than cast, like scope: a value this build does not know
+    // has to fall back to the safe cadence rather than through the switch that
+    // decides how often to repeat.
+    repeatInterval: isRepeatInterval(row.repeatInterval) ? row.repeatInterval : 'once',
     notifyEmail: row.notifyEmail,
     customRecipients: parseRecipients(row.customRecipients),
     webhookIds: parseIdList(parseIds(row.webhookDestinationIds)),

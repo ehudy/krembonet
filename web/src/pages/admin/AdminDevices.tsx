@@ -15,6 +15,7 @@ import { CircleAlert, CircleCheck, Info, Radar } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
+import { ToggleSwitch } from '../../components/ToggleSwitch.js';
 import { useTranslation } from '../../i18n/i18n.js';
 import {
   AdapterConfigForm,
@@ -40,20 +41,7 @@ interface Draft {
   config: ConfigValues;
   secretsSet: string[];
   isMuted: boolean;
-  muteSupplyAlerts: boolean;
-  muteMediaAlerts: boolean;
-  muteOfflineAlerts: boolean;
 }
-
-type MuteKey = 'isMuted' | 'muteSupplyAlerts' | 'muteMediaAlerts' | 'muteOfflineAlerts';
-
-/** The four suppression switches, broadest first. */
-const MUTE_TOGGLES: { key: MuteKey; label: string }[] = [
-  { key: 'isMuted', label: 'maintenanceMode' },
-  { key: 'muteSupplyAlerts', label: 'muteSupply' },
-  { key: 'muteMediaAlerts', label: 'muteMedia' },
-  { key: 'muteOfflineAlerts', label: 'muteOffline' },
-];
 
 function blankDraft(adapters: AdapterInfo[]): Draft {
   const first = adapters[0];
@@ -67,9 +55,6 @@ function blankDraft(adapters: AdapterInfo[]): Draft {
     config: first === undefined ? {} : defaultsFor(first.configSchema),
     secretsSet: [],
     isMuted: false,
-    muteSupplyAlerts: false,
-    muteMediaAlerts: false,
-    muteOfflineAlerts: false,
   };
 }
 
@@ -84,9 +69,6 @@ function draftFrom(device: AdminDevice): Draft {
     config: { ...device.config },
     secretsSet: device.secretsSet,
     isMuted: device.isMuted,
-    muteSupplyAlerts: device.muteSupplyAlerts,
-    muteMediaAlerts: device.muteMediaAlerts,
-    muteOfflineAlerts: device.muteOfflineAlerts,
   };
 }
 
@@ -384,9 +366,6 @@ export function AdminDevices() {
       adapter: draft.adapter,
       enabled: draft.enabled,
       isMuted: draft.isMuted,
-      muteSupplyAlerts: draft.muteSupplyAlerts,
-      muteMediaAlerts: draft.muteMediaAlerts,
-      muteOfflineAlerts: draft.muteOfflineAlerts,
       config: visibleValues(schema, draft.config),
       // Record what the probe actually found, so the dashboard renders panels
       // for what this device does rather than what its adapter might do.
@@ -652,30 +631,18 @@ export function AdminDevices() {
           />
 
           <h3 className="card-subtitle">{t('devices.suppression')}</h3>
-          <p className="field-hint">{t('devices.suppressionHint')}</p>
 
-          <div className="field-grid">
-            {MUTE_TOGGLES.map((toggle) => (
-              <label key={toggle.key} className="field field-check">
-                <input
-                  type="checkbox"
-                  checked={draft[toggle.key]}
-                  // Maintenance mode already covers every category, so the
-                  // per-category switches are disabled rather than left
-                  // clickable and inert — a switch that does nothing when you
-                  // flip it is worse than one you cannot flip.
-                  disabled={toggle.key !== 'isMuted' && draft.isMuted}
-                  onChange={(event) =>
-                    setDraft({ ...draft, [toggle.key]: event.target.checked })
-                  }
-                />
-                <span>
-                  {t(`devices.${toggle.label}`)}
-                  <small>{t(`devices.${toggle.label}Hint`)}</small>
-                </span>
-              </label>
-            ))}
-          </div>
+          {/* One switch. The three per-category companions went when
+              notification became rule-driven: silencing one kind of alert for
+              one printer is a question of how a rule is scoped, and having a
+              second place to answer it meant two screens to check when a
+              printer went quiet. */}
+          <ToggleSwitch
+            checked={draft.isMuted}
+            label={t('devices.maintenanceMode')}
+            hint={t('devices.maintenanceModeHint')}
+            onChange={(next) => setDraft({ ...draft, isMuted: next })}
+          />
 
           <div className="inline-actions">
             <button

@@ -80,17 +80,16 @@ export const devices = sqliteTable('devices', {
    * migration test compares the real column order against the snapshot.
    */
 
-  /** Maintenance mode: suppresses every category at once. */
+  /**
+   * Maintenance mode: no alert rule fires for this device while it is set.
+   *
+   * The only suppression flag. Three per-category companions were dropped in
+   * 0008 once notification became rule-driven — "mute supply alerts for this
+   * printer" is now expressed by scoping a rule, in the one place the other
+   * routing decisions live, rather than by a flag that silently overrode them
+   * from somewhere else.
+   */
   isMuted: integer('is_muted', { mode: 'boolean' }).notNull().default(false),
-  muteSupplyAlerts: integer('mute_supply_alerts', { mode: 'boolean' })
-    .notNull()
-    .default(false),
-  muteMediaAlerts: integer('mute_media_alerts', { mode: 'boolean' })
-    .notNull()
-    .default(false),
-  muteOfflineAlerts: integer('mute_offline_alerts', { mode: 'boolean' })
-    .notNull()
-    .default(false),
 });
 
 /**
@@ -357,6 +356,13 @@ export const notificationRules = sqliteTable(
      * rule fires whenever the condition holds at all, which is the default.
      */
     threshold: integer('threshold'),
+    /**
+     * How often to repeat while the condition holds: `once` | `1h` | `12h` |
+     * `24h`. `once` is edge-triggered — the behaviour that stops a cartridge at
+     * 10% mailing every hour forever. The repeats are for conditions nobody can
+     * act on quickly, like a plotter offline over a weekend.
+     */
+    repeatInterval: text('repeat_interval').notNull().default('once'),
     notifyEmail: integer('notify_email', { mode: 'boolean' }).notNull().default(true),
     /** Comma-separated addresses. Blank falls back to the global SMTP list. */
     customRecipients: text('custom_recipients'),

@@ -383,13 +383,7 @@
     "suppression": "Alert suppression",
     "suppressionHint": "Silences notification, never monitoring. A muted device is still polled, still evaluated, and still shown as failing here — only the email and webhooks stop.",
     "maintenanceMode": "Maintenance mode",
-    "maintenanceModeHint": "Silences every alert rule for this device. It is still polled, still evaluated, and still shown as failing here — only the notifications stop.",
-    "muteSupply": "Mute supply alerts",
-    "muteSupplyHint": "Ink and toner crossing their thresholds.",
-    "muteMedia": "Mute media alerts",
-    "muteMediaHint": "Paper out, tray empty, jams.",
-    "muteOffline": "Mute offline alerts",
-    "muteOfflineHint": "The device becoming unreachable, and recovering.",
+    "maintenanceModeHint": "Silences all alert rules for this printer while under physical service or testing. It is still polled and still shown as failing here — only the notifications stop.",
     "probeIp": "Probe IP",
     "probingIp": "Probing…",
     "probeIpHint": "Tests the address for IPP, SNMP and a web interface, then fills in the settings that worked.",
@@ -522,7 +516,6 @@
     "namePlaceholder": "Plotters offline out of hours",
     "saveRule": "Save rule",
     "enabled": "Rule is active",
-    "enabledHint": "Turn off to stop this rule firing without deleting it.",
     "disabled": "off",
     "toggleAria": "Turn the rule “{{name}}” on or off",
     "deleteTitle": "Delete this alert rule?",
@@ -577,7 +570,21 @@
       "one": "{{count}} webhook",
       "other": "{{count}} webhooks"
     },
-    "webhookDisabled": "Disabled hub-wide"
+    "webhookDisabled": "Disabled hub-wide",
+    "repeat": "Re-notification frequency",
+    "repeatHint": "How often to say it again while the condition holds. It always stops when the condition clears.",
+    "repeatOption": {
+      "once": "Notify once only",
+      "1h": "Repeat every 1 hour",
+      "12h": "Repeat every 12 hours",
+      "24h": "Repeat every 24 hours (once daily)"
+    },
+    "repeatShort": {
+      "once": "once",
+      "1h": "repeats hourly",
+      "12h": "repeats every 12h",
+      "24h": "repeats daily"
+    }
   },
   "webhooks": {
     "title": "Webhook destinations",
@@ -627,10 +634,6 @@
     "noMatch": "No devices match that search.",
     "empty": "No devices are being monitored yet.",
     "muted": "Alerts muted",
-    "mutedCategories": "Alerts muted: {{categories}}",
-    "categorySupply": "supplies",
-    "categoryMedia": "media",
-    "categoryOffline": "offline",
     "filterPinned": "Pinned",
     "noPinned": "No devices are pinned yet. Star one to keep it in the sidebar."
   },

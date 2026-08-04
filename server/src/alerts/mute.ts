@@ -1,80 +1,46 @@
 /**
- * Per-device alert suppression — pure, no I/O.
+ * Maintenance mode — pure, no I/O.
+ *
+ * One switch per device, and it means one thing: while it is on, no alert rule
+ * fires for this printer. It is for the machine with its lid off on a bench, or
+ * the one being tested, where every condition it reports is something a person
+ * is standing next to and already knows about.
  *
  * Suppression silences *notification*, never measurement. A muted device is
- * still polled, still evaluated against its thresholds, still shown as failing
- * on the dashboard, and its alerts are still written to `alert_logs` — marked
- * `muted` rather than `sent`. What stops is the email and the webhook.
+ * still polled, still evaluated against the hub's thresholds, still shown as
+ * failing on the dashboard, and its withheld alerts are still written to
+ * `alert_logs` marked `muted` rather than vanishing. That distinction is the
+ * whole design: a "mute" that also stopped monitoring would mean a printer put
+ * into maintenance in March is silently unmonitored in September, and nobody
+ * would know until someone walked past it.
  *
- * That distinction is the whole design. "Mute" that also stopped monitoring
- * would mean a printer put into maintenance mode in March is silently
- * unmonitored in September, and nobody would know until someone walked past
- * it. Here the dashboard keeps telling the truth; only the 3am mail stops.
+ * This used to be four switches — maintenance mode plus one per category. The
+ * three category switches went when notification became rule-driven: "mute
+ * supply alerts for this printer" is now something you express by scoping a
+ * rule, in the one place all the other routing decisions live, rather than by a
+ * flag on the device that silently overrode it from somewhere else.
  *
  * Alert *state* is still recorded while muted, which has a consequence worth
  * stating: a supply that crosses its threshold during a mute, and is still
  * across it when the mute is lifted, does not then fire. The condition never
- * transitioned — it was already true — and the dashboard has been showing it
- * the whole time. Re-announcing old news on unmute would be the surprising
+ * transitioned — it was already true — and the dashboard has been showing it the
+ * whole time. Re-announcing old news on unmute would be the surprising
  * behaviour, not this.
  */
 
-/** The three things this hub can alert about. */
-export type AlertCategory = 'supply' | 'media' | 'offline';
-
-export const ALERT_CATEGORIES: readonly AlertCategory[] = ['supply', 'media', 'offline'];
-
-/** The suppression flags carried on a device row. */
+/** The suppression flag carried on a device row. */
 export interface MuteFlags {
-  /** Maintenance mode: every category at once. */
+  /** Maintenance mode: no rule fires for this device while it is set. */
   isMuted: boolean;
-  muteSupplyAlerts: boolean;
-  muteMediaAlerts: boolean;
-  muteOfflineAlerts: boolean;
 }
-
-const CATEGORY_FLAG: Record<AlertCategory, keyof MuteFlags> = {
-  supply: 'muteSupplyAlerts',
-  media: 'muteMediaAlerts',
-  offline: 'muteOfflineAlerts',
-};
 
 /** Why a notification was withheld, or null when it was not. */
-export type SuppressionReason = 'maintenance' | 'category' | null;
+export type SuppressionReason = 'maintenance' | null;
 
-export function suppressionReason(
-  flags: MuteFlags,
-  category: AlertCategory,
-): SuppressionReason {
-  // Maintenance mode is reported ahead of the per-category flag so the log says
-  // *why* — "the whole device is muted" and "supply alerts are muted" send an
-  // operator to different switches.
-  if (flags.isMuted) return 'maintenance';
-  return flags[CATEGORY_FLAG[category]] ? 'category' : null;
+export function suppressionReason(flags: MuteFlags): SuppressionReason {
+  return flags.isMuted ? 'maintenance' : null;
 }
 
-export function isSuppressed(flags: MuteFlags, category: AlertCategory): boolean {
-  return suppressionReason(flags, category) !== null;
-}
-
-/**
- * True when anything at all is muted.
- *
- * Drives the indicator on a device card: the point is that an operator
- * scanning a wall of cards can see which ones will not shout, without opening
- * each one to find out which switch is set.
- */
-export function hasAnySuppression(flags: MuteFlags): boolean {
-  return (
-    flags.isMuted ||
-    flags.muteSupplyAlerts ||
-    flags.muteMediaAlerts ||
-    flags.muteOfflineAlerts
-  );
-}
-
-/** Categories currently silenced, for a tooltip or the detail view. */
-export function suppressedCategories(flags: MuteFlags): AlertCategory[] {
-  if (flags.isMuted) return [...ALERT_CATEGORIES];
-  return ALERT_CATEGORIES.filter((category) => flags[CATEGORY_FLAG[category]]);
+export function isSuppressed(flags: MuteFlags): boolean {
+  return suppressionReason(flags) !== null;
 }

@@ -39,7 +39,6 @@ function device(overrides: Partial<DeviceSummary> = {}): DeviceSummary {
     attentionSummary: null,
     attentionReasons: [],
     alertsSuppressed: false,
-    suppressedAlerts: [],
     isMuted: false,
     ...overrides,
   };

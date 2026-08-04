@@ -129,9 +129,6 @@ export interface DeviceStatus {
  */
 export type AttentionLevel = 'ok' | 'warning' | 'error';
 
-/** The three things this hub can alert about, and can be told not to. */
-export type AlertCategory = 'supply' | 'media' | 'offline';
-
 export interface DeviceSummary {
   slug: string;
   displayName: string;
@@ -154,10 +151,13 @@ export interface DeviceSummary {
   attentionSummary: string | null;
   /** Every condition, most severe first. */
   attentionReasons: string[];
-  /** True when any alert category is silenced for this device. */
+  /**
+   * True when this device will not shout — today that means maintenance mode.
+   * Kept distinct from `isMuted` because the card reads it as a question about
+   * behaviour rather than about which switch is set.
+   */
   alertsSuppressed: boolean;
-  suppressedAlerts: AlertCategory[];
-  /** Maintenance mode — every category at once. */
+  /** Maintenance mode: no alert rule fires for this device. */
   isMuted: boolean;
 }
 
@@ -318,6 +318,15 @@ export type AlertConditionType = 'offline' | 'supply_low' | 'waste_full' | 'medi
 export type AlertRuleScope = 'all' | 'selected';
 
 /**
+ * How often a rule repeats while a condition stays true.
+ *
+ * `once` is edge-triggered — the behaviour that stops a cartridge at 10%
+ * mailing every hour forever. The repeats are for conditions nobody can act on
+ * quickly, like a plotter offline over a weekend.
+ */
+export type AlertRepeatInterval = 'once' | '1h' | '12h' | '24h';
+
+/**
  * One delivery policy: what to watch, on which printers, and who to tell.
  *
  * Distinct from the hub's supply *thresholds*, which live on the Settings page
@@ -335,6 +344,7 @@ export interface AlertRule {
   deviceIds: number[];
   /** Minutes for offline, percent for a supply. Null means the hub's own mark. */
   threshold: number | null;
+  repeatInterval: AlertRepeatInterval | string;
   notifyEmail: boolean;
   /** Empty falls back to the global SMTP recipients. */
   customRecipients: string[];
@@ -436,9 +446,6 @@ export interface AdminDevice {
   /** Secret config keys that currently hold a value. */
   secretsSet: string[];
   isMuted: boolean;
-  muteSupplyAlerts: boolean;
-  muteMediaAlerts: boolean;
-  muteOfflineAlerts: boolean;
 }
 
 export interface DeviceIdentity {

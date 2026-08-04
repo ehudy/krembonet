@@ -83,6 +83,55 @@ export function isRuleScope(value: unknown): value is RuleScope {
   return RULE_SCOPES.includes(value as RuleScope);
 }
 
+/**
+ * How often a rule repeats itself while a condition stays true.
+ *
+ * `once` is the default and the right answer most of the time: edge-triggered
+ * alerting is what stops a cartridge sitting at 10% mailing every hour forever.
+ * The repeats exist for the conditions nobody can act on quickly — a plotter
+ * offline over a weekend is worth a daily reminder, because the one message on
+ * Friday night is long buried by Monday.
+ */
+export const REPEAT_INTERVALS = ['once', '1h', '12h', '24h'] as const;
+export type RepeatInterval = (typeof REPEAT_INTERVALS)[number];
+
+export function isRepeatInterval(value: unknown): value is RepeatInterval {
+  return REPEAT_INTERVALS.includes(value as RepeatInterval);
+}
+
+/** How long each interval is, in milliseconds. Null for "never repeat". */
+const REPEAT_AFTER_MS: Record<RepeatInterval, number | null> = {
+  once: null,
+  '1h': 60 * 60 * 1000,
+  '12h': 12 * 60 * 60 * 1000,
+  '24h': 24 * 60 * 60 * 1000,
+};
+
+/**
+ * Whether a rule that is already firing should say it again.
+ *
+ * `since` is when it last had something to say — the last successful
+ * notification, or failing that when the condition was first raised. Falling
+ * back to the trigger time is what stops a repeating rule with no reachable
+ * destination retrying on every poll: a delivery that never happened leaves no
+ * `lastNotifiedAt`, and treating that as "never notified, so notify now" would
+ * turn a broken SMTP host into a log entry every minute.
+ */
+export function shouldRepeat(
+  rule: NotificationRule,
+  since: number | null,
+  now: number,
+): boolean {
+  const after = REPEAT_AFTER_MS[rule.repeatInterval];
+  if (after === null) return false;
+  // Nothing to measure from. Staying quiet is the safe direction: the condition
+  // is on the dashboard either way, and a repeat that fires on every poll is
+  // worse than one that waits for the next real trigger.
+  if (since === null) return false;
+
+  return now - since >= after;
+}
+
 export interface NotificationRule {
   id: string;
   name: string;
@@ -97,6 +146,8 @@ export interface NotificationRule {
    * most rules want and what the form defaults to.
    */
   threshold: number | null;
+  /** How often to say it again while the condition holds. `once` is the default. */
+  repeatInterval: RepeatInterval;
   notifyEmail: boolean;
   /** Addresses for this rule. Empty falls back to the hub-wide SMTP list. */
   customRecipients: string[];
@@ -197,19 +248,6 @@ export function observationSubject(observation: Observation): string {
     case 'supply_low':
     case 'waste_full':
       return `supply:${observation.supplyName}`;
-  }
-}
-
-/** Category, for the per-device mute flags, which predate rules and still apply. */
-export function categoryOf(conditionType: ConditionType): 'supply' | 'media' | 'offline' {
-  switch (conditionType) {
-    case 'offline':
-      return 'offline';
-    case 'media_out':
-      return 'media';
-    case 'supply_low':
-    case 'waste_full':
-      return 'supply';
   }
 }
 

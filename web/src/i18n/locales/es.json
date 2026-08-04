@@ -383,13 +383,7 @@
     "suppression": "Supresión de alertas",
     "suppressionHint": "Silencia la notificación, nunca la monitorización. Un dispositivo silenciado se sigue sondeando, se sigue evaluando y se sigue mostrando aquí como fallido — solo se detienen el correo y los webhooks.",
     "maintenanceMode": "Modo mantenimiento",
-    "maintenanceModeHint": "Silencia todas las reglas de alerta de este dispositivo. Se sigue sondeando, se sigue evaluando y se sigue mostrando aquí como fallido; solo se detienen las notificaciones.",
-    "muteSupply": "Silenciar alertas de consumibles",
-    "muteSupplyHint": "Tinta y tóner que cruzan sus umbrales.",
-    "muteMedia": "Silenciar alertas de papel",
-    "muteMediaHint": "Sin papel, bandeja vacía, atascos.",
-    "muteOffline": "Silenciar alertas de conexión",
-    "muteOfflineHint": "El dispositivo dejando de responder, y recuperándose.",
+    "maintenanceModeHint": "Silencia todas las reglas de alerta de esta impresora mientras esté en servicio físico o en pruebas. Se sigue sondeando y se sigue mostrando aquí como fallida; solo se detienen las notificaciones.",
     "probeIp": "Probar IP",
     "probingIp": "Probando…",
     "probeIpHint": "Comprueba si la dirección responde por IPP, SNMP o interfaz web, y rellena los ajustes que funcionaron.",
@@ -522,7 +516,6 @@
     "namePlaceholder": "Plóteres sin conexión fuera de horario",
     "saveRule": "Guardar regla",
     "enabled": "Regla activa",
-    "enabledHint": "Desactívala para que deje de dispararse sin borrarla.",
     "disabled": "desactivada",
     "toggleAria": "Activar o desactivar la regla «{{name}}»",
     "deleteTitle": "¿Eliminar esta regla de alerta?",
@@ -577,7 +570,21 @@
       "one": "{{count}} webhook",
       "other": "{{count}} webhooks"
     },
-    "webhookDisabled": "Desactivado en todo el centro"
+    "webhookDisabled": "Desactivado en todo el centro",
+    "repeat": "Frecuencia de reaviso",
+    "repeatHint": "Con qué frecuencia repetirlo mientras la condición se mantenga. Siempre se detiene cuando la condición desaparece.",
+    "repeatOption": {
+      "once": "Avisar una sola vez",
+      "1h": "Repetir cada hora",
+      "12h": "Repetir cada 12 horas",
+      "24h": "Repetir cada 24 horas (una vez al día)"
+    },
+    "repeatShort": {
+      "once": "una vez",
+      "1h": "se repite cada hora",
+      "12h": "se repite cada 12 h",
+      "24h": "se repite a diario"
+    }
   },
   "webhooks": {
     "title": "Destinos de webhook",
@@ -627,10 +634,6 @@
     "noMatch": "Ningún dispositivo coincide con esa búsqueda.",
     "empty": "Todavía no se monitoriza ningún dispositivo.",
     "muted": "Alertas silenciadas",
-    "mutedCategories": "Alertas silenciadas: {{categories}}",
-    "categorySupply": "consumibles",
-    "categoryMedia": "papel",
-    "categoryOffline": "sin conexión",
     "filterPinned": "Fijados",
     "noPinned": "Todavía no hay dispositivos fijados. Marca uno con una estrella para tenerlo en la barra lateral."
   },

@@ -37,12 +37,13 @@ import { getSettings, isSmtpTransportConfigured } from '../settings/settings.js'
 import { sendMail } from './mailer.js';
 import { suppressionReason, type MuteFlags } from './mute.js';
 import {
-  categoryOf,
   destinationsFor,
   matchRules,
   ruleStateKey,
+  shouldRepeat,
   type NotificationRule,
   type Observation,
+  type RepeatInterval,
 } from './notification-rules.js';
 import { listNotificationRules } from './notification-store.js';
 import {
@@ -75,6 +76,42 @@ function readActiveRuleKeys(): Set<string> {
     .all();
 
   return new Set(rows.filter((row) => row.isActive).map((row) => row.ruleKey));
+}
+
+/** When an active alert last had something to say, for the repeat clock. */
+interface ActiveSince {
+  /** Last successful notification, or the trigger when there has never been one. */
+  since: number | null;
+}
+
+/**
+ * Active state with its timing, which is what a repeating rule needs.
+ *
+ * Falls back to `triggeredAt` when nothing has been delivered: a rule whose
+ * destination is unreachable has no `lastNotifiedAt`, and measuring the repeat
+ * from "never" would make it retry every poll.
+ */
+function readActiveSince(): Map<string, ActiveSince> {
+  const rows = db
+    .select({
+      ruleKey: alertState.ruleKey,
+      isActive: alertState.isActive,
+      lastNotifiedAt: alertState.lastNotifiedAt,
+      triggeredAt: alertState.triggeredAt,
+    })
+    .from(alertState)
+    .all();
+
+  return new Map(
+    rows
+      .filter((row) => row.isActive)
+      .map((row) => [
+        row.ruleKey,
+        {
+          since: (row.lastNotifiedAt ?? row.triggeredAt)?.getTime() ?? null,
+        },
+      ]),
+  );
 }
 
 function isActive(ruleKey: string): boolean {
@@ -310,6 +347,13 @@ async function dispatch(
 
 // --- notification rules ---------------------------------------------------
 
+/** How the mail names each repeat cadence. Not translated — mail is English. */
+const REPEAT_LABELS: Record<Exclude<RepeatInterval, 'once'>, string> = {
+  '1h': 'hour',
+  '12h': '12 hours',
+  '24h': '24 hours',
+};
+
 /** One rule's worth of firings this cycle, batched into a single message. */
 interface Firing {
   rule: NotificationRule;
@@ -321,30 +365,35 @@ interface Firing {
  * Matches every enabled rule against this poll's observations and sets or
  * clears each rule's own edge.
  *
- * Returns only the rules that just became true. A rule already active on the
- * same subject stays silent — a printer that has been offline for six hours has
- * been reported once and does not need reporting again every poll.
+ * Returns the rules that just became true, plus the ones already true whose
+ * repeat interval has come round again. A `once` rule already active on the same
+ * subject stays silent — a printer offline for six hours has been reported once
+ * and does not need reporting every poll — while a `24h` rule on the same
+ * printer says it again each morning until somebody deals with it.
  */
 function decideFirings(
   device: DeviceRow,
   observations: readonly Observation[],
   rules: readonly NotificationRule[],
 ): Firing[] {
-  const active = readActiveRuleKeys();
+  const active = readActiveSince();
+  const now = Date.now();
   const byRule = new Map<string, Firing>();
 
   for (const observation of observations) {
     for (const rule of rules) {
       const key = ruleStateKey(rule.id, device.slug, observation);
       const matched = matchRules([rule], device.id, observation).length > 0;
+      const state = active.get(key);
 
       if (!matched) {
         // Recovered, or narrowed out of this rule's range. Cleared so the next
         // crossing announces itself.
-        if (active.has(key)) markCleared(key);
+        if (state !== undefined) markCleared(key);
         continue;
       }
-      if (active.has(key)) continue;
+      // Already announced, and either not a repeating rule or not yet due.
+      if (state !== undefined && !shouldRepeat(rule, state.since, now)) continue;
 
       const existing = byRule.get(rule.id);
       if (existing === undefined) {
@@ -373,6 +422,20 @@ function buildRuleMail(
       ? `[${hubTitle}] ${device.displayName}: ${first}`
       : `[${hubTitle}] ${device.displayName}: ${lines.length} conditions`;
 
+  // The closing line depends on what happens next, and getting it wrong is
+  // worse than omitting it: a daily reminder that promises silence reads as a
+  // second, separate fault.
+  const cadence =
+    firing.rule.repeatInterval === 'once'
+      ? [
+          'This is sent once per crossing. You will not get another message for the',
+          'same condition until it clears.',
+        ]
+      : [
+          `This rule repeats every ${REPEAT_LABELS[firing.rule.repeatInterval]} while the`,
+          'condition holds. It stops when the condition clears.',
+        ];
+
   return {
     subject,
     lines,
@@ -381,8 +444,7 @@ function buildRuleMail(
       '',
       ...lines.map((line) => `  - ${line}`),
       '',
-      'This is sent once per crossing. You will not get another message for the',
-      'same condition until it clears.',
+      ...cadence,
       '',
       `Checked ${new Date().toLocaleString()}`,
     ].join('\n'),
@@ -411,8 +473,7 @@ async function runNotificationRules(
   const hubTitle = getSettings().hubTitle;
 
   for (const firing of decideFirings(device, observations, rules)) {
-    const category = categoryOf(firing.rule.conditionType);
-    const reason = suppressionReason(device, category);
+    const reason = suppressionReason(device);
 
     if (reason !== null) {
       const { subject } = buildRuleMail(device, firing, hubTitle);
@@ -688,7 +749,7 @@ async function announceRecovery(
     if (!isActive(key)) continue;
 
     markCleared(key);
-    if (suppressionReason(device, 'offline') !== null) continue;
+    if (suppressionReason(device) !== null) continue;
 
     const { subject, text, lines } = buildRecoveryMail(device, hubTitle, downSince);
     await dispatch(device, rule, { ruleKeys: [key], subject, text, lines }, log);

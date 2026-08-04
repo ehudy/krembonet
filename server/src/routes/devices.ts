@@ -43,18 +43,17 @@ interface DeviceBody {
   config?: RawConfig;
   capabilities?: string[] | null;
   isMuted?: boolean;
-  muteSupplyAlerts?: boolean;
-  muteMediaAlerts?: boolean;
-  muteOfflineAlerts?: boolean;
 }
 
-/** Suppression flags, as booleans, from whatever the form sent. */
-const MUTE_KEYS = [
-  'isMuted',
-  'muteSupplyAlerts',
-  'muteMediaAlerts',
-  'muteOfflineAlerts',
-] as const;
+/**
+ * Suppression, as a boolean, from whatever the form sent.
+ *
+ * One flag since 0008. The three per-category companions went when notification
+ * became rule-driven: silencing one kind of alert for one printer is now a
+ * question of how a rule is scoped, in the one place the rest of the routing
+ * lives.
+ */
+const MUTE_KEYS = ['isMuted'] as const;
 
 function mutePatch(
   body: DeviceBody,
@@ -117,9 +116,6 @@ function presentDevice(row: typeof devices.$inferSelect) {
     config: redacted.values,
     secretsSet: redacted.secretsSet,
     isMuted: row.isMuted,
-    muteSupplyAlerts: row.muteSupplyAlerts,
-    muteMediaAlerts: row.muteMediaAlerts,
-    muteOfflineAlerts: row.muteOfflineAlerts,
   };
 }
 
