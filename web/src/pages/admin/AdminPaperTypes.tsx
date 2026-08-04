@@ -13,11 +13,14 @@
  * carries the scope it applies to.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Info, Sparkles, Wand2 } from 'lucide-react';
+import { Info, Pencil, Sparkles, Trash2, Wand2 } from 'lucide-react';
 
 import { api } from '../../api.js';
+import { ConfirmDialog } from '../../components/ConfirmDialog.js';
 import { InfoDialog } from '../../components/InfoDialog.js';
+import { SortableHeader } from '../../components/SortableHeader.js';
 import { useTranslation, type Translate } from '../../i18n/i18n.js';
+import { compareText, toggleSort, type SortState } from '../../lib/tableSort.js';
 import {
   COMMON_MEDIA_LIST_ID,
   COMMON_MEDIA_NAMES,
@@ -30,6 +33,9 @@ interface Feedback {
   kind: 'ok' | 'error';
   message: string;
 }
+
+type DiscoveredSort = 'code' | 'reportedBy' | 'name';
+type KnownSort = 'code' | 'name' | 'scope' | 'source';
 
 /** Just the fields the scope dropdown and the "Applies to" column need. */
 interface ScopeDevice {
@@ -94,6 +100,25 @@ export function AdminPaperTypes() {
   // Identifies which control is mid-save: `add`, `disc:<code>`, or `row:<id>`.
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
+  /**
+   * Discovered codes whose inline mapper is open despite already having a name.
+   *
+   * The form appears on its own for a code nobody has named. This is the other
+   * route in: renaming one that is wrong, or overriding a standard keyword whose
+   * built-in name does not match the stock actually loaded.
+   */
+  const [reopened, setReopened] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<MediaType | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [discoveredSort, setDiscoveredSort] = useState<SortState<DiscoveredSort>>({
+    field: 'code',
+    direction: 'asc',
+  });
+  const [knownSort, setKnownSort] = useState<SortState<KnownSort>>({
+    field: 'code',
+    direction: 'asc',
+  });
+
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [newScope, setNewScope] = useState('');
@@ -140,13 +165,40 @@ export function AdminPaperTypes() {
 
   const visible = useMemo(() => {
     const needle = filter.trim().toLowerCase();
-    if (needle === '') return rows;
-    return rows.filter(
-      (row) =>
-        row.code.toLowerCase().includes(needle) ||
-        row.friendlyName.toLowerCase().includes(needle),
+    const matched =
+      needle === ''
+        ? rows
+        : rows.filter(
+            (row) =>
+              row.code.toLowerCase().includes(needle) ||
+              row.friendlyName.toLowerCase().includes(needle),
+          );
+
+    // Sorted on the *stored* name, never the in-flight edit: typing a new name
+    // would otherwise reorder the table under the cursor mid-word.
+    const value = (row: MediaType): string | null => {
+      switch (knownSort.field) {
+        case 'code':
+          return row.code;
+        case 'name':
+          return row.friendlyName;
+        case 'scope':
+          return scopeLabel(row.deviceId);
+        case 'source':
+          return row.isSeeded ? t('paperTypes.fromDriver') : t('paperTypes.edited');
+      }
+    };
+
+    return [...matched].sort(
+      (a, b) =>
+        compareText(value(a), value(b), knownSort.direction) ||
+        // A code can hold a global row and an override at once, so the tiebreak
+        // has to separate them or the two shuffle between renders.
+        compareText(a.code, b.code, 'asc') ||
+        compareText(scopeLabel(a.deviceId), scopeLabel(b.deviceId), 'asc'),
     );
-  }, [rows, filter]);
+    // `scopeLabel` closes over `devices`, which is why it is a dependency here.
+  }, [rows, filter, knownSort, devices, t]);
 
   /** How a discovered code stands: named by a custom mapping, by the standard dictionary, or not at all. */
   function describeDiscovered(entry: DiscoveredMediaCode): {
@@ -172,6 +224,76 @@ export function AdminPaperTypes() {
     [discovered],
   );
 
+  /**
+   * The discovered table, in the order its headers ask for.
+   *
+   * `describeDiscovered` decides what the Friendly name column actually shows —
+   * a custom name, a standard one, or nothing — so sorting reads the same value
+   * rather than the raw `friendlyName`, which would file every standard keyword
+   * under "unnamed".
+   */
+  function sortDiscovered(
+    entries: readonly DiscoveredMediaCode[],
+  ): DiscoveredMediaCode[] {
+    const value = (entry: DiscoveredMediaCode): string | null => {
+      switch (discoveredSort.field) {
+        case 'code':
+          return entry.code;
+        case 'reportedBy':
+          return entry.devices.map((device) => device.displayName).join(', ');
+        case 'name':
+          return describeDiscovered(entry).name;
+      }
+    };
+
+    return [...entries].sort(
+      (a, b) =>
+        compareText(value(a), value(b), discoveredSort.direction) ||
+        compareText(a.code, b.code, 'asc'),
+    );
+  }
+
+  /**
+   * Removes one mapping row.
+   *
+   * The code goes back to however it read before anybody named it: the standard
+   * dictionary if it is a PWG keyword, and the raw code otherwise. It does not
+   * stop the printers reporting it, so it reappears in the discovered table
+   * ready to be named again — which is the point, and why this is a smaller
+   * action than it sounds.
+   */
+  async function confirmDelete(): Promise<void> {
+    const row = pendingDelete;
+    if (row === null) return;
+
+    setIsDeleting(true);
+    setFeedback(null);
+
+    try {
+      await api.deleteMediaType(row.id);
+      setPendingDelete(null);
+      await load();
+      setFeedback({
+        kind: 'ok',
+        message: t('paperTypes.deletedCode', { code: row.code }),
+      });
+    } catch (cause) {
+      setPendingDelete(null);
+      setFeedback({
+        kind: 'error',
+        message: cause instanceof Error ? cause.message : String(cause),
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  /** Opens the inline mapper on a code that already has a name. */
+  function reopen(entry: DiscoveredMediaCode, currentName: string): void {
+    setMapDrafts((current) => ({ ...current, [entry.code]: currentName }));
+    setReopened((current) => new Set(current).add(entry.code));
+  }
+
   async function saveMapping(opts: {
     code: string;
     friendlyName: string;
@@ -186,7 +308,10 @@ export function AdminPaperTypes() {
       await api.saveMediaType(opts.code, opts.friendlyName, opts.deviceId);
       opts.onSaved?.();
       await load();
-      setFeedback({ kind: 'ok', message: t('paperTypes.savedCode', { code: opts.code }) });
+      setFeedback({
+        kind: 'ok',
+        message: t('paperTypes.savedCode', { code: opts.code }),
+      });
     } catch (cause) {
       setFeedback({
         kind: 'error',
@@ -235,6 +360,11 @@ export function AdminPaperTypes() {
         setMapScopes((current) => {
           const next = { ...current };
           delete next[code];
+          return next;
+        });
+        setReopened((current) => {
+          const next = new Set(current);
+          next.delete(code);
           return next;
         });
       },
@@ -297,18 +427,45 @@ export function AdminPaperTypes() {
             <table>
               <thead>
                 <tr>
-                  <th scope="col">{t('paperTypes.code')}</th>
-                  <th scope="col">{t('paperTypes.reportedBy')}</th>
-                  <th scope="col">{t('paperTypes.friendlyName')}</th>
+                  <SortableHeader
+                    field="code"
+                    sort={discoveredSort}
+                    onSort={(field) =>
+                      setDiscoveredSort((current) => toggleSort(current, field))
+                    }
+                    label={t('paperTypes.code')}
+                  />
+                  <SortableHeader
+                    field="reportedBy"
+                    sort={discoveredSort}
+                    onSort={(field) =>
+                      setDiscoveredSort((current) => toggleSort(current, field))
+                    }
+                    label={t('paperTypes.reportedBy')}
+                  />
+                  <SortableHeader
+                    field="name"
+                    sort={discoveredSort}
+                    onSort={(field) =>
+                      setDiscoveredSort((current) => toggleSort(current, field))
+                    }
+                    label={t('paperTypes.friendlyName')}
+                  />
+                  <th scope="col">
+                    <span className="visually-hidden">{t('common.actions')}</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {discovered.map((entry) => {
+                {sortDiscovered(discovered).map((entry) => {
                   const { name, isStandard } = describeDiscovered(entry);
                   // Only offered for a code nobody has named, and only when the
                   // draft is still empty — once someone starts typing, their
                   // words win over the proposal.
                   const suggestion = name === null ? suggestMediaName(entry.code) : null;
+                  // Unnamed codes open their mapper on sight; a named one opens
+                  // it only when somebody asks to change what it says.
+                  const isMapping = name === null || reopened.has(entry.code);
 
                   return (
                     <tr key={entry.code} className={name === null ? 'is-unmapped' : ''}>
@@ -319,7 +476,7 @@ export function AdminPaperTypes() {
                         {entry.devices.map((device) => device.displayName).join(', ')}
                       </td>
                       <td>
-                        {name !== null ? (
+                        {!isMapping ? (
                           <span className="mapped-name">
                             {name}
                             {/* A standard keyword and a custom name read
@@ -383,7 +540,11 @@ export function AdminPaperTypes() {
                                     }))
                                   }
                                 >
-                                  <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
+                                  <Sparkles
+                                    size={13}
+                                    strokeWidth={2}
+                                    aria-hidden="true"
+                                  />
                                   {t('paperTypes.suggest', { name: suggestion })}
                                 </button>
                               )}
@@ -400,7 +561,40 @@ export function AdminPaperTypes() {
                                 ? t('common.saving')
                                 : t('paperTypes.mapCode')}
                             </button>
+                            {/* Only on a reopened row: an unnamed code has
+                                nothing to go back to. */}
+                            {name !== null && (
+                              <button
+                                type="button"
+                                className="btn-secondary btn-small"
+                                onClick={() =>
+                                  setReopened((current) => {
+                                    const next = new Set(current);
+                                    next.delete(entry.code);
+                                    return next;
+                                  })
+                                }
+                              >
+                                {t('common.cancel')}
+                              </button>
+                            )}
                           </form>
+                        )}
+                      </td>
+                      <td className="row-actions">
+                        {/* Renaming what a code says, or overriding a standard
+                            keyword whose built-in name is not the stock that is
+                            actually loaded. Absent while the mapper is already
+                            open, since it would just re-open it. */}
+                        {name !== null && !isMapping && (
+                          <button
+                            type="button"
+                            className="btn-secondary btn-small"
+                            onClick={() => reopen(entry, name)}
+                          >
+                            <Pencil size={13} strokeWidth={2} aria-hidden="true" />
+                            {t('common.edit')}
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -434,7 +628,12 @@ export function AdminPaperTypes() {
           </label>
           <label className="field">
             <span>{t('paperTypes.appliesTo')}</span>
-            <ScopeSelect value={newScope} devices={devices} t={t} onChange={setNewScope} />
+            <ScopeSelect
+              value={newScope}
+              devices={devices}
+              t={t}
+              onChange={setNewScope}
+            />
           </label>
           <button type="submit" className="btn-primary">
             {t('common.save')}
@@ -460,11 +659,27 @@ export function AdminPaperTypes() {
           <table>
             <thead>
               <tr>
-                <th scope="col">{t('paperTypes.code')}</th>
-                <th scope="col">{t('paperTypes.friendlyName')}</th>
-                <th scope="col">{t('paperTypes.appliesTo')}</th>
-                <th scope="col">{t('paperTypes.source')}</th>
-                <th scope="col" />
+                {(
+                  [
+                    ['code', 'paperTypes.code'],
+                    ['name', 'paperTypes.friendlyName'],
+                    ['scope', 'paperTypes.appliesTo'],
+                    ['source', 'paperTypes.source'],
+                  ] as const
+                ).map(([field, labelKey]) => (
+                  <SortableHeader
+                    key={field}
+                    field={field}
+                    sort={knownSort}
+                    onSort={(next) =>
+                      setKnownSort((current) => toggleSort(current, next))
+                    }
+                    label={t(labelKey)}
+                  />
+                ))}
+                <th scope="col">
+                  <span className="visually-hidden">{t('common.actions')}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -526,6 +741,18 @@ export function AdminPaperTypes() {
                           ? t('common.saving')
                           : t('common.save')}
                       </button>
+                      {/* Offered on every row, not only the edited ones: a
+                          factory name that is wrong for this shop is exactly
+                          the thing somebody needs to remove, and the media-pack
+                          reset in Settings puts the seeded set back. */}
+                      <button
+                        type="button"
+                        className="btn-danger btn-small"
+                        onClick={() => setPendingDelete(row)}
+                      >
+                        <Trash2 size={13} strokeWidth={2} aria-hidden="true" />
+                        <span className="visually-hidden">{t('common.delete')}</span>
+                      </button>
                     </td>
                   </tr>
                 );
@@ -536,6 +763,20 @@ export function AdminPaperTypes() {
 
         {visible.length === 0 && <p className="muted">{t('paperTypes.noMatch')}</p>}
       </section>
+
+      {pendingDelete !== null && (
+        <ConfirmDialog
+          title={t('paperTypes.deleteTitle', { code: pendingDelete.code })}
+          body={t('paperTypes.deleteBody', {
+            code: pendingDelete.code,
+            scope: scopeLabel(pendingDelete.deviceId),
+          })}
+          confirmLabel={isDeleting ? t('paperTypes.deleting') : t('common.delete')}
+          isBusy={isDeleting}
+          onConfirm={() => void confirmDelete()}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
 
       {isHelpOpen && (
         <InfoDialog

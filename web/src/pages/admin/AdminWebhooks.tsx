@@ -10,8 +10,18 @@ import { Plus } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
+import { SortableHeader } from '../../components/SortableHeader.js';
+import { ToggleSwitch } from '../../components/ToggleSwitch.js';
 import { useTranslation, type Translate } from '../../i18n/i18n.js';
 import { relativeTime } from '../../lib/format.js';
+import {
+  compareNumber,
+  compareText,
+  toggleSort,
+  toTimestamp,
+  type SortDirection,
+  type SortState,
+} from '../../lib/tableSort.js';
 import type { Webhook, WebhookFormat } from '../../types.js';
 
 interface FormatOption {
@@ -45,6 +55,62 @@ interface Feedback {
   message: string;
 }
 
+type SortField = 'name' | 'format' | 'url' | 'lastResult';
+
+/**
+ * Which direction each column is most useful in on the first click.
+ *
+ * Names and formats read A-Z. "Last result" is a question about recency, where
+ * the interesting end is the top — the destination that fired a minute ago is
+ * the one somebody is looking for after a test.
+ */
+const NATURAL_DIRECTION: Record<SortField, SortDirection> = {
+  name: 'asc',
+  format: 'asc',
+  url: 'asc',
+  lastResult: 'desc',
+};
+
+/**
+ * Orders two rows by the active column.
+ *
+ * `lastResult` sorts on when the attempt happened rather than on the word in
+ * the pill: "ok" and "failed" alphabetised tells nobody anything, and the
+ * question the column answers is "what fired, and when". Never-fired rows carry
+ * no timestamp and sink to the bottom either way, which is the convention every
+ * other table here follows.
+ */
+function compareWebhooks(
+  a: Webhook,
+  b: Webhook,
+  sort: SortState<SortField>,
+  formatLabel: (webhook: Webhook) => string,
+): number {
+  const byName = compareText(a.name, b.name, 'asc');
+
+  switch (sort.field) {
+    case 'name':
+      return compareText(a.name, b.name, sort.direction);
+    case 'format':
+      // On the label the cell shows, not the stored id. They happen to
+      // alphabetise the same way today, and that is luck rather than a
+      // property: `ntfy` renders as "ntfy.sh" and `slack` as "Slack (or
+      // Mattermost)", and a column that sorts by something other than what it
+      // displays looks broken the first time the two disagree.
+      return compareText(formatLabel(a), formatLabel(b), sort.direction) || byName;
+    case 'url':
+      return compareText(a.url, b.url, sort.direction) || byName;
+    case 'lastResult':
+      return (
+        compareNumber(
+          toTimestamp(a.lastAttemptAt),
+          toTimestamp(b.lastAttemptAt),
+          sort.direction,
+        ) || byName
+      );
+  }
+}
+
 export function AdminWebhooks() {
   const { t } = useTranslation();
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
@@ -60,6 +126,12 @@ export function AdminWebhooks() {
    */
   const [editor, setEditor] = useState<{ id: number | null } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Webhook | null>(null);
+  // A-Z by name. The endpoint returns rows in creation order, which is stable
+  // and arbitrary, and arbitrary is not an order anyone looks something up in.
+  const [sort, setSort] = useState<SortState<SortField>>({
+    field: 'name',
+    direction: 'asc',
+  });
   const [isDeleting, setIsDeleting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -90,6 +162,10 @@ export function AdminWebhooks() {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
+  function sortBy(field: SortField): void {
+    setSort((current) => toggleSort(current, field, NATURAL_DIRECTION[field]));
+  }
+
   function startAdd(): void {
     setEditor({ id: null });
     setDraft(BLANK);
@@ -114,6 +190,29 @@ export function AdminWebhooks() {
   function closeEditor(): void {
     setEditor(null);
     setDraft(BLANK);
+  }
+
+  /**
+   * Pauses or resumes one destination from the table.
+   *
+   * A one-field patch — the update route validates only what the body carries,
+   * so this cannot disturb a URL or blank the stored headers on its way past.
+   */
+  async function toggleEnabled(webhook: Webhook): Promise<void> {
+    setBusyId(webhook.id);
+    setFeedback(null);
+
+    try {
+      await api.updateWebhook(webhook.id, { enabled: !webhook.enabled });
+      await reload();
+    } catch (cause) {
+      setFeedback({
+        kind: 'error',
+        message: cause instanceof Error ? cause.message : String(cause),
+      });
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function save(event: React.FormEvent): Promise<void> {
@@ -198,6 +297,11 @@ export function AdminWebhooks() {
   if (loadError !== null) return <div className="banner is-error">{loadError}</div>;
   if (isLoading) return <p className="muted">{t('webhooks.loading')}</p>;
 
+  const formatLabel = (webhook: Webhook): string =>
+    formats.find((format) => format.id === webhook.format)?.label ?? webhook.format;
+
+  const sorted = [...webhooks].sort((a, b) => compareWebhooks(a, b, sort, formatLabel));
+
   return (
     <>
       <section className="card">
@@ -222,27 +326,58 @@ export function AdminWebhooks() {
             <table>
               <thead>
                 <tr>
-                  <th scope="col">{t('webhooks.name')}</th>
-                  <th scope="col">{t('webhooks.format')}</th>
-                  <th scope="col">{t('webhooks.url')}</th>
-                  <th scope="col">{t('webhooks.lastResult')}</th>
+                  {/* No visible header: the column is a row of switches, and any
+                      word over them would be wider than the control itself. */}
+                  <th scope="col" className="enabled-column">
+                    <span className="visually-hidden">{t('webhooks.enabled')}</span>
+                  </th>
+                  <SortableHeader
+                    field="name"
+                    sort={sort}
+                    onSort={sortBy}
+                    label={t('webhooks.name')}
+                  />
+                  <SortableHeader
+                    field="format"
+                    sort={sort}
+                    onSort={sortBy}
+                    label={t('webhooks.format')}
+                  />
+                  <SortableHeader
+                    field="url"
+                    sort={sort}
+                    onSort={sortBy}
+                    label={t('webhooks.url')}
+                  />
+                  <SortableHeader
+                    field="lastResult"
+                    sort={sort}
+                    onSort={sortBy}
+                    label={t('webhooks.lastResult')}
+                  />
                   <th scope="col">
                     <span className="visually-hidden">{t('common.actions')}</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {webhooks.map((webhook) => (
-                  <tr key={webhook.id}>
-                    <td>
-                      {webhook.name}
-                      {!webhook.enabled && (
-                        <span className="pill">{t('webhooks.disabled')}</span>
-                      )}
+                {sorted.map((webhook) => (
+                  <tr key={webhook.id} className={webhook.enabled ? '' : 'is-muted'}>
+                    <td className="enabled-column">
+                      {/* Takes effect on the click. The row dims when it goes
+                          off, which is the badge this replaces — a pill saying
+                          "disabled" beside a switch that is visibly off says
+                          the same thing twice. */}
+                      <ToggleSwitch
+                        checked={webhook.enabled}
+                        disabled={busyId !== null}
+                        ariaLabel={t('webhooks.enabledAria', { name: webhook.name })}
+                        onChange={() => void toggleEnabled(webhook)}
+                      />
                     </td>
+                    <td>{webhook.name}</td>
                     <td className="muted">
-                      {formats.find((format) => format.id === webhook.format)?.label ??
-                        webhook.format}
+                      {formatLabel(webhook)}
                       {webhook.headersSet && (
                         <span className="state-reason">
                           {t('webhooks.customHeaders', {

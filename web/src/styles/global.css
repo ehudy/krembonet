@@ -1510,16 +1510,30 @@ a.alert-device:focus-visible {
   line-height: 1.5;
 }
 
-/* The switch column on the admin devices table. Narrow, and exempt from the
-   row dimming below — a control that looks disabled on the rows it exists to
-   re-enable is the one thing it must not do. */
+/* Small enough to sit beside a Save in a table cell without the row growing a
+   line. Used by the paper-types actions, where three controls share one cell. */
+.btn-danger.btn-small {
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+/* The switch column on the admin devices and webhooks tables. Narrow, and
+   exempt from the row dimming below — a control that looks disabled on the rows
+   it exists to re-enable is the one thing it must not do. */
 .enabled-column {
   width: 1%;
   white-space: nowrap;
 }
 
-.data-table tr.is-muted td.enabled-column {
+.data-table tr.is-muted td.enabled-column,
+tr.is-muted td.enabled-column {
   opacity: 1;
+}
+
+/* The webhooks table is a plain <table>, not .data-table, so the dimming a
+   paused row needs is declared for both. */
+tr.is-muted td {
+  opacity: 0.55;
 }
 
 /* Alert rules -------------------------------------------------------------- */

@@ -464,7 +464,11 @@
     "helpTitle": "About paper codes",
     "helpWhat": "Printers report the loaded paper as an opaque code rather than a name — usually in reverse-domain form, like com.canon-012f. Neither IPP nor SNMP carries a human label alongside it, so the code is all this hub receives.",
     "helpWhy": "Manufacturers use their own codes because the paper catalogue is theirs: the same stock is a different product, with a different profile, on every brand of plotter. That is also why no list of codes ships with this hub — a table lifted from one office’s driver is wrong for the next one, so an unnamed code is shown as the raw code rather than a guess someone might plot a job on.",
-    "helpGlobal": "Naming a code globally applies it to every printer that reports it, which is what makes the Media Catalog useful: two plotters loading the same stock group under one name instead of two codes. Map a code to a single device only when that machine genuinely uses it for something else."
+    "helpGlobal": "Naming a code globally applies it to every printer that reports it, which is what makes the Media Catalog useful: two plotters loading the same stock group under one name instead of two codes. Map a code to a single device only when that machine genuinely uses it for something else.",
+    "deleteTitle": "Delete the mapping for “{{code}}”?",
+    "deleteBody": "The name for {{code}} on {{scope}} is removed, and the code goes back to reading as whatever it did before anybody named it — the built-in standard name if it has one, and the raw code otherwise. Your printers keep reporting it, so it reappears under “Discovered from printers” ready to be named again.",
+    "deleting": "Deleting…",
+    "deletedCode": "Removed the mapping for {{code}}."
   },
   "alerts": {
     "activeTitle": "Currently alerting",
@@ -609,7 +613,6 @@
     "url": "URL",
     "lastResult": "Last result",
     "neverFired": "never fired",
-    "disabled": "disabled",
     "customHeaders": "custom headers: {{keys}}",
     "addTitle": "Add a destination",
     "editTitle": "Edit destination",
@@ -631,7 +634,8 @@
     "add": "Add webhook destination",
     "deleteTitle": "Delete webhook destination?",
     "deleteBody": "This permanently deletes “{{name}}” and removes it from any alert rule that posts to it. Those rules keep working through whatever destinations they have left. This cannot be undone.",
-    "deleting": "Deleting…"
+    "deleting": "Deleting…",
+    "enabledAria": "Send to “{{name}}” or pause it"
   },
   "notFound": {
     "title": "Page not found",

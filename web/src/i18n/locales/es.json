@@ -464,7 +464,11 @@
     "helpTitle": "Acerca de los códigos de papel",
     "helpWhat": "Las impresoras informan del papel cargado como un código opaco en lugar de un nombre, normalmente en forma de dominio invertido, como com.canon-012f. Ni IPP ni SNMP incluyen una etiqueta legible junto a él, así que el código es todo lo que recibe este centro.",
     "helpWhy": "Cada fabricante usa sus propios códigos porque el catálogo de papel es suyo: el mismo material es un producto distinto, con un perfil distinto, en cada marca de plóter. Por eso tampoco se incluye ninguna lista de códigos con este centro: una tabla sacada del controlador de una oficina es incorrecta para la siguiente, así que un código sin nombre se muestra tal cual en vez de como una suposición sobre la que alguien podría imprimir.",
-    "helpGlobal": "Asignar un nombre global se aplica a todas las impresoras que informan de ese código, y eso es lo que hace útil el Catálogo de soportes: dos plóteres con el mismo material se agrupan bajo un nombre en lugar de dos códigos. Asigna un código a un solo dispositivo únicamente cuando esa máquina lo use de verdad para otra cosa."
+    "helpGlobal": "Asignar un nombre global se aplica a todas las impresoras que informan de ese código, y eso es lo que hace útil el Catálogo de soportes: dos plóteres con el mismo material se agrupan bajo un nombre en lugar de dos códigos. Asigna un código a un solo dispositivo únicamente cuando esa máquina lo use de verdad para otra cosa.",
+    "deleteTitle": "¿Eliminar la asignación de «{{code}}»?",
+    "deleteBody": "Se quita el nombre de {{code}} en {{scope}} y el código vuelve a mostrarse como antes de que nadie lo nombrara: el nombre estándar integrado si lo tiene, y el código en bruto si no. Tus impresoras lo siguen informando, así que reaparecerá en «Descubiertos desde las impresoras» listo para nombrarlo otra vez.",
+    "deleting": "Eliminando…",
+    "deletedCode": "Se quitó la asignación de {{code}}."
   },
   "alerts": {
     "activeTitle": "Alertas activas",
@@ -609,7 +613,6 @@
     "url": "URL",
     "lastResult": "Último resultado",
     "neverFired": "nunca se ha enviado",
-    "disabled": "desactivado",
     "customHeaders": "cabeceras personalizadas: {{keys}}",
     "addTitle": "Añadir un destino",
     "editTitle": "Editar destino",
@@ -631,7 +634,8 @@
     "add": "Añadir destino de webhook",
     "deleteTitle": "¿Eliminar el destino de webhook?",
     "deleteBody": "Se elimina «{{name}}» de forma permanente y se quita de cualquier regla de alerta que publique en él. Esas reglas siguen funcionando con los destinos que les queden. Esto no se puede deshacer.",
-    "deleting": "Eliminando…"
+    "deleting": "Eliminando…",
+    "enabledAria": "Enviar a «{{name}}» o pausarlo"
   },
   "notFound": {
     "title": "Página no encontrada",
