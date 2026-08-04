@@ -21,6 +21,25 @@ be turned off. Everything else stays on your network.
 > limited range of real hardware. A walk captured from your printer is the most useful
 > thing you can contribute — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## What it does
+
+- **Polls supplies and media over SNMP or IPP.** Ink and toner levels, waste and
+  maintenance tanks, and what paper is loaded in which tray — read on a schedule you set,
+  from devices that were never going to phone a cloud service.
+- **Shows the live print queue**, on anything reachable over IPP.
+- **Finds printers for you.** Auto-discovery sweeps a subnet, identifies what answers on
+  IPP or SNMP, and adds it in one click. Adding by hand has a **Test connection** button
+  that reports what a device can actually tell you _before_ you save it.
+- **Alerts on rules you write.** Offline, supply low, waste box full, paper out — scoped
+  to all printers or a chosen few, at your threshold or the hub's, once or repeating.
+  Delivered by email and to Discord, Slack, ntfy or a generic JSON endpoint.
+- **Names the paper.** Printers report media as opaque vendor codes; map a code to a
+  friendly name once, globally or per printer, and it reads that way everywhere.
+- **Keeps a history.** Supply readings, alert deliveries and device events, in SQLite on
+  a volume you control.
+- **Stays on your network.** No account, no agent, no telemetry. Secrets are encrypted at
+  rest with AES-256-GCM.
+
 ## Pages
 
 | Route                    | What it is                                                                  |
@@ -290,10 +309,11 @@ The ones most likely to matter: `ENCRYPTION_KEY` to keep the key out of `data/` 
 [Secrets at rest](#secrets-at-rest)), `TZ` so the poller's schedule matches your clock,
 `COOKIE_SECURE=true` behind HTTPS, and `ADMIN_PASSWORD` for deployments provisioned by a
 script that cannot run a wizard. `PLOTTER_HOST` / `PLOTTER_IPP_URI` still seed a device
-from the environment.
+from the environment. Every variable is listed under
+[Environment variables](#environment-variables).
 
 Rather than typing addresses in, **Admin → Devices → Auto-discover** sweeps a subnet
-(`192.168.1.0/24`) for anything answering on IPP or SNMP, identifies each one with the
+(`192.168.0.0/24` by default) for anything answering on IPP or SNMP, identifies each one with the
 same probe the manual button uses, and adds it in one click.
 
 ## Local development
@@ -611,6 +631,91 @@ docker compose ps
 docker compose logs -f hub
 docker compose exec hub ipptool -tv "$PLOTTER_IPP_URI" server/test/fixtures/get-printer-attributes.test
 ```
+
+### HTTPS and reverse proxies
+
+The hub serves **plain HTTP** and binds to `0.0.0.0`. That is deliberate: the intended
+deployment is a trusted LAN, and a self-signed certificate on a printer dashboard buys a
+browser warning rather than safety. There is no certificate handling in the application
+and none is planned — terminating TLS is a job the tools below already do well.
+
+Whichever you use, **set `COOKIE_SECURE=true`** once the hub is reached over HTTPS. It is
+off by default because a `Secure` cookie is never sent over plain HTTP, and a hub that
+marks it unconditionally is a hub nobody can sign in to on a LAN.
+
+**Tailscale** is the best answer for most people here, because it needs no certificate,
+no port forwarding and no DNS. `tailscale serve` gives the hub an HTTPS name reachable
+from your devices and nothing else:
+
+```bash
+tailscale serve --bg 8080          # https://<machine>.<tailnet>.ts.net → localhost:8080
+```
+
+**Caddy**, if you already run it, gets a certificate on its own:
+
+```caddy
+hub.example.com {
+    reverse_proxy localhost:8080
+}
+```
+
+**Nginx Proxy Manager**: add a Proxy Host pointing at the hub's address and port `8080`,
+tick **Websockets Support** (harmless — the SPA polls rather than using a socket, but the
+default off has surprised people), then request a certificate on the SSL tab. Plain nginx
+is the same three lines everyone already has:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Two things to know before you do this:
+
+- **The login rate limiter counts by source IP, and behind a proxy every request has the
+  proxy's IP.** The lockout — 8 failed attempts, then five minutes — therefore becomes
+  hub-wide rather than per-client. It still throttles a brute-force attempt; it also means
+  one person fumbling the password locks the door for everyone until it expires. The
+  server does not trust `X-Forwarded-For`, because a header a client can set is not an
+  identity, and honouring it without pinning the proxy's address would hand an attacker
+  an unlimited supply of fresh "IPs".
+- **HTTPS does not make this internet-facing software.** See
+  [Security posture](#security-posture--read-this-before-exposing-it): one shared admin
+  password, no accounts, no audit trail. A VPN or a tailnet is the right boundary; a
+  certificate is not.
+
+### Environment variables
+
+Every one is optional — `docker compose up -d --build` works with no `.env` at all. Set
+one to pin a value rather than accept a default or a generated one. `.env.example` ships
+the same list with the reasoning behind each.
+
+| Variable                        | Default                 | What it does                                                                                                        |
+| ------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                          | `3000`                  | Port inside the container. Compose publishes it on the host as `8080`.                                              |
+| `HOST`                          | `0.0.0.0`               | Interface to bind. `127.0.0.1` only when a proxy on the same host is the sole reader.                               |
+| `NODE_ENV`                      | `development`           | `production` in the image. Governs log level defaults and static file serving.                                      |
+| `TZ`                            | `UTC`                   | Timezone for the poller's cron. Set it, or overnight alerts fire on someone else's clock.                           |
+| `DATABASE_PATH`                 | `./data/krembonet.db`   | SQLite file. `/app/data/krembonet.db` in the container, on the `./data` volume.                                     |
+| `ENCRYPTION_KEY`                | generated               | 64 hex chars encrypting secrets at rest. Generated into `data/` if unset — see [Secrets at rest](#secrets-at-rest). |
+| `SESSION_SECRET`                | generated               | Signs the session cookie. Generated and stored in the database if unset. Changing it signs everyone out.            |
+| `ADMIN_PASSWORD`                | _(wizard)_              | Hashed into the database at boot, for provisioned deployments. Blank shows the setup wizard instead.                |
+| `SESSION_HOURS`                 | `12`                    | Admin session lifetime.                                                                                             |
+| `VIEWER_SESSION_HOURS`          | `720`                   | Viewer (passcode) session lifetime. Long by design — a wall display should not ask daily.                           |
+| `COOKIE_SECURE`                 | `false`                 | Marks the session cookie `Secure`. **Set `true` behind HTTPS.**                                                     |
+| `BACKGROUND_POLL_MINUTES`       | `60`                    | First-boot poll cadence. After that the admin portal owns it.                                                       |
+| `DEVICE_TIMEOUT_MS`             | `5000`                  | Ceiling on one device request, any protocol. `IPPTOOL_TIMEOUT_MS` is still honoured.                                |
+| `DISCOVERY_ALLOW_PUBLIC_RANGES` | `false`                 | Lets a subnet sweep leave the private ranges. For networks that genuinely use public addressing internally.         |
+| `DISCOVERY_DEADLINE_MS`         | `120000`                | Ceiling on one sweep. Partial results are returned and flagged as partial.                                          |
+| `PUBLIC_BASE_URL`               | _(none)_                | How the hub is reached from a browser, e.g. `http://hub.lan:8080`. Only used to put a working link in a webhook.    |
+| `MEDIA_PACK_PATH`               | _(none)_                | JSON file mapping vendor media codes to names — see [Paper name lookup](#paper-name-lookup).                        |
+| `PLOTTER_HOST`                  | _(none)_                | Seeds one device on boot. Set with `PLOTTER_IPP_URI`, or neither.                                                   |
+| `PLOTTER_IPP_URI`               | _(none)_                | IPP URI for the seeded device.                                                                                      |
+| `PLOTTER_NAME`                  | `Plotter`               | Display name for the seeded device.                                                                                 |
+| `LOG_LEVEL`                     | `info` / `debug` in dev | `fatal`, `error`, `warn`, `info`, `debug`, `trace`. JSON on stdout.                                                 |
 
 ### Updates
 

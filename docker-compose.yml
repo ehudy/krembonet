@@ -9,9 +9,21 @@ services:
     volumes:
       # SQLite lives here so settings and history survive a rebuild.
       - ./data:/app/data
+    # Optional, and it has to be: `docker compose up -d --build` is documented
+    # as working on a clean checkout, where no .env exists. Compose already
+    # reads .env for the ${...} defaults below; this passes through anything
+    # that is *not* in the map, so a variable added to .env later is not
+    # silently dropped. The explicit map still wins where the two overlap.
+    env_file:
+      - path: .env
+        required: false
     environment:
       NODE_ENV: production
       PORT: 3000
+      # Bind inside the container, which is not the same question as which host
+      # interface the published port listens on — that is the `ports:` line
+      # above. 0.0.0.0 here is what lets Docker reach the process at all.
+      HOST: ${HOST:-0.0.0.0}
       # Set this to your own zone. Left at UTC the poller's cron runs in UTC,
       # which matters as soon as alerts are tied to a time of day.
       TZ: ${TZ:-UTC}
@@ -23,7 +35,12 @@ services:
       PLOTTER_NAME: ${PLOTTER_NAME:-}
       MEDIA_PACK_PATH: ${MEDIA_PACK_PATH:-}
       BACKGROUND_POLL_MINUTES: ${BACKGROUND_POLL_MINUTES:-60}
+      # Was missing while .env.example documented it, so setting it there had
+      # no effect in Docker — the one place most people run this.
+      DEVICE_TIMEOUT_MS: ${DEVICE_TIMEOUT_MS:-5000}
+      LOG_LEVEL: ${LOG_LEVEL:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SESSION_HOURS: ${SESSION_HOURS:-12}
       # Optional. Left blank, one is generated on first boot and kept in the
       # database, so sessions survive a restart with no configuration.
       SESSION_SECRET: ${SESSION_SECRET:-}

@@ -15,6 +15,7 @@ server/public/
 data/*
 !data/.gitkeep
 *.db
+*.db-journal
 *.db-shm
 *.db-wal
 
@@ -31,6 +32,12 @@ encryption.key
 !.env.example
 *.log
 
+# Internal working notes. An audit report is a map of what is and is not
+# defended, written for the person who commissioned it — useful to keep beside
+# the repository, not to publish with it. `audit-*` catches the follow-ups.
+SECURITY_AUDIT_REPORT.md
+audit-*.md
+
 # TLS material and anything that looks like it. `*.key` above already catches
 # the encryption key; these are the certificate and bundle forms that would
 # otherwise ride along with a reverse-proxy setup committed by accident.
@@ -44,12 +51,17 @@ encryption.key
 # default; these cover the other conventional extensions.
 *.sqlite
 *.sqlite3
+*.sqlite-journal
 *.sqlite-shm
 *.sqlite-wal
 
 # Not produced by this repo's build — Vite writes to server/public — but a
 # habit-formed `npm run build` in a subdirectory should not surprise anyone.
 build/
+
+# Test-coverage output. Nothing generates it today; every runner that might
+# writes here by default.
+coverage/
 
 # Generated from a vendor PPD — the names are vendor product names, so packs
 # stay local rather than being redistributed here.
