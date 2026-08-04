@@ -23,9 +23,33 @@ data/*
 encryption.key
 *.key
 
+# Every .env variant, and then the template back. `.env.production` and
+# `.env.development.local` are as easy to create and as damaging to commit as
+# `.env` itself, and the two-line pair covers whatever gets invented next.
 .env
-.env.local
+.env.*
+!.env.example
 *.log
+
+# TLS material and anything that looks like it. `*.key` above already catches
+# the encryption key; these are the certificate and bundle forms that would
+# otherwise ride along with a reverse-proxy setup committed by accident.
+*.pem
+*.crt
+*.cer
+*.pfx
+*.p12
+
+# SQLite under whatever name DATABASE_PATH gave it. `*.db` above covers the
+# default; these cover the other conventional extensions.
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+
+# Not produced by this repo's build — Vite writes to server/public — but a
+# habit-formed `npm run build` in a subdirectory should not surprise anyone.
+build/
 
 # Generated from a vendor PPD — the names are vendor product names, so packs
 # stay local rather than being redistributed here.

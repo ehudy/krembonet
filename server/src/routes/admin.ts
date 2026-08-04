@@ -21,6 +21,7 @@ import {
   listWebhooks,
   toTarget,
 } from '../alerts/webhooks.js';
+import { parseWebhookUrl } from '../alerts/webhook-url.js';
 import {
   CONDITION_TYPES,
   isConditionType,
@@ -464,31 +465,8 @@ function safeParseHeaders(raw: string): Record<string, string> {
   }
 }
 
-/**
- * Validates a webhook URL.
- *
- * http is allowed alongside https because a self-hosted ntfy or Mattermost on
- * the same LAN commonly has no certificate, and refusing it would push
- * operators toward disabling verification somewhere worse. Everything else —
- * `file:`, `ftp:`, a bare hostname — is refused, since the only thing this URL
- * is ever used for is an outbound POST.
- */
-function parseWebhookUrl(raw: unknown): { url: string } | { error: string } {
-  const value = String(raw ?? '').trim();
-  if (value === '') return { error: 'A webhook URL is required.' };
-
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return { error: 'Webhook URL is not a valid URL.' };
-  }
-
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    return { error: 'Webhook URL must start with http:// or https://.' };
-  }
-  return { url: parsed.toString() };
-}
+/** RFC 9110 field-name: one or more `tchar`, and nothing else. */
+const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 function parseWebhookHeaders(
   raw: unknown,
@@ -516,9 +494,16 @@ function parseWebhookHeaders(
     if (typeof value !== 'string') {
       return { error: `Header "${key}" must be a string.` };
     }
+    // The RFC 9110 token grammar. A name outside it makes `fetch` throw when
+    // the notification is built, which turns a typo into a destination that
+    // silently never delivers — at 2am, months later. Rejecting it here means
+    // the operator finds out while they are still looking at the form.
+    if (!HEADER_NAME.test(key)) {
+      return { error: `Header name "${key}" is not a valid HTTP header name.` };
+    }
     // A newline in a header value is request splitting, and no legitimate
     // header needs one.
-    if (/[\r\n]/.test(key) || /[\r\n]/.test(value)) {
+    if (/[\r\n]/.test(value)) {
       return { error: `Header "${key}" may not contain line breaks.` };
     }
   }

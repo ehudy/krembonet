@@ -18,6 +18,7 @@ import {
   type WebhookFormat,
   type WebhookNotification,
 } from './webhook-format.js';
+import { parseWebhookUrl } from './webhook-url.js';
 
 export type WebhookRow = typeof webhooks.$inferSelect;
 
@@ -55,7 +56,12 @@ function parseHeaders(raw: string | null): Record<string, string> {
     const parsed: unknown = JSON.parse(decryptSecret(raw));
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
 
-    const headers: Record<string, string> = {};
+    // `Object.create(null)` rather than `{}`: these keys come from stored JSON,
+    // and assigning one called `__proto__` to an ordinary object reaches the
+    // prototype setter rather than adding a header. Nothing is polluted either
+    // way — the setter ignores a string value — but the header would disappear
+    // without saying so. An object with no prototype has no setter to reach.
+    const headers = Object.create(null) as Record<string, string>;
     for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
       if (typeof value === 'string') headers[key] = value;
     }
@@ -121,6 +127,15 @@ export async function sendWebhook(
   target: WebhookTarget,
   notification: WebhookNotification,
 ): Promise<WebhookDeliveryResult> {
+  // Checked again on the way out, not only when the row was saved. A row
+  // written before the guard existed, or restored from an older backup, would
+  // otherwise still be posted to — and this is the only line of code that
+  // actually makes the outbound request.
+  const checked = parseWebhookUrl(target.url);
+  if ('error' in checked) {
+    return { target, ok: false, status: null, error: checked.error };
+  }
+
   const { body, headers } = buildWebhookRequest(target.format, notification);
 
   // AbortSignal.timeout rather than a manual timer: it cancels the socket, so a

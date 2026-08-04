@@ -15,7 +15,7 @@ import { requireAdmin } from '../auth/session.js';
 import { config } from '../config.js';
 import { db } from '../db/client.js';
 import { devices } from '../db/schema.js';
-import { DeviceError, type DeviceCapability } from '../devices/adapter.js';
+import { DeviceError, isCapability, type DeviceCapability } from '../devices/adapter.js';
 import {
   mergeConfig,
   parseStoredConfig,
@@ -63,6 +63,43 @@ function mutePatch(
     if (body[key] !== undefined) patch[key] = body[key] === true;
   }
   return patch;
+}
+
+/**
+ * Length ceilings on the free-text fields.
+ *
+ * Nothing here is a security boundary on its own — every one of these routes is
+ * behind `requireAdmin`, and an admin who wants to fill the database can. They
+ * are here so that a paste accident or a scripted client fails with a sentence
+ * an operator can act on, rather than storing a megabyte in a column that the
+ * dashboard then tries to render on every card.
+ */
+const LIMITS = { displayName: 60, location: 120, host: 255 } as const;
+
+function tooLong(
+  field: keyof typeof LIMITS,
+  value: string,
+): { error: string } | undefined {
+  if (value.length <= LIMITS[field]) return undefined;
+  return { error: `${field} must be ${LIMITS[field]} characters or fewer.` };
+}
+
+/**
+ * The capability list, filtered to the four this build understands.
+ *
+ * It arrives from the probe result the browser echoes back, so it is normally
+ * already correct — but it is stored as JSON and read back on every render, and
+ * an unrecognised entry would sit in the "Reports" column forever with nothing
+ * able to act on it.
+ */
+function parseCapabilities(value: string[] | null | undefined): string | null {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value)) return null;
+
+  const known = [...new Set(value.filter((entry) => typeof entry === 'string'))].filter(
+    isCapability,
+  );
+  return known.length === 0 ? null : JSON.stringify(known);
 }
 
 interface ProbeBody {
@@ -275,6 +312,17 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: `Unknown adapter "${adapterId}".` });
       }
 
+      const location =
+        body.location === undefined || body.location === null || body.location === ''
+          ? null
+          : String(body.location).trim();
+
+      const oversized =
+        tooLong('displayName', displayName) ??
+        tooLong('host', host) ??
+        tooLong('location', location ?? '');
+      if (oversized !== undefined) return reply.code(400).send(oversized);
+
       const adapter = getAdapter(adapterId);
       let normalized: RawConfig;
       try {
@@ -295,19 +343,13 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
         .values({
           slug,
           displayName,
-          location:
-            body.location === undefined || body.location === null || body.location === ''
-              ? null
-              : String(body.location).trim(),
+          location,
           adapter: adapterId,
           host,
           config: serializeConfig(adapter, normalized),
           enabled: body.enabled !== false,
           ...mutePatch(body),
-          capabilities:
-            body.capabilities === undefined || body.capabilities === null
-              ? null
-              : JSON.stringify(body.capabilities),
+          capabilities: parseCapabilities(body.capabilities),
         })
         .returning()
         .all();
@@ -358,6 +400,19 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
       const host = body.host === undefined ? existing.host : String(body.host).trim();
       if (host === '') return reply.code(400).send({ error: 'An address is required.' });
 
+      const location =
+        body.location === undefined
+          ? existing.location
+          : body.location === null || body.location === ''
+            ? null
+            : String(body.location).trim();
+
+      const oversized =
+        tooLong('displayName', displayName) ??
+        tooLong('host', host) ??
+        tooLong('location', location ?? '');
+      if (oversized !== undefined) return reply.code(400).send(oversized);
+
       // Blank secrets in the submission fall back to what is stored, so saving
       // the form without retyping a community string keeps it. Read decrypted,
       // because `parseConfig` below validates the real values — an SNMPv3 key
@@ -377,12 +432,7 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
       db.update(devices)
         .set({
           displayName,
-          location:
-            body.location === undefined
-              ? existing.location
-              : body.location === null || body.location === ''
-                ? null
-                : String(body.location).trim(),
+          location,
           adapter: adapterId,
           host,
           config: serializeConfig(adapter, merged),
@@ -391,9 +441,7 @@ export async function deviceAdminRoutes(app: FastifyInstance): Promise<void> {
           capabilities:
             body.capabilities === undefined
               ? existing.capabilities
-              : body.capabilities === null
-                ? null
-                : JSON.stringify(body.capabilities),
+              : parseCapabilities(body.capabilities),
           updatedAt: new Date(),
         })
         .where(eq(devices.id, id))
