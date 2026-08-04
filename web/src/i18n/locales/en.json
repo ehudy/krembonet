@@ -390,6 +390,7 @@
     "probeSnmpOnlyTip": "This gives supply levels and status. Enable IPP on the device for live queue and paper tray tracking.",
     "probeHttpOnly": "Answered on {{protocols}} only — a web interface, which this hub cannot poll. Enable IPP or SNMP on the device, then probe again.",
     "probeNothing": "Nothing answered at that address. Check the printer is powered on and that the address is right.",
+    "editTitle": "Edit {{name}}",
     "deleteTitle": "Delete printer?",
     "deleteBody": "Are you sure you want to delete \"{{name}}\"? Its readings and supply history will be removed and cannot be recovered.",
     "deleteConfirm": "Delete printer",
@@ -424,7 +425,10 @@
     "snmpOnlyTip": "Provides supply & status telemetry. Enable IPP on device for live queue & paper tray tracking."
   },
   "paperTypes": {
-    "addTitle": "Add or override a code",
+    "addMapping": "Add paper mapping",
+    "addModalTitle": "Add paper mapping",
+    "editModalTitle": "Edit paper mapping",
+    "codeHint": "Exactly as the printer reports it, prefix and all.",
     "mediaCode": "Media code",
     "friendlyName": "Friendly name",
     "savedCode": "Saved {{code}}.",
@@ -449,7 +453,7 @@
     "reportedBy": "Reported by",
     "mapCode": "Map code",
     "mapped": "Mapped",
-    "mapAria": "Friendly name for {{code}}",
+    "unnamed": "Not named yet",
     "unmappedCount": {
       "one": "{{count}} unmapped",
       "other": "{{count}} unmapped"
@@ -457,6 +461,11 @@
     "appliesTo": "Applies to",
     "scopeGlobal": "Global",
     "scopeGlobalOption": "All printers (global)",
+    "scopeGlobalHint": "Every printer that reports this code.",
+    "scopeSelectedOption": "Selected printers",
+    "scopeSelectedHint": "Only the printers ticked below. On those machines it wins over the global name.",
+    "pickPrinter": "Tick at least one printer, or give the name to all of them.",
+    "noPrinters": "No printers are registered yet, so there is nothing to scope a name to.",
     "standard": "Standard",
     "suggest": "Suggest: {{name}}",
     "suggestTitle": "A common name for this vendor code. It fills the field — check it matches the paper actually loaded before mapping it.",

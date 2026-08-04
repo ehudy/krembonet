@@ -5,29 +5,33 @@
  * a human name. Three things fill that gap, in order: a per-device override, a
  * global mapping, and the built-in standard dictionary — the standard keywords
  * (`stationery`, `transparency`, …) already have names and never appear here as
- * "unmapped". Editing a row marks it operator-owned so a re-seed never
+ * "unmapped". Saving a mapping marks it operator-owned so a re-seed never
  * overwrites the correction.
  *
+ * Saved mappings come first and discovery second, which is the reverse of how
+ * this page started. Discovery is where a code is named *once*; the list of
+ * names is what an operator comes back to, and a page that opened on the
+ * printers' raw output buried it under a table that is empty on a healthy,
+ * fully-mapped hub.
+ *
  * A code can carry several mappings at once — one global, plus an override for
- * any device — so the tables key on the row id, not the code, and every save
- * carries the scope it applies to.
+ * any device — and one mapping can cover several printers, so the table groups
+ * the stored rows back into mappings. See `lib/mediaScopes.ts`.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Info, Pencil, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { Info, Pencil, Plus, Trash2, Wand2 } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
 import { InfoDialog } from '../../components/InfoDialog.js';
 import { SortableHeader } from '../../components/SortableHeader.js';
-import { useTranslation, type Translate } from '../../i18n/i18n.js';
+import { useTranslation } from '../../i18n/i18n.js';
 import { compareText, toggleSort, type SortState } from '../../lib/tableSort.js';
-import {
-  COMMON_MEDIA_LIST_ID,
-  COMMON_MEDIA_NAMES,
-  suggestMediaName,
-} from '../../lib/mediaSuggestions.js';
+import { COMMON_MEDIA_LIST_ID, COMMON_MEDIA_NAMES } from '../../lib/mediaSuggestions.js';
+import { groupMediaTypes, type MediaMapping } from '../../lib/mediaScopes.js';
 import { standardMediaKey } from '../../lib/standardMedia.js';
 import type { DiscoveredMediaCode, MediaType } from '../../types.js';
+import { PaperMappingModal, type ScopeDevice } from './PaperMappingModal.js';
 
 interface Feedback {
   kind: 'ok' | 'error';
@@ -37,50 +41,11 @@ interface Feedback {
 type DiscoveredSort = 'code' | 'reportedBy' | 'name';
 type KnownSort = 'code' | 'name' | 'scope' | 'source';
 
-/** Just the fields the scope dropdown and the "Applies to" column need. */
-interface ScopeDevice {
-  id: number;
-  displayName: string;
-}
-
-/** '' is the global scope; any other value is a device id as a string. */
-function scopeToDeviceId(scope: string): number | null {
-  return scope === '' ? null : Number(scope);
-}
-
-/**
- * The scope picker — "All printers (global)" plus every device.
- *
- * A native select rather than a custom control: it is a short list of mutually
- * exclusive options, which is exactly what a select is for, and it comes with
- * keyboard and screen-reader behaviour already correct.
- */
-function ScopeSelect({
-  value,
-  onChange,
-  devices,
-  t,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  devices: readonly ScopeDevice[];
-  t: Translate;
-}) {
-  return (
-    <select
-      className="scope-select"
-      value={value}
-      aria-label={t('paperTypes.appliesTo')}
-      onChange={(event) => onChange(event.target.value)}
-    >
-      <option value="">{t('paperTypes.scopeGlobalOption')}</option>
-      {devices.map((device) => (
-        <option key={device.id} value={String(device.id)}>
-          {device.displayName}
-        </option>
-      ))}
-    </select>
-  );
+/** What the dialog was opened on: an existing mapping, or a code to name. */
+interface Editor {
+  original: MediaMapping | null;
+  code: string;
+  name: string;
 }
 
 export function AdminPaperTypes() {
@@ -89,26 +54,9 @@ export function AdminPaperTypes() {
   const [discovered, setDiscovered] = useState<DiscoveredMediaCode[]>([]);
   const [devices, setDevices] = useState<ScopeDevice[]>([]);
   const [filter, setFilter] = useState('');
-  // Known-codes edits, keyed by row id — a code can appear on several rows
-  // (global plus overrides), so keying by code would let them clobber.
-  const [edits, setEdits] = useState<Record<number, string>>({});
-  // Inline names and scopes being drafted against discovered codes, keyed by
-  // code. A discovered code has at most one row here, so code is a safe key.
-  const [mapDrafts, setMapDrafts] = useState<Record<string, string>>({});
-  const [mapScopes, setMapScopes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  // Identifies which control is mid-save: `add`, `disc:<code>`, or `row:<id>`.
-  const [savingKey, setSavingKey] = useState<string | null>(null);
-
-  /**
-   * Discovered codes whose inline mapper is open despite already having a name.
-   *
-   * The form appears on its own for a code nobody has named. This is the other
-   * route in: renaming one that is wrong, or overriding a standard keyword whose
-   * built-in name does not match the stock actually loaded.
-   */
-  const [reopened, setReopened] = useState<Set<string>>(new Set());
-  const [pendingDelete, setPendingDelete] = useState<MediaType | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<MediaMapping | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [discoveredSort, setDiscoveredSort] = useState<SortState<DiscoveredSort>>({
     field: 'code',
@@ -118,16 +66,12 @@ export function AdminPaperTypes() {
     field: 'code',
     direction: 'asc',
   });
-
-  const [newCode, setNewCode] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newScope, setNewScope] = useState('');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   async function load(signal?: AbortSignal): Promise<void> {
     try {
       // All three in parallel: the mapping table, the discovery list, and the
-      // devices the scope dropdown offers. A save refreshes the first two so a
+      // devices the scope picker offers. A save refreshes the first two so a
       // newly named code leaves the discovered set and joins the known table.
       const [types, codes, deviceList] = await Promise.all([
         api.listMediaTypes(signal),
@@ -140,6 +84,7 @@ export function AdminPaperTypes() {
         deviceList.devices.map((device) => ({
           id: device.id,
           displayName: device.displayName,
+          location: device.location,
         })),
       );
     } catch (cause) {
@@ -157,50 +102,53 @@ export function AdminPaperTypes() {
     return () => controller.abort();
   }, []);
 
+  const mappings = useMemo(() => groupMediaTypes(rows), [rows]);
+
   const deviceName = (id: number): string =>
     devices.find((device) => device.id === id)?.displayName ?? String(id);
 
-  const scopeLabel = (deviceId: number | null): string =>
-    deviceId === null ? t('paperTypes.scopeGlobal') : deviceName(deviceId);
+  /** Every printer a mapping covers, named — "Global" for the mapping that covers all. */
+  const scopeLabel = (mapping: MediaMapping): string =>
+    mapping.isGlobal
+      ? t('paperTypes.scopeGlobal')
+      : mapping.deviceIds.map(deviceName).sort().join(', ');
 
   const visible = useMemo(() => {
     const needle = filter.trim().toLowerCase();
     const matched =
       needle === ''
-        ? rows
-        : rows.filter(
-            (row) =>
-              row.code.toLowerCase().includes(needle) ||
-              row.friendlyName.toLowerCase().includes(needle),
+        ? mappings
+        : mappings.filter(
+            (mapping) =>
+              mapping.code.toLowerCase().includes(needle) ||
+              mapping.friendlyName.toLowerCase().includes(needle),
           );
 
-    // Sorted on the *stored* name, never the in-flight edit: typing a new name
-    // would otherwise reorder the table under the cursor mid-word.
-    const value = (row: MediaType): string | null => {
+    const value = (mapping: MediaMapping): string | null => {
       switch (knownSort.field) {
         case 'code':
-          return row.code;
+          return mapping.code;
         case 'name':
-          return row.friendlyName;
+          return mapping.friendlyName;
         case 'scope':
-          return scopeLabel(row.deviceId);
+          return scopeLabel(mapping);
         case 'source':
-          return row.isSeeded ? t('paperTypes.fromDriver') : t('paperTypes.edited');
+          return mapping.isSeeded ? t('paperTypes.fromDriver') : t('paperTypes.edited');
       }
     };
 
     return [...matched].sort(
       (a, b) =>
         compareText(value(a), value(b), knownSort.direction) ||
-        // A code can hold a global row and an override at once, so the tiebreak
-        // has to separate them or the two shuffle between renders.
+        // A code can hold a global mapping and an override at once, so the
+        // tiebreak has to separate them or the two shuffle between renders.
         compareText(a.code, b.code, 'asc') ||
-        compareText(scopeLabel(a.deviceId), scopeLabel(b.deviceId), 'asc'),
+        compareText(scopeLabel(a), scopeLabel(b), 'asc'),
     );
     // `scopeLabel` closes over `devices`, which is why it is a dependency here.
-  }, [rows, filter, knownSort, devices, t]);
+  }, [mappings, filter, knownSort, devices, t]);
 
-  /** How a discovered code stands: named by a custom mapping, by the standard dictionary, or not at all. */
+  /** How a discovered code stands: named by a mapping, by the standard dictionary, or not at all. */
   function describeDiscovered(entry: DiscoveredMediaCode): {
     name: string | null;
     isStandard: boolean;
@@ -254,7 +202,28 @@ export function AdminPaperTypes() {
   }
 
   /**
-   * Removes one mapping row.
+   * Opens the dialog on a code a printer is reporting.
+   *
+   * Edits the saved mapping where exactly one covers the code, so its scope and
+   * name come up filled in. Where a code carries both a global mapping and
+   * overrides there is no single one to mean, so it opens as a new mapping
+   * instead — the save is an upsert per scope, which lands in the right place
+   * whichever the operator picks.
+   */
+  function mapDiscovered(entry: DiscoveredMediaCode): void {
+    const covering = mappings.filter((mapping) => mapping.code === entry.code);
+    const { name } = describeDiscovered(entry);
+
+    setFeedback(null);
+    setEditor({
+      original: covering.length === 1 ? (covering[0] as MediaMapping) : null,
+      code: entry.code,
+      name: name ?? '',
+    });
+  }
+
+  /**
+   * Removes one mapping, and every scope row behind it.
    *
    * The code goes back to however it read before anybody named it: the standard
    * dictionary if it is a PWG keyword, and the raw code otherwise. It does not
@@ -263,19 +232,21 @@ export function AdminPaperTypes() {
    * action than it sounds.
    */
   async function confirmDelete(): Promise<void> {
-    const row = pendingDelete;
-    if (row === null) return;
+    const mapping = pendingDelete;
+    if (mapping === null) return;
 
     setIsDeleting(true);
     setFeedback(null);
 
     try {
-      await api.deleteMediaType(row.id);
+      for (const row of mapping.rows) {
+        await api.deleteMediaType(row.id);
+      }
       setPendingDelete(null);
       await load();
       setFeedback({
         kind: 'ok',
-        message: t('paperTypes.deletedCode', { code: row.code }),
+        message: t('paperTypes.deletedCode', { code: mapping.code }),
       });
     } catch (cause) {
       setPendingDelete(null);
@@ -287,91 +258,6 @@ export function AdminPaperTypes() {
       setIsDeleting(false);
     }
   }
-
-  /** Opens the inline mapper on a code that already has a name. */
-  function reopen(entry: DiscoveredMediaCode, currentName: string): void {
-    setMapDrafts((current) => ({ ...current, [entry.code]: currentName }));
-    setReopened((current) => new Set(current).add(entry.code));
-  }
-
-  async function saveMapping(opts: {
-    code: string;
-    friendlyName: string;
-    deviceId: number | null;
-    savingKey: string;
-    onSaved?: () => void;
-  }): Promise<void> {
-    setSavingKey(opts.savingKey);
-    setFeedback(null);
-
-    try {
-      await api.saveMediaType(opts.code, opts.friendlyName, opts.deviceId);
-      opts.onSaved?.();
-      await load();
-      setFeedback({
-        kind: 'ok',
-        message: t('paperTypes.savedCode', { code: opts.code }),
-      });
-    } catch (cause) {
-      setFeedback({
-        kind: 'error',
-        message: cause instanceof Error ? cause.message : String(cause),
-      });
-    } finally {
-      setSavingKey(null);
-    }
-  }
-
-  async function addRow(event: React.FormEvent): Promise<void> {
-    event.preventDefault();
-    const code = newCode.trim();
-    const name = newName.trim();
-    if (code === '' || name === '') return;
-
-    await saveMapping({
-      code,
-      friendlyName: name,
-      deviceId: scopeToDeviceId(newScope),
-      savingKey: 'add',
-      onSaved: () => {
-        setNewCode('');
-        setNewName('');
-        setNewScope('');
-      },
-    });
-  }
-
-  async function mapCode(event: React.FormEvent, code: string): Promise<void> {
-    event.preventDefault();
-    const name = (mapDrafts[code] ?? '').trim();
-    if (name === '') return;
-
-    await saveMapping({
-      code,
-      friendlyName: name,
-      deviceId: scopeToDeviceId(mapScopes[code] ?? ''),
-      savingKey: `disc:${code}`,
-      onSaved: () => {
-        setMapDrafts((current) => {
-          const next = { ...current };
-          delete next[code];
-          return next;
-        });
-        setMapScopes((current) => {
-          const next = { ...current };
-          delete next[code];
-          return next;
-        });
-        setReopened((current) => {
-          const next = new Set(current);
-          next.delete(code);
-          return next;
-        });
-      },
-    });
-  }
-
-  const edited = (row: MediaType): string => edits[row.id] ?? row.friendlyName;
 
   return (
     <>
@@ -392,9 +278,126 @@ export function AdminPaperTypes() {
         ))}
       </datalist>
 
-      {/* Discovery first: this is the effortless path, where the codes name
-          themselves and an admin only supplies the words. The manual form and
-          the full mapping table below are the fallback and the reference. */}
+      <section className="card">
+        <div className="card-head">
+          <h2 className="card-title">
+            {t('paperTypes.knownCodes')} <span className="count">{mappings.length}</span>
+          </h2>
+
+          <div className="head-tools">
+            <input
+              className="filter-input"
+              value={filter}
+              aria-label={t('paperTypes.filter')}
+              placeholder={t('paperTypes.filterPlaceholder')}
+              onChange={(event) => setFilter(event.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                setFeedback(null);
+                setEditor({ original: null, code: '', name: '' });
+              }}
+            >
+              <Plus size={15} strokeWidth={2} aria-hidden="true" />
+              {t('paperTypes.addMapping')}
+            </button>
+          </div>
+        </div>
+
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                {(
+                  [
+                    ['code', 'paperTypes.code'],
+                    ['name', 'paperTypes.friendlyName'],
+                    ['scope', 'paperTypes.appliesTo'],
+                    ['source', 'paperTypes.source'],
+                  ] as const
+                ).map(([field, labelKey]) => (
+                  <SortableHeader
+                    key={field}
+                    field={field}
+                    sort={knownSort}
+                    onSort={(next) =>
+                      setKnownSort((current) => toggleSort(current, next))
+                    }
+                    label={t(labelKey)}
+                  />
+                ))}
+                <th scope="col">
+                  <span className="visually-hidden">{t('common.actions')}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((mapping) => (
+                <tr key={mapping.key}>
+                  <td>
+                    <code>{mapping.code}</code>
+                  </td>
+                  <td>{mapping.friendlyName}</td>
+                  {/* Named rather than counted: "Plotter 2, Plotter 4" is the
+                      answer to the question the column asks, and the title
+                      carries the whole list when the cell has to truncate. */}
+                  <td className="truncate" title={scopeLabel(mapping)}>
+                    <span className={mapping.isGlobal ? 'muted' : 'tag is-custom'}>
+                      {scopeLabel(mapping)}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`tag${mapping.isSeeded ? '' : ' is-custom'}`}>
+                      {mapping.isSeeded
+                        ? t('paperTypes.fromDriver')
+                        : t('paperTypes.edited')}
+                    </span>
+                  </td>
+                  <td className="row-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary btn-small"
+                      onClick={() => {
+                        setFeedback(null);
+                        setEditor({
+                          original: mapping,
+                          code: mapping.code,
+                          name: mapping.friendlyName,
+                        });
+                      }}
+                    >
+                      <Pencil size={13} strokeWidth={2} aria-hidden="true" />
+                      {t('common.edit')}
+                    </button>
+                    {/* Offered on every row, not only the edited ones: a
+                        factory name that is wrong for this shop is exactly
+                        the thing somebody needs to remove, and the media-pack
+                        reset in Settings puts the seeded set back. */}
+                    <button
+                      type="button"
+                      className="btn-danger btn-small"
+                      onClick={() => setPendingDelete(mapping)}
+                    >
+                      <Trash2 size={13} strokeWidth={2} aria-hidden="true" />
+                      <span className="visually-hidden">{t('common.delete')}</span>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {visible.length === 0 && (
+          <p className="muted">
+            {mappings.length === 0 ? t('paperTypes.empty') : t('paperTypes.noMatch')}
+          </p>
+        )}
+        <p className="field-hint">{t('paperTypes.unmappedHint')}</p>
+      </section>
+
       <section className="card">
         <div className="card-head">
           <h2 className="card-title">
@@ -427,30 +430,23 @@ export function AdminPaperTypes() {
             <table>
               <thead>
                 <tr>
-                  <SortableHeader
-                    field="code"
-                    sort={discoveredSort}
-                    onSort={(field) =>
-                      setDiscoveredSort((current) => toggleSort(current, field))
-                    }
-                    label={t('paperTypes.code')}
-                  />
-                  <SortableHeader
-                    field="reportedBy"
-                    sort={discoveredSort}
-                    onSort={(field) =>
-                      setDiscoveredSort((current) => toggleSort(current, field))
-                    }
-                    label={t('paperTypes.reportedBy')}
-                  />
-                  <SortableHeader
-                    field="name"
-                    sort={discoveredSort}
-                    onSort={(field) =>
-                      setDiscoveredSort((current) => toggleSort(current, field))
-                    }
-                    label={t('paperTypes.friendlyName')}
-                  />
+                  {(
+                    [
+                      ['code', 'paperTypes.code'],
+                      ['reportedBy', 'paperTypes.reportedBy'],
+                      ['name', 'paperTypes.friendlyName'],
+                    ] as const
+                  ).map(([field, labelKey]) => (
+                    <SortableHeader
+                      key={field}
+                      field={field}
+                      sort={discoveredSort}
+                      onSort={(next) =>
+                        setDiscoveredSort((current) => toggleSort(current, next))
+                      }
+                      label={t(labelKey)}
+                    />
+                  ))}
                   <th scope="col">
                     <span className="visually-hidden">{t('common.actions')}</span>
                   </th>
@@ -459,13 +455,6 @@ export function AdminPaperTypes() {
               <tbody>
                 {sortDiscovered(discovered).map((entry) => {
                   const { name, isStandard } = describeDiscovered(entry);
-                  // Only offered for a code nobody has named, and only when the
-                  // draft is still empty — once someone starts typing, their
-                  // words win over the proposal.
-                  const suggestion = name === null ? suggestMediaName(entry.code) : null;
-                  // Unnamed codes open their mapper on sight; a named one opens
-                  // it only when somebody asks to change what it says.
-                  const isMapping = name === null || reopened.has(entry.code);
 
                   return (
                     <tr key={entry.code} className={name === null ? 'is-unmapped' : ''}>
@@ -476,7 +465,9 @@ export function AdminPaperTypes() {
                         {entry.devices.map((device) => device.displayName).join(', ')}
                       </td>
                       <td>
-                        {!isMapping ? (
+                        {name === null ? (
+                          <span className="muted">{t('paperTypes.unnamed')}</span>
+                        ) : (
                           <span className="mapped-name">
                             {name}
                             {/* A standard keyword and a custom name read
@@ -489,113 +480,33 @@ export function AdminPaperTypes() {
                                 : t('paperTypes.mapped')}
                             </span>
                           </span>
-                        ) : (
-                          // Inline mapping: a form so Enter submits, and so the
-                          // scope, name field, and button read as one control.
-                          <form
-                            className="map-form"
-                            onSubmit={(event) => void mapCode(event, entry.code)}
-                          >
-                            <ScopeSelect
-                              value={mapScopes[entry.code] ?? ''}
-                              devices={devices}
-                              t={t}
-                              onChange={(value) =>
-                                setMapScopes((current) => ({
-                                  ...current,
-                                  [entry.code]: value,
-                                }))
-                              }
-                            />
-                            <input
-                              className="cell-input"
-                              list={COMMON_MEDIA_LIST_ID}
-                              value={mapDrafts[entry.code] ?? ''}
-                              placeholder={t('paperTypes.namePlaceholder')}
-                              aria-label={t('paperTypes.mapAria', { code: entry.code })}
-                              onChange={(event) =>
-                                setMapDrafts((current) => ({
-                                  ...current,
-                                  [entry.code]: event.target.value,
-                                }))
-                              }
-                            />
-                            {/* A proposal, not an answer: it fills the field
-                                and stops there, so the name is only ever stored
-                                because a person read it and pressed Map. The
-                                vendor table it comes from is a convention, not
-                                a standard, and can be wrong for a given
-                                firmware. Hidden once the field has text so it
-                                never looks like it will overwrite typing. */}
-                            {suggestion !== null &&
-                              (mapDrafts[entry.code] ?? '') === '' && (
-                                <button
-                                  type="button"
-                                  className="suggest-button"
-                                  title={t('paperTypes.suggestTitle')}
-                                  onClick={() =>
-                                    setMapDrafts((current) => ({
-                                      ...current,
-                                      [entry.code]: suggestion,
-                                    }))
-                                  }
-                                >
-                                  <Sparkles
-                                    size={13}
-                                    strokeWidth={2}
-                                    aria-hidden="true"
-                                  />
-                                  {t('paperTypes.suggest', { name: suggestion })}
-                                </button>
-                              )}
-                            <button
-                              type="submit"
-                              className="btn-primary btn-small"
-                              disabled={
-                                (mapDrafts[entry.code] ?? '').trim() === '' ||
-                                savingKey === `disc:${entry.code}`
-                              }
-                            >
-                              <Wand2 size={14} strokeWidth={2} aria-hidden="true" />
-                              {savingKey === `disc:${entry.code}`
-                                ? t('common.saving')
-                                : t('paperTypes.mapCode')}
-                            </button>
-                            {/* Only on a reopened row: an unnamed code has
-                                nothing to go back to. */}
-                            {name !== null && (
-                              <button
-                                type="button"
-                                className="btn-secondary btn-small"
-                                onClick={() =>
-                                  setReopened((current) => {
-                                    const next = new Set(current);
-                                    next.delete(entry.code);
-                                    return next;
-                                  })
-                                }
-                              >
-                                {t('common.cancel')}
-                              </button>
-                            )}
-                          </form>
                         )}
                       </td>
                       <td className="row-actions">
-                        {/* Renaming what a code says, or overriding a standard
-                            keyword whose built-in name is not the stock that is
-                            actually loaded. Absent while the mapper is already
-                            open, since it would just re-open it. */}
-                        {name !== null && !isMapping && (
-                          <button
-                            type="button"
-                            className="btn-secondary btn-small"
-                            onClick={() => reopen(entry, name)}
-                          >
-                            <Pencil size={13} strokeWidth={2} aria-hidden="true" />
-                            {t('common.edit')}
-                          </button>
-                        )}
+                        {/* Naming an unknown code, or overriding a name that is
+                            not the stock actually loaded — including a standard
+                            keyword, which has no saved row until this is used. */}
+                        <button
+                          type="button"
+                          className={
+                            name === null
+                              ? 'btn-primary btn-small'
+                              : 'btn-secondary btn-small'
+                          }
+                          onClick={() => mapDiscovered(entry)}
+                        >
+                          {name === null ? (
+                            <>
+                              <Wand2 size={13} strokeWidth={2} aria-hidden="true" />
+                              {t('paperTypes.mapCode')}
+                            </>
+                          ) : (
+                            <>
+                              <Pencil size={13} strokeWidth={2} aria-hidden="true" />
+                              {t('common.edit')}
+                            </>
+                          )}
+                        </button>
                       </td>
                     </tr>
                   );
@@ -606,170 +517,27 @@ export function AdminPaperTypes() {
         )}
       </section>
 
-      <section className="card">
-        <h2 className="card-title">{t('paperTypes.addTitle')}</h2>
-        <form className="inline-form" onSubmit={addRow}>
-          <label className="field">
-            <span>{t('paperTypes.mediaCode')}</span>
-            <input
-              value={newCode}
-              placeholder={t('paperTypes.codePlaceholder')}
-              onChange={(event) => setNewCode(event.target.value)}
-            />
-          </label>
-          <label className="field field-wide">
-            <span>{t('paperTypes.friendlyName')}</span>
-            <input
-              list={COMMON_MEDIA_LIST_ID}
-              value={newName}
-              placeholder={t('paperTypes.namePlaceholder')}
-              onChange={(event) => setNewName(event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span>{t('paperTypes.appliesTo')}</span>
-            <ScopeSelect
-              value={newScope}
-              devices={devices}
-              t={t}
-              onChange={setNewScope}
-            />
-          </label>
-          <button type="submit" className="btn-primary">
-            {t('common.save')}
-          </button>
-        </form>
-        <p className="field-hint">{t('paperTypes.unmappedHint')}</p>
-      </section>
-
-      <section className="card">
-        <div className="card-head">
-          <h2 className="card-title">
-            {t('paperTypes.knownCodes')} <span className="count">{rows.length}</span>
-          </h2>
-          <input
-            className="filter-input"
-            value={filter}
-            placeholder={t('paperTypes.filterPlaceholder')}
-            onChange={(event) => setFilter(event.target.value)}
-          />
-        </div>
-
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                {(
-                  [
-                    ['code', 'paperTypes.code'],
-                    ['name', 'paperTypes.friendlyName'],
-                    ['scope', 'paperTypes.appliesTo'],
-                    ['source', 'paperTypes.source'],
-                  ] as const
-                ).map(([field, labelKey]) => (
-                  <SortableHeader
-                    key={field}
-                    field={field}
-                    sort={knownSort}
-                    onSort={(next) =>
-                      setKnownSort((current) => toggleSort(current, next))
-                    }
-                    label={t(labelKey)}
-                  />
-                ))}
-                <th scope="col">
-                  <span className="visually-hidden">{t('common.actions')}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((row) => {
-                const value = edited(row);
-                const isDirty = value !== row.friendlyName;
-
-                return (
-                  <tr key={row.id}>
-                    <td>
-                      <code>{row.code}</code>
-                    </td>
-                    <td>
-                      <input
-                        className="cell-input"
-                        list={COMMON_MEDIA_LIST_ID}
-                        value={value}
-                        onChange={(event) =>
-                          setEdits((current) => ({
-                            ...current,
-                            [row.id]: event.target.value,
-                          }))
-                        }
-                      />
-                    </td>
-                    <td>
-                      <span className={row.deviceId === null ? 'muted' : 'tag is-custom'}>
-                        {scopeLabel(row.deviceId)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`tag${row.isSeeded ? '' : ' is-custom'}`}>
-                        {row.isSeeded
-                          ? t('paperTypes.fromDriver')
-                          : t('paperTypes.edited')}
-                      </span>
-                    </td>
-                    <td className="row-actions">
-                      <button
-                        type="button"
-                        className="btn-secondary btn-small"
-                        disabled={!isDirty || savingKey === `row:${row.id}`}
-                        onClick={() =>
-                          void saveMapping({
-                            code: row.code,
-                            friendlyName: value,
-                            deviceId: row.deviceId,
-                            savingKey: `row:${row.id}`,
-                            onSaved: () =>
-                              setEdits((current) => {
-                                const next = { ...current };
-                                delete next[row.id];
-                                return next;
-                              }),
-                          })
-                        }
-                      >
-                        {savingKey === `row:${row.id}`
-                          ? t('common.saving')
-                          : t('common.save')}
-                      </button>
-                      {/* Offered on every row, not only the edited ones: a
-                          factory name that is wrong for this shop is exactly
-                          the thing somebody needs to remove, and the media-pack
-                          reset in Settings puts the seeded set back. */}
-                      <button
-                        type="button"
-                        className="btn-danger btn-small"
-                        onClick={() => setPendingDelete(row)}
-                      >
-                        <Trash2 size={13} strokeWidth={2} aria-hidden="true" />
-                        <span className="visually-hidden">{t('common.delete')}</span>
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {visible.length === 0 && <p className="muted">{t('paperTypes.noMatch')}</p>}
-      </section>
+      {editor !== null && (
+        <PaperMappingModal
+          original={editor.original}
+          initialCode={editor.code}
+          initialName={editor.name}
+          devices={devices}
+          onClose={() => setEditor(null)}
+          onSaved={(code) => {
+            setEditor(null);
+            void load();
+            setFeedback({ kind: 'ok', message: t('paperTypes.savedCode', { code }) });
+          }}
+        />
+      )}
 
       {pendingDelete !== null && (
         <ConfirmDialog
           title={t('paperTypes.deleteTitle', { code: pendingDelete.code })}
           body={t('paperTypes.deleteBody', {
             code: pendingDelete.code,
-            scope: scopeLabel(pendingDelete.deviceId),
+            scope: scopeLabel(pendingDelete),
           })}
           confirmLabel={isDeleting ? t('paperTypes.deleting') : t('common.delete')}
           isBusy={isDeleting}

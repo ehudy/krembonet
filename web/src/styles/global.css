@@ -999,6 +999,16 @@ h1 {
   margin: 0;
 }
 
+/* A filter and the button that adds a row, as one group on the right of a card
+   head — so the primary action keeps the corner rather than being pushed into
+   the middle by whatever sits beside it. */
+.head-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .card-title {
   margin: 0 0 16px;
   font-size: 12px;
@@ -1997,18 +2007,6 @@ tr.is-muted td {
   border-top: 1px solid var(--border-strong);
 }
 
-.cell-input {
-  padding: 6px 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 13px;
-  width: 100%;
-  min-width: 180px;
-  background: var(--surface);
-  color: var(--text);
-}
-
 .filter-input {
   padding: 7px 11px;
   border: 1px solid var(--border);
@@ -2600,11 +2598,56 @@ tr.is-muted td {
   margin-top: 22px;
 }
 
+/* The title takes what is left, so a header switch and the close cross sit
+   together on the right instead of being spread across the whole head. */
+.modal-head > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .modal-footer {
   padding: 14px 20px;
   border-top: 1px solid var(--border);
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
+}
+
+/* An add-or-edit form: wider than a dialog that asks something, because its
+   fields are laid out in two columns and 560px puts them in one. */
+.modal.is-wide {
+  max-width: 760px;
+  max-height: min(88vh, 860px);
+}
+
+/* Sections inside a form dialog sit closer together than on a page — the body
+   is already bounded by the modal, so it does not need page-sized air. */
+.modal-body .card-subtitle:first-child,
+.modal-body .field-grid:first-child {
+  margin-top: 0;
+}
+
+.modal-body .banner:last-child {
+  margin-bottom: 0;
+}
+
+/* A printer list can be longer than the dialog. Scrolling the list rather than
+   the whole body keeps the buttons that act on it in view. */
+.modal-body .checkbox-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* On a phone the scrim's page-sized padding is most of the screen. */
+@media (max-width: 640px) {
+  .modal-scrim {
+    padding: 12px;
+  }
+
+  .modal,
+  .modal.is-wide {
+    max-height: 92vh;
+  }
 }
 
 .icon-button {
@@ -3947,44 +3990,6 @@ a.media-line:focus-visible {
 
 /* Discovered paper codes -------------------------------------------------- */
 
-/* The inline map control: a name field and its confirm button reading as one
-   unit, sized to sit inside a table cell without stretching the row. */
-.map-form {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.map-form .cell-input {
-  flex: 1;
-  min-width: 0;
-}
-
-.map-form .btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* The scope picker inherits the global select shell — reset, chevron, border —
-   and only trims the vertical padding to sit compactly in a row of controls,
-   caps its width since the device names it holds vary in length, and keeps the
-   right room the chevron needs. Padding is longhand, not the `padding`
-   shorthand, so it does not wipe the chevron's right gutter. */
-.scope-select {
-  padding-block: 6px;
-  padding-left: 9px;
-  flex-shrink: 0;
-  max-width: 180px;
-}
-
-.map-form .scope-select {
-  flex-shrink: 1;
-  min-width: 0;
-}
-
 /* An unmapped row is the one an admin is here to act on, so its code is given
    the weight the eye is looking for — just enough to find it in a long list,
    not so much that a mapped fleet looks alarming. */
@@ -4092,8 +4097,8 @@ a.media-line:focus-visible {
 /* Confirmation dialog ----------------------------------------------------- */
 
 /* Blurring what is behind the scrim pushes the page back a plane, so the thing
-   asking a question is unmistakably the thing in front. Only on this variant:
-   the release-notes modal is a reference someone reads *against* the page. */
+   asking for an answer is unmistakably the thing in front. Not on every modal:
+   the release-notes one is a reference someone reads *against* the page. */
 .modal-scrim.is-blurred {
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
@@ -4239,7 +4244,7 @@ a.media-line:focus-visible {
 /* Paragraphs of prose, rather than the label/value pairs the rest of the admin
    is made of — so they get reading measure and spacing instead of form
    density. */
-.modal-body.prose p {
+.modal-body .prose p {
   margin: 0 0 12px;
   font-size: 13px;
   line-height: 1.65;
@@ -4247,7 +4252,7 @@ a.media-line:focus-visible {
   max-width: 62ch;
 }
 
-.modal-body.prose p:last-child {
+.modal-body .prose p:last-child {
   margin-bottom: 0;
 }
 

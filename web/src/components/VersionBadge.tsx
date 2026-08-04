@@ -11,9 +11,10 @@
  * HTML. They come from a third party, and no formatting is worth giving a
  * remote server a path into the DOM of a page that also administers devices.
  */
-import { useEffect, useRef, useState } from 'react';
-import { ArrowUpCircle, X } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowUpCircle } from 'lucide-react';
 
+import { Modal } from './Modal.js';
 import { useTranslation } from '../i18n/i18n.js';
 import { formatDate } from '../lib/format.js';
 import type { UpdateStatus } from '../types.js';
@@ -22,20 +23,7 @@ const REBUILD_COMMAND = 'docker compose up -d --build';
 
 function UpdateModal({ status, onClose }: { status: UpdateStatus; onClose: () => void }) {
   const { t, locale } = useTranslation();
-  const closeRef = useRef<HTMLButtonElement>(null);
   const [copied, setCopied] = useState(false);
-
-  // Focus moves into the dialog on open and Escape closes it — the two things
-  // a keyboard user needs that a plain div never provides for free.
-  useEffect(() => {
-    closeRef.current?.focus();
-
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   async function copyCommand(): Promise<void> {
     try {
@@ -52,85 +40,66 @@ function UpdateModal({ status, onClose }: { status: UpdateStatus; onClose: () =>
   const published = formatDate(status.publishedAt, locale);
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="update-modal-title"
-        // Clicks inside must not reach the scrim's close handler.
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="modal-head">
-          <div>
-            <h2 id="update-modal-title">
-              {status.releaseName ??
-                t('version.versionFallback', { version: status.latestVersion ?? '' })}
-            </h2>
-            <p className="muted">
-              {t('version.running', { version: status.currentVersion })}
-              {published !== null && ` · ${t('version.released', { date: published })}`}
-            </p>
-          </div>
-          <button
-            ref={closeRef}
-            type="button"
-            className="icon-button"
-            aria-label={t('common.close')}
-            onClick={onClose}
+    <Modal
+      title={
+        status.releaseName ??
+        t('version.versionFallback', { version: status.latestVersion ?? '' })
+      }
+      subtitle={
+        <>
+          {t('version.running', { version: status.currentVersion })}
+          {published !== null && ` · ${t('version.released', { date: published })}`}
+        </>
+      }
+      onClose={onClose}
+      // Read against the page rather than instead of it, so what is behind
+      // stays legible.
+      scrim="plain"
+      footer={
+        status.releaseUrl === null ? undefined : (
+          <a
+            className="btn-secondary"
+            href={status.releaseUrl}
+            target="_blank"
+            // noreferrer as well as noopener: the release page has no reason
+            // to learn which hub linked to it.
+            rel="noopener noreferrer"
           >
-            <X size={16} strokeWidth={2} aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="modal-body">
-          <h3 className="modal-section">{t('version.toUpdate')}</h3>
-          <div className="command-row">
-            <code>{REBUILD_COMMAND}</code>
-            <button
-              type="button"
-              className="btn-secondary btn-small"
-              onClick={() => void copyCommand()}
-            >
-              {copied ? t('common.copied') : t('common.copy')}
-            </button>
-          </div>
-          <p className="field-hint">
-            {t('version.commandHint')
-              .split(/<file>|<data>/)
-              .map((part, index) => (
-                <span key={index}>
-                  {part}
-                  {index === 0 && <code>docker-compose.yml</code>}
-                  {index === 1 && <code>data/</code>}
-                </span>
-              ))}
-          </p>
-
-          <h3 className="modal-section">{t('version.releaseNotes')}</h3>
-          {status.releaseNotes === null || status.releaseNotes.trim() === '' ? (
-            <p className="muted">{t('version.noNotes')}</p>
-          ) : (
-            <pre className="release-notes">{status.releaseNotes}</pre>
-          )}
-        </div>
-
-        {status.releaseUrl !== null && (
-          <div className="modal-footer">
-            <a
-              className="btn-secondary"
-              href={status.releaseUrl}
-              target="_blank"
-              // noreferrer as well as noopener: the release page has no reason
-              // to learn which hub linked to it.
-              rel="noopener noreferrer"
-            >
-              {t('version.viewOnGitHub')}
-            </a>
-          </div>
-        )}
+            {t('version.viewOnGitHub')}
+          </a>
+        )
+      }
+    >
+      <h3 className="modal-section">{t('version.toUpdate')}</h3>
+      <div className="command-row">
+        <code>{REBUILD_COMMAND}</code>
+        <button
+          type="button"
+          className="btn-secondary btn-small"
+          onClick={() => void copyCommand()}
+        >
+          {copied ? t('common.copied') : t('common.copy')}
+        </button>
       </div>
-    </div>
+      <p className="field-hint">
+        {t('version.commandHint')
+          .split(/<file>|<data>/)
+          .map((part, index) => (
+            <span key={index}>
+              {part}
+              {index === 0 && <code>docker-compose.yml</code>}
+              {index === 1 && <code>data/</code>}
+            </span>
+          ))}
+      </p>
+
+      <h3 className="modal-section">{t('version.releaseNotes')}</h3>
+      {status.releaseNotes === null || status.releaseNotes.trim() === '' ? (
+        <p className="muted">{t('version.noNotes')}</p>
+      ) : (
+        <pre className="release-notes">{status.releaseNotes}</pre>
+      )}
+    </Modal>
   );
 }
 

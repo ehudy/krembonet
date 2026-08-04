@@ -390,6 +390,7 @@
     "probeSnmpOnlyTip": "Esto da niveles de consumibles y estado. Activa IPP en el dispositivo para seguir la cola y las bandejas de papel en directo.",
     "probeHttpOnly": "Solo respondió por {{protocols}}: una interfaz web, que este centro no puede consultar. Activa IPP o SNMP en el dispositivo y vuelve a probar.",
     "probeNothing": "Nada respondió en esa dirección. Comprueba que la impresora está encendida y que la dirección es correcta.",
+    "editTitle": "Editar {{name}}",
     "deleteTitle": "¿Eliminar la impresora?",
     "deleteBody": "¿Seguro que quieres eliminar «{{name}}»? Sus lecturas y su historial de consumibles se borrarán y no se podrán recuperar.",
     "deleteConfirm": "Eliminar impresora",
@@ -424,7 +425,10 @@
     "snmpOnlyTip": "Proporciona telemetría de consumibles y estado. Activa IPP en el dispositivo para seguir la cola y las bandejas de papel en directo."
   },
   "paperTypes": {
-    "addTitle": "Añadir o sustituir un código",
+    "addMapping": "Añadir asignación",
+    "addModalTitle": "Añadir asignación de papel",
+    "editModalTitle": "Editar asignación de papel",
+    "codeHint": "Tal y como lo informa la impresora, con prefijo incluido.",
     "mediaCode": "Código de papel",
     "friendlyName": "Nombre legible",
     "savedCode": "Se guardó {{code}}.",
@@ -449,7 +453,7 @@
     "reportedBy": "Informado por",
     "mapCode": "Asignar código",
     "mapped": "Asignado",
-    "mapAria": "Nombre descriptivo para {{code}}",
+    "unnamed": "Sin nombre todavía",
     "unmappedCount": {
       "one": "{{count}} sin asignar",
       "other": "{{count}} sin asignar"
@@ -457,6 +461,11 @@
     "appliesTo": "Se aplica a",
     "scopeGlobal": "Global",
     "scopeGlobalOption": "Todas las impresoras (global)",
+    "scopeGlobalHint": "Todas las impresoras que informen de este código.",
+    "scopeSelectedOption": "Impresoras seleccionadas",
+    "scopeSelectedHint": "Solo las impresoras marcadas abajo. En esas máquinas prevalece sobre el nombre global.",
+    "pickPrinter": "Marca al menos una impresora, o dale el nombre a todas.",
+    "noPrinters": "Todavía no hay impresoras registradas, así que no hay a qué limitar un nombre.",
     "standard": "Estándar",
     "suggest": "Sugerir: {{name}}",
     "suggestTitle": "Un nombre habitual para este código de fabricante. Rellena el campo: comprueba que coincide con el papel realmente cargado antes de asignarlo.",
