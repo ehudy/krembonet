@@ -18,7 +18,8 @@
     "actions": "Acciones",
     "preview": "Vista previa",
     "copy": "Copiar",
-    "copied": "Copiado"
+    "copied": "Copiado",
+    "sortBy": "Ordenar por {{column}}"
   },
   "time": {
     "never": "nunca",
@@ -243,6 +244,7 @@
   "settings": {
     "saved": "Ajustes guardados.",
     "saveButton": "Guardar ajustes",
+    "unsaved": "Cambios sin guardar",
     "loading": "Cargando ajustes…",
     "hub": "Centro",
     "name": "Nombre",
@@ -593,7 +595,7 @@
   },
   "suppliesPage": {
     "title": "Consumibles",
-    "subtitle": "Consumibles de todo el parque, de menor a mayor. Se marca para reponer todo lo que esté por debajo del {{threshold}} %.",
+    "subtitle": "Consumibles de todo el parque. Se marca para reponer todo lo que esté por debajo del {{threshold}} %; ordena por Restante para ver primero los más vacíos.",
     "search": "Buscar por consumible, dispositivo o ubicación…",
     "filterReorder": "Hay que reponer",
     "filterConsumables": "Consumibles",

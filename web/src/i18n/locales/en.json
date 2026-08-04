@@ -18,7 +18,8 @@
     "actions": "Actions",
     "preview": "Preview",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "sortBy": "Sort by {{column}}"
   },
   "time": {
     "never": "never",
@@ -243,6 +244,7 @@
   "settings": {
     "saved": "Settings saved.",
     "saveButton": "Save settings",
+    "unsaved": "Unsaved changes",
     "loading": "Loading settings…",
     "hub": "Hub",
     "name": "Name",
@@ -593,7 +595,7 @@
   },
   "suppliesPage": {
     "title": "Supplies",
-    "subtitle": "Fleet-wide consumables, lowest first. Anything under {{threshold}}% is flagged for re-order.",
+    "subtitle": "Fleet-wide consumables. Anything under {{threshold}}% is flagged for re-order; sort by Remaining for the emptiest first.",
     "search": "Search by supply, device or location…",
     "filterReorder": "Needs re-order",
     "filterConsumables": "Consumables",

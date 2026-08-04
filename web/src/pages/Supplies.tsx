@@ -7,10 +7,13 @@
  * black cartridges do I buy", and answering it from a device grid means opening
  * twelve pages and adding up.
  *
- * So the default sort is by level ascending across the whole fleet, and the
- * summary at the top groups by cartridge rather than by printer. A row here is
- * one cartridge in one machine; the group tells you how many of that cartridge
- * to put on the order.
+ * So the summary at the top groups by cartridge rather than by printer, and the
+ * table below it opens A-Z by cartridge — the Re-order filter has already
+ * narrowed it to what needs buying, and alphabetical is how someone reads a
+ * list they are about to type into an order form. Every column sorts, so the
+ * emptiest-first view this used to open in is one click on Remaining. A row here
+ * is one cartridge in one machine; the group tells you how many of that
+ * cartridge to put on the order.
  *
  * "That cartridge" means the colour *and* the part number. Supply labels are
  * cleaned down to the colour, which is what makes the table scannable and also
@@ -29,6 +32,7 @@ import {
 
 import { api } from '../api.js';
 import { PageHeader } from '../components/PageHeader.js';
+import { SortableHeader } from '../components/SortableHeader.js';
 import { usePolled } from '../hooks/usePolled.js';
 import { useTranslation, type Translate } from '../i18n/i18n.js';
 import { copyText, downloadText } from '../lib/download.js';
@@ -43,6 +47,13 @@ import {
   type ExportRow,
   type SupplyIdentity,
 } from '../lib/supplyExport.js';
+import {
+  compareNumber,
+  compareText,
+  toggleSort,
+  type SortDirection,
+  type SortState,
+} from '../lib/tableSort.js';
 import { Link } from '../router.js';
 import type { FleetSupplyDevice, Supply } from '../types.js';
 
@@ -54,6 +65,21 @@ const FILTERS: { value: Filter; key: string }[] = [
   { value: 'receptacles', key: 'filterReceptacles' },
   { value: 'all', key: 'filterAll' },
 ];
+
+type SortField = 'supply' | 'device' | 'level' | 'remaining';
+
+/**
+ * Which direction each column is most useful in on the first click.
+ *
+ * The two level columns start ascending because the emptiest thing is what a
+ * purchasing page is about; the two name columns start A-Z.
+ */
+const NATURAL_DIRECTION: Record<SortField, SortDirection> = {
+  supply: 'asc',
+  device: 'asc',
+  level: 'asc',
+  remaining: 'asc',
+};
 
 /** One supply on one device, flattened so the table can sort across the fleet. */
 interface Row {
@@ -105,28 +131,70 @@ function matchesFilter(supply: Supply, filter: Filter): boolean {
 }
 
 /**
- * Sorts what needs buying to the top.
+ * What makes a row the same cartridge as another.
  *
- * Rows with no reading sink rather than sorting as zero, which would put every
- * silent device above every genuinely empty cartridge.
+ * Shared by the order summary, the export and the Supply column's sort, so all
+ * three agree on what a cartridge *is* — colour plus SKU, never colour alone.
  */
-function byUrgency(a: Row, b: Row): number {
-  const rank = (row: Row): number => {
-    if (row.supply.percent !== null) {
-      // A receptacle counts up, so its urgency is how full it is, not how
-      // empty. Inverted here so one comparator can order both kinds.
-      return row.supply.kind === 'receptacle'
-        ? 100 - row.supply.percent
-        : row.supply.percent;
-    }
-    return row.supply.breached ? -1 : Number.POSITIVE_INFINITY;
-  };
+function toIdentity(row: Row): SupplyIdentity {
+  return { supplyLabel: row.supply.label, partNumber: row.supply.partNumber };
+}
 
-  return (
-    rank(a) - rank(b) ||
-    a.deviceName.localeCompare(b.deviceName) ||
-    a.supply.label.localeCompare(b.supply.label)
-  );
+/**
+ * How much is left before someone has to act, as a comparable 0-100.
+ *
+ * The distinction the two level columns turn on. A waste box at 88% is not 88%
+ * stocked, it is 12% away from being a problem, so ordering "Remaining" by the
+ * raw percentage would file the fullest waste box with the fullest cartridges —
+ * the opposite end from where it belongs.
+ *
+ * A supply with no reading sinks rather than sorting as zero, which would put
+ * every silent device above every genuinely empty cartridge. One that is
+ * breached without a number leads, because the server has already said it needs
+ * attention and that is the only thing known about it.
+ */
+function remainingRank(supply: Supply): number | null {
+  if (supply.percent === null) return supply.breached ? -1 : null;
+  return supply.kind === 'receptacle' ? 100 - supply.percent : supply.percent;
+}
+
+/**
+ * Orders two rows by the active column.
+ *
+ * Both level columns exist because they answer different questions, and the
+ * headers say so: LEVEL is the number on the bar, and REMAINING is how close
+ * the supply is to needing a person — the same thing for a cartridge, the
+ * opposite for a waste box.
+ *
+ * Every branch tiebreaks on the cartridge and then the machine, so rows that
+ * tie keep a stable order rather than shuffling on each poll.
+ */
+function compareRows(a: Row, b: Row, sort: SortState<SortField>): number {
+  const tiebreak =
+    compareText(supplyTitleOf(toIdentity(a)), supplyTitleOf(toIdentity(b)), 'asc') ||
+    compareText(a.deviceName, b.deviceName, 'asc');
+
+  switch (sort.field) {
+    case 'supply':
+      return (
+        compareText(
+          supplyTitleOf(toIdentity(a)),
+          supplyTitleOf(toIdentity(b)),
+          sort.direction,
+        ) || compareText(a.deviceName, b.deviceName, 'asc')
+      );
+    case 'device':
+      return compareText(a.deviceName, b.deviceName, sort.direction) || tiebreak;
+    case 'level':
+      return (
+        compareNumber(a.supply.percent, b.supply.percent, sort.direction) || tiebreak
+      );
+    case 'remaining':
+      return (
+        compareNumber(remainingRank(a.supply), remainingRank(b.supply), sort.direction) ||
+        tiebreak
+      );
+  }
 }
 
 /** One line of the order: a cartridge, and how many of it. */
@@ -151,10 +219,7 @@ function reorderTotals(rows: readonly Row[]): ReorderTotal[] {
   for (const row of rows) {
     if (!needsReorder(row.supply)) continue;
 
-    const identity: SupplyIdentity = {
-      supplyLabel: row.supply.label,
-      partNumber: row.supply.partNumber,
-    };
+    const identity = toIdentity(row);
     const key = supplyKeyOf(identity);
     const existing = totals.get(key);
 
@@ -193,8 +258,7 @@ function toExportRow(row: Row): ExportRow {
   return {
     deviceName: row.deviceName,
     location: row.location,
-    supplyLabel: row.supply.label,
-    partNumber: row.supply.partNumber,
+    ...toIdentity(row),
     percent: row.supply.percent,
     isReceptacle: row.supply.kind === 'receptacle',
     breached: row.supply.breached,
@@ -206,6 +270,14 @@ export function Supplies() {
   const { t, locale } = useTranslation();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('reorder');
+  // A-Z by cartridge. The Re-order filter is already the default, so the visible
+  // set is what needs buying; alphabetical within it is how someone reads a list
+  // they are about to type into an order form. Sorting by Remaining is one click
+  // away for whoever wants the emptiest first.
+  const [sort, setSort] = useState<SortState<SortField>>({
+    field: 'supply',
+    direction: 'asc',
+  });
   const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
 
   const load = useCallback((signal: AbortSignal) => api.listSupplies(signal), []);
@@ -235,8 +307,12 @@ export function Supplies() {
             .filter((field): field is string => typeof field === 'string')
             .some((field) => field.toLowerCase().includes(needle)),
       )
-      .sort(byUrgency);
-  }, [rows, filter, search]);
+      .sort((a, b) => compareRows(a, b, sort));
+  }, [rows, filter, search, sort]);
+
+  function sortBy(field: SortField): void {
+    setSort((current) => toggleSort(current, field, NATURAL_DIRECTION[field]));
+  }
 
   /*
    * Both exports carry exactly what is on screen — the active filter and
@@ -376,10 +452,34 @@ export function Supplies() {
           <table className="data-table">
             <thead>
               <tr>
-                <th scope="col">{t('suppliesPage.supply')}</th>
-                <th scope="col">{t('suppliesPage.device')}</th>
-                <th scope="col">{t('suppliesPage.level')}</th>
-                <th scope="col">{t('suppliesPage.remaining')}</th>
+                <SortableHeader
+                  field="supply"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('suppliesPage.supply')}
+                />
+                <SortableHeader
+                  field="device"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('suppliesPage.device')}
+                />
+                <SortableHeader
+                  field="level"
+                  sort={sort}
+                  onSort={sortBy}
+                  className="level-cell"
+                  label={t('suppliesPage.level')}
+                />
+                <SortableHeader
+                  field="remaining"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('suppliesPage.remaining')}
+                />
+                {/* Not sortable: the column is a restatement of Remaining as a
+                    pill, so a third handle on the same ordering would be a
+                    third arrow competing for the same meaning. */}
                 <th scope="col">{t('suppliesPage.action')}</th>
               </tr>
             </thead>

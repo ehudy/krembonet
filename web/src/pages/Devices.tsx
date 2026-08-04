@@ -19,15 +19,58 @@ import { BellOff, Printer } from 'lucide-react';
 import { api } from '../api.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { PinButton } from '../components/PinButton.js';
+import { SortableHeader } from '../components/SortableHeader.js';
 import { StatusPill } from '../components/StatusPill.js';
 import { usePinnedDevices } from '../hooks/usePinnedDevices.js';
 import { usePolled } from '../hooks/usePolled.js';
 import { useTranslation, type Translate } from '../i18n/i18n.js';
 import { relativeTime } from '../lib/format.js';
+import {
+  compareNumber,
+  compareText,
+  toggleSort,
+  toTimestamp,
+  type SortDirection,
+  type SortState,
+} from '../lib/tableSort.js';
 import { Link } from '../router.js';
 import type { DeviceSummary } from '../types.js';
 
 type Filter = 'all' | 'pinned' | 'attention' | 'offline' | 'muted';
+
+type SortField = 'name' | 'address' | 'state' | 'queue' | 'lastRead';
+
+/**
+ * Which direction each column is most useful in on the first click.
+ *
+ * Names read A-Z; the rest are questions about severity or recency, where the
+ * interesting end is the top. Starting every column ascending would make half
+ * the headers need two clicks before they said anything.
+ */
+const NATURAL_DIRECTION: Record<SortField, SortDirection> = {
+  name: 'asc',
+  address: 'asc',
+  state: 'asc',
+  queue: 'desc',
+  lastRead: 'desc',
+};
+
+/**
+ * How bad a device's state is, worst first.
+ *
+ * The State column shows a pill, not a value, so sorting it alphabetically by
+ * whatever text the pill happens to carry would order the fleet by translation.
+ * This ranks by what the pill *means*, which is the order an operator reads the
+ * column in: unreachable, then broken, then merely warning, then fine.
+ */
+function stateRank(device: DeviceSummary): number {
+  if (!device.isOnline) return 0;
+  if (device.attention === 'error') return 1;
+  if (device.attention === 'warning' || device.lowSupplies > 0 || device.wasteFull > 0) {
+    return 2;
+  }
+  return 3;
+}
 
 const FILTERS: { value: Filter; key: string }[] = [
   { value: 'all', key: 'filterAll' },
@@ -70,6 +113,40 @@ function matchesSearch(device: DeviceSummary, needle: string): boolean {
     .some((field) => field.toLowerCase().includes(needle));
 }
 
+/**
+ * Orders two rows by the active column.
+ *
+ * Every branch falls through to the display name, so rows that tie on the sorted
+ * column keep a stable order instead of shuffling on each poll — a table that
+ * rearranges itself under the cursor every thirty seconds is unusable.
+ */
+function compareDevices(
+  a: DeviceSummary,
+  b: DeviceSummary,
+  sort: SortState<SortField>,
+): number {
+  const byName = compareText(a.displayName, b.displayName, 'asc');
+
+  switch (sort.field) {
+    case 'name':
+      return compareText(a.displayName, b.displayName, sort.direction);
+    case 'address':
+      return compareText(a.host, b.host, sort.direction) || byName;
+    case 'state':
+      return compareNumber(stateRank(a), stateRank(b), sort.direction) || byName;
+    case 'queue':
+      return compareNumber(a.activeJobs, b.activeJobs, sort.direction) || byName;
+    case 'lastRead':
+      return (
+        compareNumber(
+          toTimestamp(a.lastSuccessAt),
+          toTimestamp(b.lastSuccessAt),
+          sort.direction,
+        ) || byName
+      );
+  }
+}
+
 function MuteBadge({ device, t }: { device: DeviceSummary; t: Translate }) {
   if (!device.alertsSuppressed) return null;
 
@@ -98,6 +175,13 @@ export function Devices() {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  // A-Z by name. The endpoint returns devices in whatever order the poller
+  // hydrated them, which is stable but arbitrary, and "arbitrary" is not an
+  // order anyone can look something up in.
+  const [sort, setSort] = useState<SortState<SortField>>({
+    field: 'name',
+    direction: 'asc',
+  });
   const { pinned } = usePinnedDevices();
 
   const load = useCallback((signal: AbortSignal) => api.listDevices(signal), []);
@@ -107,10 +191,17 @@ export function Devices() {
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return devices.filter(
-      (device) => matchesFilter(device, filter, pinned) && matchesSearch(device, needle),
-    );
-  }, [devices, filter, pinned, search]);
+    return devices
+      .filter(
+        (device) =>
+          matchesFilter(device, filter, pinned) && matchesSearch(device, needle),
+      )
+      .sort((a, b) => compareDevices(a, b, sort));
+  }, [devices, filter, pinned, search, sort]);
+
+  function sortBy(field: SortField): void {
+    setSort((current) => toggleSort(current, field, NATURAL_DIRECTION[field]));
+  }
 
   return (
     <>
@@ -178,11 +269,36 @@ export function Devices() {
                 <th scope="col" className="pin-column">
                   <span className="visually-hidden">{t('pins.column')}</span>
                 </th>
-                <th scope="col">{t('devices.name')}</th>
-                <th scope="col">{t('devices.address')}</th>
-                <th scope="col">{t('overview.state')}</th>
-                <th scope="col">{t('overview.queue')}</th>
-                <th scope="col">{t('overview.lastRead')}</th>
+                <SortableHeader
+                  field="name"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('devices.name')}
+                />
+                <SortableHeader
+                  field="address"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('devices.address')}
+                />
+                <SortableHeader
+                  field="state"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('overview.state')}
+                />
+                <SortableHeader
+                  field="queue"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('overview.queue')}
+                />
+                <SortableHeader
+                  field="lastRead"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('overview.lastRead')}
+                />
               </tr>
             </thead>
             <tbody>

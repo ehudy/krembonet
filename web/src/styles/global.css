@@ -1195,6 +1195,47 @@ th {
   letter-spacing: 0.5px;
 }
 
+/* Sortable headers --------------------------------------------------------- */
+
+/* A real button filling the cell, so the whole header is the target and the
+   column is reachable by keyboard. It inherits the header's type rather than
+   setting its own — a sortable column must not look like a different kind of
+   column from the one beside it, only like one you can press. */
+.sort-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: -11px -14px;
+  padding: 11px 14px;
+  width: calc(100% + 28px);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sort-header:hover {
+  color: var(--text);
+}
+
+.sort-header.is-active {
+  color: var(--text);
+}
+
+.sort-header svg {
+  color: var(--accent-hover);
+  flex-shrink: 0;
+}
+
+.sort-header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 tbody tr:hover {
   background: var(--surface-sunken);
 }
@@ -1547,6 +1588,65 @@ a.alert-device:focus-visible {
 
 .feedback.is-error {
   color: var(--danger);
+}
+
+.feedback.is-dirty {
+  color: var(--warning-text);
+}
+
+/* Settings action bar ------------------------------------------------------ */
+
+/* Sticky, so Save is reachable from anywhere on a form seven cards long. It
+   sticks to the bottom of the viewport while the form is on screen and scrolls
+   away once the reset section arrives underneath it, which is the right place
+   to stop following.
+
+   The safe-area inset is what makes it usable on a phone: on iOS the home
+   indicator sits over the bottom ~34px of the viewport, and a button padded to
+   the edge would be half under it. `env()` resolves to 0px on every browser
+   that has no such bar, so the desktop padding is unaffected. */
+.settings-action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  padding: 14px 18px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* Upward, because the thing it has to separate itself from is above it. */
+  box-shadow: 0 -4px 12px rgb(0 0 0 / 22%);
+}
+
+/* Amber hairline while there is something to lose — the same signal the label
+   carries, for anyone reading the shape of the page rather than its words. */
+.settings-action-bar.is-dirty {
+  border-color: var(--warning-border);
+}
+
+/* Takes the slack so the button stays pinned right whether or not there is a
+   message beside it, instead of sliding as feedback appears and clears. */
+.settings-action-state {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Danger zone -------------------------------------------------------------- */
+
+/* A deliberate gap and a rule between the settings and the four ways to throw
+   work away. Without it the reset card is just the next card down, and someone
+   scrolling to the end of the settings arrives at "Factory reset" with the same
+   momentum they had reading about poll intervals. */
+.danger-zone {
+  margin-top: 56px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border-strong);
 }
 
 .cell-input {

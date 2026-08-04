@@ -49,6 +49,17 @@ interface Feedback {
   message: string;
 }
 
+/**
+ * Whether anything on the form differs from what was last loaded or saved.
+ *
+ * A shallow compare is enough and will stay enough: every field on a Draft is a
+ * primitive, because the shape is the settings payload with its two arrays
+ * flattened to comma-separated text for the inputs that edit them.
+ */
+function isSameDraft(a: Draft, b: Draft): boolean {
+  return (Object.keys(a) as (keyof Draft)[]).every((key) => a[key] === b[key]);
+}
+
 const ACCESS_MODES: { value: Settings['accessMode']; key: string }[] = [
   { value: 'public', key: 'accessPublic' },
   { value: 'passcode', key: 'accessPasscode' },
@@ -76,6 +87,8 @@ const LANGUAGE_OPTIONS: { value: Settings['language']; label: string | null }[] 
 export function AdminSettings() {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft | null>(null);
+  /** The draft as last loaded or saved, which is what "unsaved" is measured against. */
+  const [saved, setSaved] = useState<Draft | null>(null);
   const [passwordSet, setPasswordSet] = useState(false);
   const [passcodeSet, setPasscodeSet] = useState(false);
   /** Ticked to clear the stored passcode; blank alone means "unchanged". */
@@ -98,7 +111,12 @@ export function AdminSettings() {
 
   function absorb(settings: Settings): void {
     appliedBranding.current ??= { theme: settings.theme, customCss: settings.customCss };
-    setDraft(toDraft(settings));
+    const next = toDraft(settings);
+    setDraft(next);
+    // The same shape kept twice: one the operator edits, one to compare it
+    // against. Reset on save as well as on load, so the bar goes quiet the
+    // moment the change lands rather than staying lit until a reload.
+    setSaved(next);
     setPasswordSet(settings.smtpPasswordSet);
     setPasscodeSet(settings.viewerPasscodeSet);
     setClearPasscode(false);
@@ -185,6 +203,11 @@ export function AdminSettings() {
 
   if (loadError !== null) return <div className="banner is-error">{loadError}</div>;
   if (draft === null) return <p className="muted">{t('settings.loading')}</p>;
+
+  // Ticking "clear the passcode" changes nothing on the draft — it is its own
+  // state — so it has to be counted separately, or the one destructive option on
+  // the form would save without ever lighting the bar.
+  const isDirty = saved === null || !isSameDraft(draft, saved) || clearPasscode;
 
   return (
     <>
@@ -614,25 +637,43 @@ export function AdminSettings() {
         </label>
       </section>
 
-      <div className="form-footer">
+      {/* Sticky, so Save is reachable from anywhere on a form this long. It
+          used to sit at the very bottom, which on a phone meant scrolling past
+          seven cards to commit a one-character edit — and back up again to
+          check it had not been lost. Sticking to the bottom of the viewport
+          puts the button where the thumb already is; it scrolls away of its own
+          accord once the reset section arrives, which is exactly where it
+          should stop following. */}
+      <div className={`settings-action-bar${isDirty ? ' is-dirty' : ''}`}>
+        <span className="settings-action-state">
+          {saveFeedback !== null ? (
+            <span
+              className={
+                saveFeedback.kind === 'ok' ? 'feedback is-ok' : 'feedback is-error'
+              }
+            >
+              {saveFeedback.message}
+            </span>
+          ) : (
+            // Only when there is something to lose. A bar that says "unsaved
+            // changes" on a form nobody has touched teaches people to ignore it.
+            isDirty && <span className="feedback is-dirty">{t('settings.unsaved')}</span>
+          )}
+        </span>
+
         <button type="submit" className="btn-primary" disabled={isSaving}>
           {isSaving ? t('common.saving') : t('settings.saveButton')}
         </button>
-        {saveFeedback !== null && (
-          <span
-            className={
-              saveFeedback.kind === 'ok' ? 'feedback is-ok' : 'feedback is-error'
-            }
-          >
-            {saveFeedback.message}
-          </span>
-        )}
       </div>
       </form>
 
-      {/* Outside the settings form: these are their own confirmed actions, not
-          fields that save with everything else. */}
-      <DataReset />
+      {/* Outside the settings form, and set well below it: these are their own
+          confirmed actions, not fields that save with everything else, and the
+          gap is what stops someone scrolling off the end of the settings and
+          straight into a factory reset. */}
+      <div className="danger-zone">
+        <DataReset />
+      </div>
     </>
   );
 }
