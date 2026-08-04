@@ -37,12 +37,38 @@ const CONDITIONS: AlertConditionType[] = [
 
 const REPEATS: AlertRepeatInterval[] = ['once', '1h', '12h', '24h'];
 
-/** Which conditions take a number, and in what unit. */
-const THRESHOLD_UNIT: Record<AlertConditionType, 'minutes' | 'percent' | null> = {
-  offline: 'minutes',
-  supply_low: 'percent',
-  waste_full: 'percent',
-  media_out: null,
+/**
+ * Which conditions carry a number of their own, and which draft field holds it.
+ *
+ * `media_out` is absent: a tray is either empty or it is not, and there is
+ * nothing to compare. Driving the threshold inputs off this table rather than a
+ * switch means a condition that gains or loses a number changes in one place.
+ */
+const THRESHOLD_FIELDS = {
+  offline: { key: 'offlineMinutes', unit: 'minutes' },
+  supply_low: { key: 'supplyPercent', unit: 'percent' },
+  waste_full: { key: 'wastePercent', unit: 'percent' },
+} as const satisfies Partial<
+  Record<AlertConditionType, { key: keyof DraftThresholds; unit: string }>
+>;
+
+type ThresholdCondition = keyof typeof THRESHOLD_FIELDS;
+
+function takesThreshold(condition: AlertConditionType): condition is ThresholdCondition {
+  return condition in THRESHOLD_FIELDS;
+}
+
+/** As typed, so an empty box stays empty rather than becoming a zero. */
+interface DraftThresholds {
+  offlineMinutes: string;
+  supplyPercent: string;
+  wastePercent: string;
+}
+
+const BLANK_THRESHOLDS: DraftThresholds = {
+  offlineMinutes: '',
+  supplyPercent: '',
+  wastePercent: '',
 };
 
 interface Draft {
@@ -50,11 +76,11 @@ interface Draft {
   id: string | null;
   name: string;
   enabled: boolean;
-  conditionType: AlertConditionType;
+  /** Fires when any one of these holds. At least one is required to save. */
+  conditions: AlertConditionType[];
   scope: 'all' | 'selected';
   deviceIds: number[];
-  /** As typed, so an empty box stays empty rather than becoming a zero. */
-  threshold: string;
+  thresholds: DraftThresholds;
   repeatInterval: AlertRepeatInterval;
   notifyEmail: boolean;
   customRecipients: string;
@@ -66,10 +92,10 @@ function blankDraft(): Draft {
     id: null,
     name: '',
     enabled: true,
-    conditionType: 'offline',
+    conditions: ['offline'],
     scope: 'all',
     deviceIds: [],
-    threshold: '',
+    thresholds: { ...BLANK_THRESHOLDS },
     repeatInterval: 'once',
     notifyEmail: true,
     customRecipients: '',
@@ -82,12 +108,16 @@ function draftFrom(rule: AlertRule): Draft {
     id: rule.id,
     name: rule.name,
     enabled: rule.enabled,
-    conditionType: (CONDITIONS as string[]).includes(rule.conditionType)
-      ? (rule.conditionType as AlertConditionType)
-      : 'offline',
+    conditions: rule.conditions.filter((condition) =>
+      (CONDITIONS as string[]).includes(condition),
+    ),
     scope: rule.scope,
     deviceIds: [...rule.deviceIds],
-    threshold: rule.threshold === null ? '' : String(rule.threshold),
+    thresholds: {
+      offlineMinutes: numberField(rule.thresholds.offlineMinutes),
+      supplyPercent: numberField(rule.thresholds.supplyPercent),
+      wastePercent: numberField(rule.thresholds.wastePercent),
+    },
     repeatInterval: (REPEATS as string[]).includes(rule.repeatInterval)
       ? (rule.repeatInterval as AlertRepeatInterval)
       : 'once',
@@ -97,27 +127,71 @@ function draftFrom(rule: AlertRule): Draft {
   };
 }
 
+/** A stored number as the string its input holds; blank for "the hub's mark". */
+function numberField(value: number | null): string {
+  return value === null ? '' : String(value);
+}
+
+/** Blank stays null — "use the hub's own mark" — rather than becoming a zero. */
+function numberValue(value: string): number | null {
+  return value.trim() === '' ? null : Number(value);
+}
+
 /** "All printers" or "2 printers" — the scope at a glance, without a list. */
 function scopeSummary(rule: AlertRule, t: Translate): string {
   if (rule.scope === 'all') return t('alertRules.scopeAll');
   return t('alertRules.scopeCount', { count: rule.deviceIds.length });
 }
 
-function conditionLabel(rule: AlertRule, t: Translate): string {
-  return rule.isKnownCondition
-    ? t(`alertRules.condition.${rule.conditionType}`)
-    : rule.conditionType;
+/**
+ * The conditions a rule watches, as pills.
+ *
+ * Capped at two with a `+N` for the rest rather than stacking four: this row
+ * already carries a switch, a name, a channel column and two buttons, and a
+ * fourth pill pushes the name into an ellipsis on a laptop. The overflow pill
+ * carries the full list in its tooltip, so nothing is actually hidden.
+ */
+const PILL_LIMIT = 2;
+
+function conditionPills(
+  rule: AlertRule,
+  t: Translate,
+): {
+  shown: AlertConditionType[];
+  overflow: number;
+  full: string;
+} {
+  const shown = rule.conditions.slice(0, PILL_LIMIT);
+  return {
+    shown,
+    overflow: rule.conditions.length - shown.length,
+    full: rule.conditions
+      .map((condition) => t(`alertRules.condition.${condition}`))
+      .join(', '),
+  };
 }
 
-/** The number a rule fires on, or the hub's own mark when it names none. */
+/**
+ * The numbers a rule fires on, or the hub's own mark where it names none.
+ *
+ * Only for the conditions it actually watches: a rule covering offline alone has
+ * no business mentioning a percentage, even though the column exists.
+ */
 function thresholdSummary(rule: AlertRule, t: Translate): string | null {
-  const unit = THRESHOLD_UNIT[rule.conditionType as AlertConditionType] ?? null;
-  if (unit === null) return null;
-  if (rule.threshold === null) return t('alertRules.thresholdDefault');
+  const parts = rule.conditions.filter(takesThreshold).map((condition) => {
+    const { key, unit } = THRESHOLD_FIELDS[condition];
+    const value = rule.thresholds[key];
+    if (value === null) return t('alertRules.thresholdDefault');
 
-  return unit === 'minutes'
-    ? t('alertRules.afterMinutes', { count: rule.threshold })
-    : t('alertRules.atPercent', { percent: rule.threshold });
+    return unit === 'minutes'
+      ? t('alertRules.afterMinutes', { count: value })
+      : t('alertRules.atPercent', { percent: value });
+  });
+
+  // Every condition on its hub default reads as one "hub threshold" rather than
+  // the same phrase three times.
+  const unique = [...new Set(parts)];
+  return unique.length === 0 ? null : unique.join(' · ');
 }
 
 export function AdminAlertRules() {
@@ -160,18 +234,37 @@ export function AdminAlertRules() {
     event.preventDefault();
     if (draft === null) return;
 
+    // Caught here as well as on the server, because a form that posts a rule it
+    // knows is incomplete and waits for a 400 is a slower way of saying the
+    // same thing.
+    if (draft.conditions.length === 0) {
+      setError(t('alertRules.needCondition'));
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
 
     const payload = {
       name: draft.name,
       enabled: draft.enabled,
-      conditionType: draft.conditionType,
+      conditions: draft.conditions,
       scope: draft.scope,
       // Only meaningful under `selected`; sent empty otherwise so switching a
       // rule back to "all printers" does not leave a stale list behind it.
       deviceIds: draft.scope === 'selected' ? draft.deviceIds : [],
-      threshold: draft.threshold.trim() === '' ? null : Number(draft.threshold),
+      // Every field is sent, including the ones this rule's conditions do not
+      // use: an operator who unticks "supply low" and saves should not leave a
+      // stale percentage behind for the next time they tick it back on.
+      offlineThresholdMinutes: draft.conditions.includes('offline')
+        ? numberValue(draft.thresholds.offlineMinutes)
+        : null,
+      supplyThresholdPercent: draft.conditions.includes('supply_low')
+        ? numberValue(draft.thresholds.supplyPercent)
+        : null,
+      wasteThresholdPercent: draft.conditions.includes('waste_full')
+        ? numberValue(draft.thresholds.wastePercent)
+        : null,
       repeatInterval: draft.repeatInterval,
       notifyEmail: draft.notifyEmail,
       customRecipients: draft.notifyEmail ? draft.customRecipients : '',
@@ -224,8 +317,6 @@ export function AdminAlertRules() {
   if (rules === null && error === null) {
     return <p className="muted">{t('alertRules.loading')}</p>;
   }
-
-  const unit = draft === null ? null : THRESHOLD_UNIT[draft.conditionType];
 
   return (
     <>
@@ -289,9 +380,34 @@ export function AdminAlertRules() {
                   </small>
                 </div>
 
-                <span className={`alert-pill is-${rule.conditionType.replace('_', '-')}`}>
-                  {conditionLabel(rule, t)}
-                </span>
+                {(() => {
+                  const pills = conditionPills(rule, t);
+                  return (
+                    <span className="rule-conditions" title={pills.full}>
+                      {pills.shown.map((condition) => (
+                        <span
+                          key={condition}
+                          className={`alert-pill is-${condition.replace('_', '-')}`}
+                        >
+                          {t(`alertRules.condition.${condition}`)}
+                        </span>
+                      ))}
+                      {pills.overflow > 0 && (
+                        <span className="alert-pill is-more">
+                          {t('alertRules.moreConditions', { count: pills.overflow })}
+                        </span>
+                      )}
+                      {/* A rule whose conditions this build could not read.
+                          Listed rather than hidden, so it can be opened and
+                          fixed instead of quietly doing nothing forever. */}
+                      {!rule.isReadable && (
+                        <span className="alert-pill is-unknown">
+                          {t('alertRules.unreadable')}
+                        </span>
+                      )}
+                    </span>
+                  );
+                })()}
 
                 {/* Channels as icons: which way a rule reaches you is a glance
                     question, and two words per row would crowd the name. */}
@@ -382,47 +498,6 @@ export function AdminAlertRules() {
             </label>
 
             <label className="field">
-              <span>{t('alertRules.condition.label')}</span>
-              <select
-                value={draft.conditionType}
-                onChange={(event) =>
-                  setDraft({
-                    ...draft,
-                    conditionType: event.target.value as AlertConditionType,
-                    // The unit changes with the condition, so a number typed for
-                    // minutes must not silently become a percentage.
-                    threshold: '',
-                  })
-                }
-              >
-                {CONDITIONS.map((condition) => (
-                  <option key={condition} value={condition}>
-                    {t(`alertRules.condition.${condition}`)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {unit !== null && (
-              <label className="field field-narrow">
-                <span>{t(`alertRules.threshold.${unit}`)}</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={unit === 'percent' ? 100 : 10_000}
-                  value={draft.threshold}
-                  placeholder={t('alertRules.thresholdDefault')}
-                  onChange={(event) =>
-                    setDraft({ ...draft, threshold: event.target.value })
-                  }
-                />
-                <small className="field-hint">
-                  {t(`alertRules.thresholdHint.${unit}`)}
-                </small>
-              </label>
-            )}
-
-            <label className="field">
               <span>{t('alertRules.repeat')}</span>
               <select
                 value={draft.repeatInterval}
@@ -442,6 +517,72 @@ export function AdminAlertRules() {
               <small className="field-hint">{t('alertRules.repeatHint')}</small>
             </label>
           </div>
+
+          {/* A checkbox group rather than a dropdown, because a rule can watch
+              for several things at once and "offline or out of ink on the
+              plotters" is one rule an operator maintains, not two that share a
+              name and a destination list and then drift apart. */}
+          <h3 className="card-subtitle">{t('alertRules.condition.label')}</h3>
+          <p className="field-hint">{t('alertRules.conditionHint')}</p>
+
+          <div className="checkbox-list is-inline">
+            {CONDITIONS.map((condition) => (
+              <label key={condition} className="field field-check">
+                <input
+                  type="checkbox"
+                  checked={draft.conditions.includes(condition)}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      conditions: event.target.checked
+                        ? [...draft.conditions, condition]
+                        : draft.conditions.filter((entry) => entry !== condition),
+                    })
+                  }
+                />
+                <span>{t(`alertRules.condition.${condition}`)}</span>
+              </label>
+            ))}
+          </div>
+
+          {/* One input per checked condition that takes a number, side by side.
+              They are not interchangeable — minutes for an outage, a floor for a
+              consumable, a ceiling for a waste box — so each carries its own
+              label and its own hint rather than one field changing meaning
+              under the cursor. */}
+          {draft.conditions.some(takesThreshold) && (
+            <div className="field-grid threshold-grid">
+              {CONDITIONS.filter(takesThreshold)
+                .filter((condition) => draft.conditions.includes(condition))
+                .map((condition) => {
+                  const { key, unit } = THRESHOLD_FIELDS[condition];
+                  return (
+                    <label key={condition} className="field field-narrow">
+                      <span>{t(`alertRules.threshold.${condition}`)}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={unit === 'percent' ? 100 : 10_000}
+                        value={draft.thresholds[key]}
+                        placeholder={t('alertRules.thresholdDefault')}
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            thresholds: {
+                              ...draft.thresholds,
+                              [key]: event.target.value,
+                            },
+                          })
+                        }
+                      />
+                      <small className="field-hint">
+                        {t(`alertRules.thresholdHint.${condition}`)}
+                      </small>
+                    </label>
+                  );
+                })}
+            </div>
+          )}
 
           <h3 className="card-subtitle">{t('alertRules.scope')}</h3>
 

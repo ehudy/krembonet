@@ -17,6 +17,7 @@ import {
   isRuleScope,
   parseIdList,
   parseRecipients,
+  type ConditionType,
   type NotificationRule,
 } from './notification-rules.js';
 
@@ -33,17 +34,29 @@ function parseIds(raw: string | null): unknown[] {
   }
 }
 
+/** The condition names in a stored blob that this build understands. */
+export function parseConditions(raw: string | null): ConditionType[] {
+  const known = parseIds(raw).filter((entry): entry is ConditionType =>
+    isConditionType(entry),
+  );
+  // De-duplicated: a repeated condition would batch the same observation into a
+  // message twice.
+  return [...new Set(known)];
+}
+
 /**
  * Narrows a stored row into the shape the matcher works with.
  *
- * `scope` and `conditionType` are checked rather than cast: a row written by a
- * newer build, or edited by hand, has to degrade to something the matcher can
- * reason about instead of falling through its switch. An unknown condition can
- * never match anything, so it is dropped by `listNotificationRules` rather than
- * given a default that would make it fire on the wrong thing.
+ * Every enum is checked rather than cast: a row written by a newer build, or
+ * edited by hand, has to degrade to something the matcher can reason about
+ * instead of falling through a switch. A condition this build has no name for
+ * is dropped rather than guessed at, and a rule left with none matches nothing —
+ * which is the safe direction, since the alternative is firing on the wrong
+ * thing.
  */
 export function toRule(row: NotificationRuleRow): NotificationRule | null {
-  if (!isConditionType(row.conditionType)) return null;
+  const conditions = parseConditions(row.conditions);
+  if (conditions.length === 0) return null;
 
   return {
     id: row.id,
@@ -51,8 +64,12 @@ export function toRule(row: NotificationRuleRow): NotificationRule | null {
     enabled: row.enabled,
     scope: isRuleScope(row.scope) ? row.scope : 'all',
     deviceIds: parseIdList(parseIds(row.deviceIds)),
-    conditionType: row.conditionType,
-    threshold: row.threshold,
+    conditions,
+    thresholds: {
+      offlineMinutes: row.offlineThresholdMinutes,
+      supplyPercent: row.supplyThresholdPercent,
+      wastePercent: row.wasteThresholdPercent,
+    },
     // Narrowed rather than cast, like scope: a value this build does not know
     // has to fall back to the safe cadence rather than through the switch that
     // decides how often to repeat.

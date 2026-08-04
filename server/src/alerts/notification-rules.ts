@@ -139,13 +139,31 @@ export interface NotificationRule {
   scope: RuleScope;
   /** Device ids this rule covers. Only consulted when scope is `selected`. */
   deviceIds: number[];
-  conditionType: ConditionType;
   /**
-   * Minutes for `offline`, percent for the two supply conditions, unused for
-   * `media_out`. Null means "whenever the condition holds at all", which is what
-   * most rules want and what the form defaults to.
+   * Everything this rule watches for. It fires when *any* of them holds — one
+   * rule can cover "this plotter is offline or out of ink", which is how an
+   * operator thinks about a machine, rather than forcing two rules with the same
+   * name, scope and destinations that then drift apart.
+   *
+   * Empty matches nothing. A rule with no condition is half-written, and the API
+   * refuses to store one; treating empty as "everything" would turn a mistake
+   * into a fleet-wide page.
    */
-  threshold: number | null;
+  conditions: ConditionType[];
+  /**
+   * The number each condition fires on, where it takes one.
+   *
+   * One per condition rather than a shared figure, because they do not mean the
+   * same thing: a supply is low *at or below* its percentage and a waste box is
+   * full *at or above* its own. Sharing one number across a rule that watches
+   * both would read as "ink under 20% or waste over 20%", and the second half of
+   * that is true almost always.
+   *
+   * Null means "whenever the hub already calls this a problem" — the mark that
+   * turns the bar red — which is what most rules want and what the form
+   * defaults to.
+   */
+  thresholds: RuleThresholds;
   /** How often to say it again while the condition holds. `once` is the default. */
   repeatInterval: RepeatInterval;
   notifyEmail: boolean;
@@ -163,6 +181,22 @@ export interface NotificationRule {
  * predicate holds and stays quiet after — which is what lets two rules watch the
  * same supply at different thresholds and each announce itself once.
  */
+export interface RuleThresholds {
+  /** How long a device must stay unreachable. */
+  offlineMinutes: number | null;
+  /** At or below this, a consumable is low. */
+  supplyPercent: number | null;
+  /** At or above this, a receptacle is full. */
+  wastePercent: number | null;
+}
+
+/** No overrides — every condition falls back to the hub's own mark. */
+export const NO_THRESHOLDS: RuleThresholds = {
+  offlineMinutes: null,
+  supplyPercent: null,
+  wastePercent: null,
+};
+
 export type Observation =
   | { type: 'offline'; minutesOffline: number; description: string }
   | ({ type: 'supply_low' | 'waste_full' } & SupplyObservation)
@@ -191,6 +225,9 @@ export function coversDevice(rule: NotificationRule, deviceId: number): boolean 
 /**
  * Whether the reading is past whatever the rule asks for.
  *
+ * Two gates: the rule has to be watching for this kind of condition at all, and
+ * the reading has to be past whatever number that condition carries.
+ *
  * A null threshold means "whenever the hub already calls this a problem": the
  * device is offline, the tray is empty, or the supply is past the global
  * threshold that turns its bar red. That is what makes the common rule — every
@@ -206,22 +243,27 @@ export function meetsThreshold(
   rule: NotificationRule,
   observation: Observation,
 ): boolean {
-  if (rule.conditionType !== observation.type) return false;
+  if (!rule.conditions.includes(observation.type)) return false;
 
   switch (observation.type) {
-    case 'offline':
+    case 'offline': {
       // Reaching here at all means the device is already past the consecutive-
       // failure test that declares it offline; a threshold only delays that.
-      return rule.threshold === null || observation.minutesOffline >= rule.threshold;
-    case 'supply_low':
-      if (rule.threshold === null) return observation.breached;
-      return observation.percent !== null && observation.percent <= rule.threshold;
-    case 'waste_full':
-      if (rule.threshold === null) return observation.breached;
-      return observation.percent !== null && observation.percent >= rule.threshold;
+      const after = rule.thresholds.offlineMinutes;
+      return after === null || observation.minutesOffline >= after;
+    }
+    case 'supply_low': {
+      const at = rule.thresholds.supplyPercent;
+      if (at === null) return observation.breached;
+      return observation.percent !== null && observation.percent <= at;
+    }
+    case 'waste_full': {
+      const at = rule.thresholds.wastePercent;
+      if (at === null) return observation.breached;
+      return observation.percent !== null && observation.percent >= at;
+    }
     case 'media_out':
-      // No number to compare. A threshold on this condition is meaningless
-      // rather than restrictive, so it is ignored instead of blocking the rule.
+      // No number to compare, and no threshold field offered for it.
       return true;
   }
 }

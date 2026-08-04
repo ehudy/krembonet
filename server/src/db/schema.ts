@@ -349,13 +349,6 @@ export const notificationRules = sqliteTable(
     scope: text('scope').notNull().default('all'),
     /** JSON array of device ids. Only read when `scope` is `selected`. */
     deviceIds: text('device_ids'),
-    /** `offline` | `supply_low` | `waste_full` | `media_out`. */
-    conditionType: text('condition_type').notNull(),
-    /**
-     * Minutes for `offline`, percent for the supply conditions. Null means the
-     * rule fires whenever the condition holds at all, which is the default.
-     */
-    threshold: integer('threshold'),
     /**
      * How often to repeat while the condition holds: `once` | `1h` | `12h` |
      * `24h`. `once` is edge-triggered — the behaviour that stops a cartridge at
@@ -370,12 +363,41 @@ export const notificationRules = sqliteTable(
     webhookDestinationIds: text('webhook_destination_ids'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now),
+
+    /*
+     * Declared last, out of the order they read in, because they arrive via
+     * `ALTER TABLE ... ADD COLUMN`, which appends physically. The migration test
+     * compares the real column order against the snapshot.
+     */
+
+    /**
+     * JSON array of condition types: `offline`, `supply_low`, `waste_full`,
+     * `media_out`. The rule fires when *any* of them holds, so one rule can
+     * cover "this plotter is offline or out of ink" rather than needing two that
+     * share a name, a scope and a destination list and then drift apart.
+     *
+     * Null or empty matches nothing. A rule with no condition is half-written
+     * and the API refuses to store one; reading empty as "everything" would turn
+     * a mistake into a fleet-wide page.
+     */
+    conditions: text('conditions'),
+
+    /*
+     * One threshold per condition that takes a number, rather than the single
+     * shared column these replaced. They do not mean the same thing — a supply
+     * is low at or *below* its percentage and a waste box is full at or *above*
+     * its own — so one figure across a rule watching both would read as "ink
+     * under 20% or waste over 20%", and the second half of that is nearly always
+     * true. Null means "use the hub's own mark", which is the common case.
+     */
+    offlineThresholdMinutes: integer('offline_threshold_minutes'),
+    supplyThresholdPercent: integer('supply_threshold_percent'),
+    wasteThresholdPercent: integer('waste_threshold_percent'),
   },
-  (table) => [
-    // Every poll asks "which enabled rules watch this condition", so the
-    // condition leads and the enabled flag narrows it.
-    index('notification_rules_condition_idx').on(table.conditionType, table.enabled),
-  ],
+  // Every poll asks "which rules are switched on", and then filters the handful
+  // that come back in memory. Indexing the conditions is not possible now they
+  // are a JSON array, and not worth it either at the scale this table lives at.
+  (table) => [index('notification_rules_enabled_idx').on(table.enabled)],
 );
 
 /**

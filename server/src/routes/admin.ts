@@ -24,6 +24,7 @@ import {
 import {
   CONDITION_TYPES,
   isConditionType,
+  type ConditionType,
   isRepeatInterval,
   isRuleScope,
   looksLikeEmail,
@@ -188,8 +189,10 @@ interface RuleBody {
   enabled?: boolean;
   scope?: string;
   deviceIds?: unknown;
-  conditionType?: string;
-  threshold?: unknown;
+  conditions?: unknown;
+  offlineThresholdMinutes?: unknown;
+  supplyThresholdPercent?: unknown;
+  wasteThresholdPercent?: unknown;
   repeatInterval?: string;
   notifyEmail?: boolean;
   customRecipients?: string | string[] | null;
@@ -201,8 +204,10 @@ type RuleValues = {
   enabled: boolean;
   scope: string;
   deviceIds: string | null;
-  conditionType: string;
-  threshold: number | null;
+  conditions: string;
+  offlineThresholdMinutes: number | null;
+  supplyThresholdPercent: number | null;
+  wasteThresholdPercent: number | null;
   repeatInterval: string;
   notifyEmail: boolean;
   customRecipients: string | null;
@@ -225,8 +230,10 @@ const CREATE_FIELDS: Record<keyof RuleValues, true> = {
   enabled: true,
   scope: true,
   deviceIds: true,
-  conditionType: true,
-  threshold: true,
+  conditions: true,
+  offlineThresholdMinutes: true,
+  supplyThresholdPercent: true,
+  wasteThresholdPercent: true,
   repeatInterval: true,
   notifyEmail: true,
   customRecipients: true,
@@ -241,13 +248,17 @@ function presentRule(row: typeof notificationRules.$inferSelect) {
     id: row.id,
     name: row.name,
     enabled: row.enabled,
-    // A row whose condition this build does not recognise is still listed, so it
-    // can be seen and deleted rather than silently doing nothing forever.
-    conditionType: row.conditionType,
-    isKnownCondition: rule !== null,
+    // A rule whose conditions this build cannot read is still listed, so it can
+    // be seen and fixed rather than silently doing nothing forever.
+    conditions: rule?.conditions ?? [],
+    isReadable: rule !== null,
     scope: rule?.scope ?? 'all',
     deviceIds: rule?.deviceIds ?? [],
-    threshold: row.threshold,
+    thresholds: rule?.thresholds ?? {
+      offlineMinutes: row.offlineThresholdMinutes,
+      supplyPercent: row.supplyThresholdPercent,
+      wastePercent: row.wasteThresholdPercent,
+    },
     repeatInterval: rule?.repeatInterval ?? 'once',
     notifyEmail: row.notifyEmail,
     customRecipients: rule?.customRecipients ?? [],
@@ -297,11 +308,40 @@ function parseRuleBody(
     values.enabled = body.enabled !== false;
   }
 
-  if (options.isCreate || body.conditionType !== undefined) {
-    if (!isConditionType(body.conditionType)) {
-      return { error: `Condition must be one of: ${CONDITION_TYPES.join(', ')}.` };
+  if (options.isCreate || body.conditions !== undefined) {
+    const submitted = Array.isArray(body.conditions) ? body.conditions : [];
+    const unknown = submitted.filter((entry) => !isConditionType(entry));
+    if (unknown.length > 0) {
+      return { error: `Conditions must be from: ${CONDITION_TYPES.join(', ')}.` };
     }
-    values.conditionType = body.conditionType;
+
+    const conditions = [...new Set(submitted as ConditionType[])];
+    // A rule that watches nothing would sit in the list looking configured and
+    // never fire. Refused here as well as in the form, because the form is not
+    // the only thing that can POST.
+    if (conditions.length === 0) {
+      return { error: 'Pick at least one condition for this rule to watch.' };
+    }
+    values.conditions = JSON.stringify(conditions);
+  }
+
+  for (const [key, field, max] of [
+    ['offlineThresholdMinutes', 'offlineThresholdMinutes', 10_000],
+    ['supplyThresholdPercent', 'supplyThresholdPercent', 100],
+    ['wasteThresholdPercent', 'wasteThresholdPercent', 100],
+  ] as const) {
+    if (!options.isCreate && body[key] === undefined) continue;
+
+    // Blank is a real answer — "use the hub's own mark" — and is not the same as
+    // zero, which for a supply would mean "only once it is completely empty".
+    const raw = body[key];
+    if (raw === null || raw === undefined || raw === '') {
+      values[field] = null;
+      continue;
+    }
+    const parsed = clampNumber(raw, 0, max);
+    if (parsed === undefined) return { error: `${key} must be a number.` };
+    values[field] = parsed;
   }
 
   if (options.isCreate || body.scope !== undefined) {
@@ -320,19 +360,6 @@ function parseRuleBody(
     );
     const ids = parseIdList(body.deviceIds).filter((id) => known.has(id));
     values.deviceIds = ids.length === 0 ? null : JSON.stringify(ids);
-  }
-
-  if (options.isCreate || body.threshold !== undefined) {
-    // Blank is a real answer — "whenever the condition holds" — and is not the
-    // same as zero, which for a supply rule would mean "only when empty".
-    const raw = body.threshold;
-    if (raw === null || raw === undefined || raw === '') {
-      values.threshold = null;
-    } else {
-      const threshold = clampNumber(raw, 0, 10_000);
-      if (threshold === undefined) return { error: 'Threshold must be a number.' };
-      values.threshold = threshold;
-    }
   }
 
   if (options.isCreate || body.repeatInterval !== undefined) {

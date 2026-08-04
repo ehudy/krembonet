@@ -16,6 +16,7 @@ import {
   looksLikeEmail,
   matchRules,
   meetsThreshold,
+  NO_THRESHOLDS,
   parseIdList,
   parseRecipients,
   ruleStateKey,
@@ -31,8 +32,8 @@ function rule(overrides: Partial<NotificationRule> = {}): NotificationRule {
     enabled: true,
     scope: 'all',
     deviceIds: [],
-    conditionType: 'supply_low',
-    threshold: null,
+    conditions: ['supply_low'],
+    thresholds: { ...NO_THRESHOLDS },
     repeatInterval: 'once',
     notifyEmail: true,
     customRecipients: [],
@@ -93,25 +94,104 @@ describe('scope', () => {
   });
 });
 
+describe('a rule watching several conditions', () => {
+  // The point of the change: one rule covering "this plotter is offline or out
+  // of ink" is how an operator thinks about a machine. Two rules with the same
+  // name, scope and destinations drift apart.
+  const both = rule({ conditions: ['offline', 'supply_low'] });
+
+  const outage: Observation = {
+    type: 'offline',
+    minutesOffline: 30,
+    description: 'down',
+  };
+
+  it('fires on any one of them', () => {
+    assert.equal(matchRules([both], 1, outage).length, 1);
+    assert.equal(matchRules([both], 1, lowSupply(4, true)).length, 1);
+  });
+
+  it('still ignores the conditions it was not given', () => {
+    const waste: Observation = {
+      type: 'waste_full',
+      supplyName: 'MC',
+      description: '92% full',
+      percent: 92,
+      breached: true,
+    };
+    const paper: Observation = { type: 'media_out', description: 'Paper out' };
+
+    assert.deepEqual(matchRules([both], 1, waste), []);
+    assert.deepEqual(matchRules([both], 1, paper), []);
+  });
+
+  it('applies each condition its own threshold', () => {
+    // The reason there is one column per condition rather than a shared figure:
+    // a supply is low at or *below* its percentage and a waste box full at or
+    // *above* its own, so a single number across both would read as "ink under
+    // 20% or waste over 20%" — and the second half is nearly always true.
+    const mixed = rule({
+      conditions: ['offline', 'supply_low', 'waste_full'],
+      thresholds: { offlineMinutes: 60, supplyPercent: 5, wastePercent: 90 },
+    });
+
+    assert.equal(meetsThreshold(mixed, { ...outage, minutesOffline: 30 }), false);
+    assert.equal(meetsThreshold(mixed, { ...outage, minutesOffline: 90 }), true);
+
+    assert.equal(meetsThreshold(mixed, lowSupply(12, true)), false);
+    assert.equal(meetsThreshold(mixed, lowSupply(4, true)), true);
+
+    const wasteAt = (percent: number): Observation => ({
+      type: 'waste_full',
+      supplyName: 'MC',
+      description: `${percent}% full`,
+      percent,
+      breached: true,
+    });
+    assert.equal(meetsThreshold(mixed, wasteAt(80)), false);
+    assert.equal(meetsThreshold(mixed, wasteAt(95)), true);
+  });
+
+  it('gives each condition its own edge, so one firing does not silence another', () => {
+    // Both are the same rule on the same device, so only the subject separates
+    // them — without that, an offline alert would swallow the low-ink one.
+    assert.notEqual(
+      ruleStateKey(both.id, 'plotter', outage),
+      ruleStateKey(both.id, 'plotter', lowSupply(4, true)),
+    );
+  });
+
+  it('matches nothing when it watches nothing', () => {
+    // A half-written rule must not read as "everything". The API refuses to
+    // store one; this is the belt to that braces.
+    const empty = rule({ conditions: [] });
+    assert.deepEqual(matchRules([empty], 1, outage), []);
+    assert.deepEqual(matchRules([empty], 1, lowSupply(4, true)), []);
+  });
+});
+
 describe('thresholds', () => {
   it('falls back to the hub threshold when the rule names no number', () => {
     // "Tell me when a supply runs low" has to mean the same thing here as the
     // red bar on the dashboard does, or a rule with a blank threshold would
     // fire on a full cartridge.
-    const any = rule({ threshold: null });
+    const any = rule({ thresholds: { ...NO_THRESHOLDS } });
     assert.equal(meetsThreshold(any, lowSupply(80, false)), false);
     assert.equal(meetsThreshold(any, lowSupply(8, true)), true);
   });
 
   it('uses its own number when given one, ignoring the hub threshold', () => {
-    const strict = rule({ threshold: 5 });
+    const strict = rule({ thresholds: { ...NO_THRESHOLDS, supplyPercent: 5 } });
     assert.equal(meetsThreshold(strict, lowSupply(12, true)), false);
     assert.equal(meetsThreshold(strict, lowSupply(5, true)), true);
     assert.equal(meetsThreshold(strict, lowSupply(2, true)), true);
   });
 
   it('reads a waste box the other way up', () => {
-    const waste = rule({ conditionType: 'waste_full', threshold: 90 });
+    const waste = rule({
+      conditions: ['waste_full'],
+      thresholds: { ...NO_THRESHOLDS, wastePercent: 90 },
+    });
     const at = (percent: number): Observation => ({
       type: 'waste_full',
       supplyName: 'MC',
@@ -127,14 +207,26 @@ describe('thresholds', () => {
   it('will not compare a supply that reported no number', () => {
     // The same refusal the threshold engine makes: a device that declines to
     // say is not a device saying zero.
-    assert.equal(meetsThreshold(rule({ threshold: 10 }), lowSupply(null, true)), false);
+    assert.equal(
+      meetsThreshold(
+        rule({ thresholds: { ...NO_THRESHOLDS, supplyPercent: 10 } }),
+        lowSupply(null, true),
+      ),
+      false,
+    );
     // ...but a rule with no number of its own still trusts the breach flag,
     // which is how a binary "needs attention" reading gets through.
-    assert.equal(meetsThreshold(rule({ threshold: null }), lowSupply(null, true)), true);
+    assert.equal(
+      meetsThreshold(rule({ thresholds: { ...NO_THRESHOLDS } }), lowSupply(null, true)),
+      true,
+    );
   });
 
   it('measures an outage in minutes', () => {
-    const slow = rule({ conditionType: 'offline', threshold: 60 });
+    const slow = rule({
+      conditions: ['offline'],
+      thresholds: { ...NO_THRESHOLDS, offlineMinutes: 60 },
+    });
     const down = (minutesOffline: number): Observation => ({
       type: 'offline',
       minutesOffline,
@@ -148,7 +240,10 @@ describe('thresholds', () => {
   });
 
   it('ignores a threshold on a condition that has no number', () => {
-    const media = rule({ conditionType: 'media_out', threshold: 42 });
+    const media = rule({
+      conditions: ['media_out'],
+      thresholds: { ...NO_THRESHOLDS, offlineMinutes: 42 },
+    });
     assert.equal(
       meetsThreshold(media, { type: 'media_out', description: 'Paper out' }),
       true,
@@ -157,7 +252,7 @@ describe('thresholds', () => {
 
   it('never matches a condition of a different type', () => {
     assert.equal(
-      meetsThreshold(rule({ conditionType: 'offline' }), lowSupply(1, true)),
+      meetsThreshold(rule({ conditions: ['offline'] }), lowSupply(1, true)),
       false,
     );
   });

@@ -333,17 +333,24 @@ export type AlertRepeatInterval = 'once' | '1h' | '12h' | '24h';
  * and decide when a bar turns red. These decide whether that condition is worth
  * a message. A hub with no rules sends nothing at all.
  */
+/** The number each condition fires on. Null means the hub's own mark. */
+export interface AlertRuleThresholds {
+  offlineMinutes: number | null;
+  supplyPercent: number | null;
+  wastePercent: number | null;
+}
+
 export interface AlertRule {
   id: string;
   name: string;
   enabled: boolean;
-  conditionType: AlertConditionType | string;
-  /** False for a rule this build has no name for — listed so it can be deleted. */
-  isKnownCondition: boolean;
+  /** Fires when any one of these holds. Never empty on a rule the server stored. */
+  conditions: AlertConditionType[];
+  /** False for a rule this build cannot read — listed so it can be fixed. */
+  isReadable: boolean;
   scope: AlertRuleScope;
   deviceIds: number[];
-  /** Minutes for offline, percent for a supply. Null means the hub's own mark. */
-  threshold: number | null;
+  thresholds: AlertRuleThresholds;
   repeatInterval: AlertRepeatInterval | string;
   notifyEmail: boolean;
   /** Empty falls back to the global SMTP recipients. */

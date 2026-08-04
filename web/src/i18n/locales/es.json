@@ -528,12 +528,14 @@
       "media_out": "Sin papel / bandeja vacía"
     },
     "threshold": {
-      "minutes": "Tras (minutos)",
-      "percent": "Al (%)"
+      "offline": "Tras (minutos)",
+      "supply_low": "Saltar al (%)",
+      "waste_full": "Lleno al (%)"
     },
     "thresholdHint": {
-      "minutes": "Cuánto tiempo debe seguir sin responder una impresora antes de que salte la regla. Déjalo en blanco para que salte en cuanto se la dé por desconectada.",
-      "percent": "Déjalo en blanco para usar el umbral del centro definido en Ajustes: el mismo número que pone la barra en rojo."
+      "offline": "Cuánto tiempo debe seguir sin responder una impresora antes de que salte. En blanco salta en cuanto se la dé por desconectada.",
+      "supply_low": "Salta a ese porcentaje o por debajo. En blanco usa el umbral del centro definido en Ajustes: el número que pone la barra en rojo.",
+      "waste_full": "Salta a ese porcentaje o por encima. En blanco usa el umbral del centro definido en Ajustes."
     },
     "thresholdDefault": "umbral del centro",
     "afterMinutes": {
@@ -584,7 +586,14 @@
       "1h": "se repite cada hora",
       "12h": "se repite cada 12 h",
       "24h": "se repite a diario"
-    }
+    },
+    "conditionHint": "La regla salta cuando se cumple cualquiera de estas. Marca al menos una.",
+    "needCondition": "Marca al menos una condición para que esta regla vigile.",
+    "moreConditions": {
+      "one": "+{{count}} más",
+      "other": "+{{count}} más"
+    },
+    "unreadable": "Ilegible"
   },
   "webhooks": {
     "title": "Destinos de webhook",

@@ -743,7 +743,10 @@ async function announceRecovery(
   };
 
   for (const rule of listNotificationRules()) {
-    if (rule.conditionType !== 'offline') continue;
+    // Any rule that watches for offline among its conditions, not only one that
+    // watches for nothing else: a rule covering "offline or out of ink" made the
+    // outage promise too.
+    if (!rule.conditions.includes('offline')) continue;
 
     const key = ruleStateKey(rule.id, device.slug, offlineObservation);
     if (!isActive(key)) continue;

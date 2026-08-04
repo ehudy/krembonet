@@ -528,12 +528,14 @@
       "media_out": "Paper out / tray empty"
     },
     "threshold": {
-      "minutes": "After (minutes)",
-      "percent": "At (%)"
+      "offline": "After (minutes)",
+      "supply_low": "Trigger at (%)",
+      "waste_full": "Full at (%)"
     },
     "thresholdHint": {
-      "minutes": "How long a printer must stay unreachable before this rule fires. Leave blank to fire as soon as it is called offline.",
-      "percent": "Leave blank to use the hub threshold from Settings — the same number that turns the bar red."
+      "offline": "How long a printer must stay unreachable before this fires. Blank fires as soon as it is called offline.",
+      "supply_low": "Fires at or below this. Blank uses the hub threshold from Settings — the number that turns the bar red.",
+      "waste_full": "Fires at or above this. Blank uses the hub threshold from Settings."
     },
     "thresholdDefault": "hub threshold",
     "afterMinutes": {
@@ -584,7 +586,14 @@
       "1h": "repeats hourly",
       "12h": "repeats every 12h",
       "24h": "repeats daily"
-    }
+    },
+    "conditionHint": "The rule fires when any one of these holds. Pick at least one.",
+    "needCondition": "Pick at least one condition for this rule to watch.",
+    "moreConditions": {
+      "one": "+{{count}} more",
+      "other": "+{{count}} more"
+    },
+    "unreadable": "Unreadable"
   },
   "webhooks": {
     "title": "Webhook destinations",

@@ -1566,6 +1566,41 @@ a.alert-device:focus-visible {
   font-size: 11px;
 }
 
+/* The condition pills. Wraps rather than truncating: at two plus an overflow
+   they fit a laptop row, and on a phone the row already wraps around them. */
+.rule-conditions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  cursor: help;
+}
+
+/* The overflow counter and the unreadable marker. Neutral on purpose — neither
+   names a severity, and colouring them like a condition would imply one. */
+.alert-pill.is-more,
+.alert-pill.is-unknown {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+/* Conditions read across rather than down: four short labels stacked is a tall
+   column of mostly whitespace, and they are alternatives to each other. */
+.checkbox-list.is-inline {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+}
+
+/* One narrow input per checked condition, side by side. `auto-fit` rather than
+   the field grid's `1fr` tracks: two number boxes stretched across a wide card
+   look like they take long values, and they take two digits. */
+.threshold-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 220px));
+  margin-top: 14px;
+}
+
 .rule-channels {
   display: inline-flex;
   align-items: center;
@@ -2222,7 +2257,6 @@ a.alert-device:focus-visible {
   width: 100%;
   resize: vertical;
 }
-
 
 /* A destructive action should not look like the neutral one beside it, but it
    is still secondary — the primary button on these forms is "save". */

@@ -227,8 +227,9 @@ A rule names four things:
 | **Threshold**    | Minutes for offline, percent for a supply. Blank means "whenever the hub already calls it a problem" — the same mark that turns the bar red. |
 | **Destinations** | Email (optionally to addresses of the rule's own) and any of the configured webhooks.                                                        |
 
-Rules own their own edges, so two rules watching the same cartridge at different
-percentages each announce themselves once and neither silences the other. Where
+Rules own their own edges, and so does each condition within a rule: two rules
+watching the same cartridge at different percentages each announce themselves
+once, and a rule's offline alert does not swallow its own low-ink one. Where
 two rules cover the same printer, their destinations are unioned rather than
 resolved to the more specific — both audiences asked to be told.
 
