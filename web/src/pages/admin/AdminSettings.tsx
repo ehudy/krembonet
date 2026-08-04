@@ -455,8 +455,14 @@ export function AdminSettings() {
         )}
       </section>
 
+      {/* One card, because there is one question here: can this hub send mail,
+          and to whom. Split across two, an operator who filled in a server and
+          never scrolled to the recipients had a configuration that tests green
+          and delivers to nobody. */}
       <section className="card">
-        <h2 className="card-title">{t('settings.smtp')}</h2>
+        <h2 className="card-title">{t('settings.email')}</h2>
+
+        <h3 className="card-subtitle">{t('settings.smtp')}</h3>
 
         <div className="field-grid">
           <label className="field">
@@ -518,10 +524,8 @@ export function AdminSettings() {
             </small>
           </label>
         </div>
-      </section>
 
-      <section className="card">
-        <h2 className="card-title">{t('settings.recipients')}</h2>
+        <h3 className="card-subtitle">{t('settings.emailDelivery')}</h3>
 
         <div className="field-grid">
           <label className="field">
@@ -563,15 +567,25 @@ export function AdminSettings() {
             </span>
           )}
         </div>
+        {/* Split on the emphasis tag the string carries, the same way the other
+            marked-up hints in this app are rendered: the translation decides
+            which word is stressed, which is not always the same word. */}
         <p className="field-hint">
-          Sends using the last <em>saved</em> settings, so save before testing.
+          {t('settings.testHint')
+            .split(/<\/?em>/)
+            .map((part, index) => (index === 1 ? <em key={index}>{part}</em> : part))}
         </p>
       </section>
 
+      {/* Fallbacks, not the numbers themselves. Every alert rule can name its
+          own, and most do not — these are what "use the hub's mark" resolves
+          to. The poll interval sits with them because it is the cadence at
+          which all four are read and compared. */}
       <section className="card">
         <h2 className="card-title">{t('settings.thresholds')}</h2>
+        <p className="field-hint">{t('settings.thresholdsIntro')}</p>
 
-        <div className="field-grid">
+        <div className="field-grid threshold-grid">
           <label className="field field-narrow">
             <span>{t('settings.inkThreshold')}</span>
             <input
@@ -597,9 +611,7 @@ export function AdminSettings() {
                 update('wasteThresholdPercent', Number(event.target.value))
               }
             />
-            <small className="field-hint">
-              % full — this tank fills as the inks drain, so it alerts high
-            </small>
+            <small className="field-hint">{t('settings.wasteThresholdHint')}</small>
           </label>
 
           <label className="field field-narrow">
@@ -613,9 +625,7 @@ export function AdminSettings() {
                 update('hysteresisPercent', Number(event.target.value))
               }
             />
-            <small className="field-hint">
-              How far past the threshold a supply must recover before the alert clears
-            </small>
+            <small className="field-hint">{t('settings.hysteresisHint')}</small>
           </label>
 
           <label className="field field-narrow">
@@ -629,21 +639,7 @@ export function AdminSettings() {
                 update('backgroundPollMinutes', Number(event.target.value))
               }
             />
-            <small className="field-hint">
-              minutes — how often ink and paper are read and alerts evaluated
-            </small>
-          </label>
-
-          <label className="field field-check">
-            <input
-              type="checkbox"
-              checked={draft.alertsEnabled}
-              onChange={(event) => update('alertsEnabled', event.target.checked)}
-            />
-            <span>
-              {t('settings.alertsEnabled')}
-              <small>{t('settings.alertsEnabledHint')}</small>
-            </span>
+            <small className="field-hint">{t('settings.pollIntervalHint')}</small>
           </label>
         </div>
       </section>

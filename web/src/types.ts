@@ -288,7 +288,6 @@ export interface AdminSettings {
   wasteThresholdPercent: number;
   hysteresisPercent: number;
   backgroundPollMinutes: number;
-  alertsEnabled: boolean;
   updateCheckEnabled: boolean;
   /** Present when saving changed the submitted CSS, e.g. an @import was stripped. */
   warnings?: string[];

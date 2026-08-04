@@ -1797,6 +1797,14 @@ tr.is-muted td {
   max-width: 180px;
 }
 
+/* Four short numbers, sized to the numbers. The general field grid assumes a
+   240px column because most of its cells hold an address or an email; at that
+   width four dials and their explanations spread into a band of mostly empty
+   space on a laptop, and drop to two per row on anything narrower. */
+.threshold-grid {
+  grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+}
+
 .field-check {
   flex-direction: row;
   align-items: flex-start;

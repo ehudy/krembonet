@@ -107,7 +107,6 @@ export interface AppSettings {
    * portal shows cannot drift from the number alerting uses.
    */
   backgroundPollMinutes: number;
-  alertsEnabled: boolean;
 
   /**
    * Whether to ask GitHub, once a day, whether a newer release exists.
@@ -148,7 +147,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   alertRecipients: [],
 
   backgroundPollMinutes: 60,
-  alertsEnabled: true,
   updateCheckEnabled: true,
 };
 

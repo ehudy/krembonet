@@ -220,26 +220,6 @@ async function dispatch(
 ): Promise<boolean> {
   const settings = getSettings();
 
-  // Alerting switched off hub-wide. Checked here rather than before evaluation
-  // so the evaluators still run: they are what detect the edges the activity
-  // timeline is built from, and a hub that only wants a dashboard should still
-  // get a history. Recorded as skipped for the same reason the no-destination
-  // case below is — an unlogged condition looks like one that never happened.
-  if (!settings.alertsEnabled) {
-    for (const ruleKey of notification.ruleKeys) {
-      logAlert(
-        ruleKey,
-        device.id,
-        notification.subject,
-        [],
-        'skipped',
-        'none',
-        'Alerts are disabled hub-wide',
-      );
-    }
-    return false;
-  }
-
   const { recipients, webhookIds } = destinationsFor([rule], settings.alertRecipients);
   const targets = listEnabledTargets().filter((target) => webhookIds.includes(target.id));
   const smtpReady =
@@ -603,9 +583,9 @@ function observeMedia(device: DeviceRow, view: DeviceView): Observation[] {
 /**
  * Everything evaluated from a successful reading.
  *
- * There is deliberately no `alertsEnabled` check here. Turning alerts off means
- * "stop sending", not "stop noticing" — the timeline is built from these edges,
- * so the gate lives in `dispatch` where the sending happens.
+ * Nothing here decides whether to *send*; these calls only detect the edges the
+ * activity timeline is built from. Whether an edge becomes a message is a
+ * question for the rules, which is now the only place it is asked.
  */
 export async function evaluateAlerts(
   device: DeviceRow,

@@ -131,7 +131,6 @@ const EDITABLE_KEYS: (keyof AppSettings)[] = [
   'smtpFrom',
   'alertRecipients',
   'backgroundPollMinutes',
-  'alertsEnabled',
   'updateCheckEnabled',
 ];
 
@@ -693,7 +692,6 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
             break;
           }
           case 'smtpSecure':
-          case 'alertsEnabled':
           case 'updateCheckEnabled': {
             patch[key] = value === true || value === 'true';
             break;
