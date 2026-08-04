@@ -6,8 +6,10 @@
  * unsaved URL would be reassuring and meaningless.
  */
 import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import { api } from '../../api.js';
+import { ConfirmDialog } from '../../components/ConfirmDialog.js';
 import { useTranslation, type Translate } from '../../i18n/i18n.js';
 import { relativeTime } from '../../lib/format.js';
 import type { Webhook, WebhookFormat } from '../../types.js';
@@ -48,8 +50,17 @@ export function AdminWebhooks() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [formats, setFormats] = useState<FormatOption[]>([]);
   const [draft, setDraft] = useState<Draft>(BLANK);
-  /** Null while adding; an id while editing an existing row. */
-  const [editingId, setEditingId] = useState<number | null>(null);
+  /**
+   * Whether the editor is on screen, and what it is editing.
+   *
+   * `null` is closed; `{ id: null }` is adding; `{ id }` is editing. Closed and
+   * adding used to be the same state, which meant the form sat open on a page
+   * whose real content is the list — a permanent invitation to fill in a
+   * destination nobody was there to add.
+   */
+  const [editor, setEditor] = useState<{ id: number | null } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Webhook | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -79,8 +90,14 @@ export function AdminWebhooks() {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
+  function startAdd(): void {
+    setEditor({ id: null });
+    setDraft(BLANK);
+    setFeedback(null);
+  }
+
   function startEdit(webhook: Webhook): void {
-    setEditingId(webhook.id);
+    setEditor({ id: webhook.id });
     setFeedback(null);
     setDraft({
       name: webhook.name,
@@ -93,8 +110,9 @@ export function AdminWebhooks() {
     });
   }
 
-  function cancelEdit(): void {
-    setEditingId(null);
+  /** Closes the editor and forgets the draft, so it opens clean next time. */
+  function closeEditor(): void {
+    setEditor(null);
     setDraft(BLANK);
   }
 
@@ -114,10 +132,10 @@ export function AdminWebhooks() {
     if (draft.headers.trim() !== '') body['headers'] = draft.headers;
 
     try {
-      if (editingId === null) await api.createWebhook(body);
-      else await api.updateWebhook(editingId, body);
+      if (editor?.id == null) await api.createWebhook(body);
+      else await api.updateWebhook(editor.id, body);
 
-      cancelEdit();
+      closeEditor();
       await reload();
       setFeedback({ kind: 'ok', message: t('webhooks.saved') });
     } catch (cause) {
@@ -148,21 +166,32 @@ export function AdminWebhooks() {
     }
   }
 
-  async function remove(webhook: Webhook): Promise<void> {
-    if (!window.confirm(t('webhooks.confirmDelete', { name: webhook.name }))) return;
+  /**
+   * Deletes the destination the dialog is asking about.
+   *
+   * A real dialog rather than `window.confirm`, which was the last native popup
+   * in the app: the browser's version cannot say which button is the dangerous
+   * one, and it cannot mention that the rules pointing at this destination lose
+   * it too — which is the consequence worth reading before agreeing to it.
+   */
+  async function confirmRemove(): Promise<void> {
+    const webhook = pendingDelete;
+    if (webhook === null) return;
 
-    setBusyId(webhook.id);
+    setIsDeleting(true);
     try {
       await api.deleteWebhook(webhook.id);
-      if (editingId === webhook.id) cancelEdit();
+      if (editor?.id === webhook.id) closeEditor();
+      setPendingDelete(null);
       await reload();
     } catch (cause) {
+      setPendingDelete(null);
       setFeedback({
         kind: 'error',
         message: cause instanceof Error ? cause.message : String(cause),
       });
     } finally {
-      setBusyId(null);
+      setIsDeleting(false);
     }
   }
 
@@ -172,9 +201,17 @@ export function AdminWebhooks() {
   return (
     <>
       <section className="card">
-        <h2 className="card-title">
-          {t('webhooks.title')} <span className="count">{webhooks.length}</span>
-        </h2>
+        <div className="card-head">
+          <h2 className="card-title">
+            {t('webhooks.title')} <span className="count">{webhooks.length}</span>
+          </h2>
+          {editor === null && (
+            <button type="button" className="btn-primary" onClick={startAdd}>
+              <Plus size={15} strokeWidth={2} aria-hidden="true" />
+              {t('webhooks.add')}
+            </button>
+          )}
+        </div>
 
         <p className="muted">{t('webhooks.intro')}</p>
 
@@ -259,7 +296,7 @@ export function AdminWebhooks() {
                         type="button"
                         className="btn-secondary is-danger"
                         disabled={busyId === webhook.id}
-                        onClick={() => void remove(webhook)}
+                        onClick={() => setPendingDelete(webhook)}
                       >
                         {t('common.delete')}
                       </button>
@@ -272,99 +309,121 @@ export function AdminWebhooks() {
         )}
       </section>
 
-      <section className="card">
-        <h2 className="card-title">
-          {editingId === null ? t('webhooks.addTitle') : t('webhooks.editTitle')}
-        </h2>
+      {editor !== null && (
+        <section className="card">
+          <h2 className="card-title">
+            {editor.id === null ? t('webhooks.addTitle') : t('webhooks.editTitle')}
+          </h2>
 
-        <form onSubmit={save}>
-          <div className="field-grid">
-            <label className="field">
-              <span>{t('webhooks.name')}</span>
-              <input
-                value={draft.name}
-                placeholder={t('webhooks.namePlaceholder')}
-                onChange={(event) => update('name', event.target.value)}
-              />
-            </label>
+          <form onSubmit={save}>
+            <div className="field-grid">
+              <label className="field">
+                <span>{t('webhooks.name')}</span>
+                <input
+                  value={draft.name}
+                  placeholder={t('webhooks.namePlaceholder')}
+                  onChange={(event) => update('name', event.target.value)}
+                />
+              </label>
 
-            <label className="field">
-              <span>{t('webhooks.format')}</span>
-              <select
-                value={draft.format}
-                onChange={(event) =>
-                  update('format', event.target.value as WebhookFormat)
-                }
-              >
-                {formats.map((format) => (
-                  <option key={format.id} value={format.id}>
-                    {format.label}
-                  </option>
-                ))}
-              </select>
-              <small className="field-hint">{urlHint(draft.format, t)}</small>
-            </label>
+              <label className="field">
+                <span>{t('webhooks.format')}</span>
+                <select
+                  value={draft.format}
+                  onChange={(event) =>
+                    update('format', event.target.value as WebhookFormat)
+                  }
+                >
+                  {formats.map((format) => (
+                    <option key={format.id} value={format.id}>
+                      {format.label}
+                    </option>
+                  ))}
+                </select>
+                <small className="field-hint">{urlHint(draft.format, t)}</small>
+              </label>
 
-            <label className="field field-wide">
-              <span>{t('webhooks.url')}</span>
-              <input
-                value={draft.url}
-                placeholder="https://discord.com/api/webhooks/…"
-                onChange={(event) => update('url', event.target.value)}
-              />
-            </label>
+              <label className="field field-wide">
+                <span>{t('webhooks.url')}</span>
+                <input
+                  value={draft.url}
+                  placeholder="https://discord.com/api/webhooks/…"
+                  onChange={(event) => update('url', event.target.value)}
+                />
+              </label>
 
-            <label className="field field-wide">
-              <span>{t('webhooks.headersLabel')}</span>
-              <textarea
-                className="code-area"
-                rows={3}
-                spellCheck={false}
-                value={draft.headers}
-                placeholder={'{ "Authorization": "Bearer …" }'}
-                onChange={(event) => update('headers', event.target.value)}
-              />
-              <small className="field-hint">{t('webhooks.headersHint')}</small>
-            </label>
+              <label className="field field-wide">
+                <span>{t('webhooks.headersLabel')}</span>
+                <textarea
+                  className="code-area"
+                  rows={3}
+                  spellCheck={false}
+                  value={draft.headers}
+                  placeholder={'{ "Authorization": "Bearer …" }'}
+                  onChange={(event) => update('headers', event.target.value)}
+                />
+                <small className="field-hint">{t('webhooks.headersHint')}</small>
+              </label>
 
-            <label className="field field-check">
-              <input
-                type="checkbox"
-                checked={draft.enabled}
-                onChange={(event) => update('enabled', event.target.checked)}
-              />
-              <span>
-                {t('webhooks.enabled')}
-                <small>{t('webhooks.enabledHint')}</small>
-              </span>
-            </label>
-          </div>
+              <label className="field field-check">
+                <input
+                  type="checkbox"
+                  checked={draft.enabled}
+                  onChange={(event) => update('enabled', event.target.checked)}
+                />
+                <span>
+                  {t('webhooks.enabled')}
+                  <small>{t('webhooks.enabledHint')}</small>
+                </span>
+              </label>
+            </div>
 
-          <div className="form-footer">
-            <button type="submit" className="btn-primary" disabled={isSaving}>
-              {isSaving
-                ? t('common.saving')
-                : editingId === null
-                  ? t('webhooks.addButton')
-                  : t('webhooks.saveButton')}
-            </button>
-            {editingId !== null && (
-              <button type="button" className="btn-secondary" onClick={cancelEdit}>
+            <div className="form-footer">
+              <button type="submit" className="btn-primary" disabled={isSaving}>
+                {isSaving
+                  ? t('common.saving')
+                  : editor.id === null
+                    ? t('webhooks.addButton')
+                    : t('webhooks.saveButton')}
+              </button>
+              {/* Always offered, not only while editing: the form is now
+                something the operator opened, so there has to be a way to shut
+                it that is not filling it in. */}
+              <button type="button" className="btn-secondary" onClick={closeEditor}>
                 {t('common.cancel')}
               </button>
-            )}
-            {feedback !== null && (
-              <span
-                className={
-                  feedback.kind === 'ok' ? 'feedback is-ok' : 'feedback is-error'
-                }
-              >
-                {feedback.message}
-              </span>
-            )}
-          </div>
-        </form>
-      </section>
+              {feedback !== null && (
+                <span
+                  className={
+                    feedback.kind === 'ok' ? 'feedback is-ok' : 'feedback is-error'
+                  }
+                >
+                  {feedback.message}
+                </span>
+              )}
+            </div>
+          </form>
+        </section>
+      )}
+
+      {/* Feedback from a save has nowhere to sit once the form closes, so a
+          success message is shown against the list it just changed. */}
+      {editor === null && feedback !== null && (
+        <div className={`banner ${feedback.kind === 'ok' ? 'is-good' : 'is-error'}`}>
+          {feedback.message}
+        </div>
+      )}
+
+      {pendingDelete !== null && (
+        <ConfirmDialog
+          title={t('webhooks.deleteTitle')}
+          body={t('webhooks.deleteBody', { name: pendingDelete.name })}
+          confirmLabel={isDeleting ? t('webhooks.deleting') : t('common.delete')}
+          isBusy={isDeleting}
+          onConfirm={() => void confirmRemove()}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </>
   );
 }

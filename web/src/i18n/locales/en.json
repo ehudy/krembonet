@@ -497,7 +497,9 @@
     "muting": "Muting…",
     "alreadyMuted": "In maintenance",
     "mutedNotice": "{{name}} is in maintenance mode. The condition is still tracked and still shown here — only the email and webhooks stop.",
-    "deviceGone": "This printer has been removed."
+    "deviceGone": "This printer has been removed.",
+    "matchedRules": "Rule: {{names}}",
+    "noRuleMatched": "No rule matched — recorded here and on the activity log, but nobody was notified."
   },
   "alertRules": {
     "title": "Alert rules",
@@ -618,13 +620,16 @@
     "saveButton": "Save changes",
     "saved": "Saved.",
     "tested": "Test notification delivered to {{name}}.",
-    "confirmDelete": "Delete the webhook \"{{name}}\"?",
     "urlHints": {
       "discord": "Channel → Edit Channel → Integrations → Webhooks → Copy Webhook URL.",
       "slack": "A Slack Incoming Webhook URL, or the equivalent from Mattermost.",
       "ntfy": "The full topic URL, e.g. https://ntfy.sh/my-plotter-alerts.",
       "generic": "Any endpoint that accepts a JSON POST."
-    }
+    },
+    "add": "Add webhook destination",
+    "deleteTitle": "Delete webhook destination?",
+    "deleteBody": "This permanently deletes “{{name}}” and removes it from any alert rule that posts to it. Those rules keep working through whatever destinations they have left. This cannot be undone.",
+    "deleting": "Deleting…"
   },
   "notFound": {
     "title": "Page not found",

@@ -25,10 +25,15 @@ import { BellOff, Wrench } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { useTranslation } from '../../i18n/i18n.js';
-import { ALERT_TONE, parseAlertRuleKey, type AlertKind } from '../../lib/alertKey.js';
+import {
+  ALERT_TONE,
+  alertGroupKey,
+  parseAlertRuleKey,
+  type AlertKind,
+} from '../../lib/alertKey.js';
 import { formatTime, relativeTime } from '../../lib/format.js';
 import { Link } from '../../router.js';
-import type { AdminDevice, AlertLogRow, AlertStateRow } from '../../types.js';
+import type { AdminDevice, AlertLogRow, AlertRule, AlertStateRow } from '../../types.js';
 
 /**
  * Delivery outcomes, as pill tones.
@@ -62,24 +67,87 @@ const KIND_RANK: Record<AlertKind, number> = {
   unknown: 4,
 };
 
+/**
+ * One outstanding condition, with every state row that describes it.
+ *
+ * `alert_state` holds a row for the condition itself and one more for each rule
+ * that fired on it, so a low cartridge covered by two rules is three rows and
+ * was three identical cards. They collapse here on the slug and subject the two
+ * key families share.
+ */
 interface ActiveAlert {
-  row: AlertStateRow;
+  key: string;
   kind: AlertKind;
   slug: string | null;
   supplyName: string | null;
-  /** Null when the alert names a device that no longer exists. */
+  /** Undefined when the alert names a device that no longer exists. */
   device: AdminDevice | undefined;
+  /** The rules that fired, by name. Empty when only the timeline noticed. */
+  ruleNames: string[];
+  /** The earliest of the group — how long this has actually been going. */
+  triggeredAt: string | number | null;
+  /** Summed across the rules, since the condition row itself never notifies. */
+  notifyCount: number;
+  /** For a row nothing could be read from, so the card can show the raw key. */
+  rawKey: string;
 }
 
-function describe(row: AlertStateRow, devices: readonly AdminDevice[]): ActiveAlert {
-  const { slug, kind, supplyName } = parseAlertRuleKey(row.ruleKey);
-  return {
-    row,
-    kind,
-    slug,
-    supplyName,
-    device: devices.find((device) => device.slug === slug),
-  };
+/**
+ * Folds the state rows into one card per condition.
+ *
+ * A rule row carries the same slug and subject as the condition row beside it,
+ * so grouping needs nothing the keys do not already hold. A row that parses to
+ * neither shape gets a group of its own keyed by the raw string, which keeps it
+ * visible rather than silently dropping a condition somebody may need to know
+ * about.
+ */
+function groupActive(
+  rows: readonly AlertStateRow[],
+  devices: readonly AdminDevice[],
+  rules: readonly AlertRule[],
+): ActiveAlert[] {
+  const groups = new Map<string, ActiveAlert>();
+
+  for (const row of rows) {
+    const parsed = parseAlertRuleKey(row.ruleKey);
+    const key = alertGroupKey(parsed) ?? row.ruleKey;
+    const rule =
+      parsed.ruleId === null
+        ? undefined
+        : rules.find((entry) => entry.id === parsed.ruleId);
+
+    const existing = groups.get(key);
+    if (existing === undefined) {
+      groups.set(key, {
+        key,
+        kind: parsed.kind,
+        slug: parsed.slug,
+        supplyName: parsed.supplyName,
+        device: devices.find((device) => device.slug === parsed.slug),
+        ruleNames: rule === undefined ? [] : [rule.name],
+        triggeredAt: row.triggeredAt,
+        notifyCount: row.notifyCount,
+        rawKey: row.ruleKey,
+      });
+      continue;
+    }
+
+    if (rule !== undefined && !existing.ruleNames.includes(rule.name)) {
+      existing.ruleNames.push(rule.name);
+    }
+    existing.notifyCount += row.notifyCount;
+    // The earliest, so the card says how long the condition has been going
+    // rather than when the most recent rule happened to pick it up.
+    if (
+      row.triggeredAt !== null &&
+      (existing.triggeredAt === null ||
+        new Date(row.triggeredAt).getTime() < new Date(existing.triggeredAt).getTime())
+    ) {
+      existing.triggeredAt = row.triggeredAt;
+    }
+  }
+
+  return [...groups.values()];
 }
 
 export function AdminAlerts() {
@@ -87,6 +155,7 @@ export function AdminAlerts() {
   const [active, setActive] = useState<AlertStateRow[]>([]);
   const [recent, setRecent] = useState<AlertLogRow[]>([]);
   const [devices, setDevices] = useState<AdminDevice[]>([]);
+  const [rules, setRules] = useState<AlertRule[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /** The device id currently being muted, so only its own button shows busy. */
@@ -97,13 +166,17 @@ export function AdminAlerts() {
     try {
       // Together rather than in sequence: the cards need both, and a card that
       // renders its slug for half a second before the name arrives flickers.
-      const [alerts, deviceList] = await Promise.all([
+      // All three: the cards need a printer name, and the rule names are what
+      // turn "something is alerting" into "this rule is why you were told".
+      const [alerts, deviceList, ruleList] = await Promise.all([
         api.alerts(signal),
         api.listAdminDevices(signal),
+        api.listAlertRules(signal),
       ]);
       setActive(alerts.active);
       setRecent(alerts.recent);
       setDevices(deviceList.devices);
+      setRules(ruleList.rules);
     } catch (cause: unknown) {
       if (cause instanceof DOMException && cause.name === 'AbortError') return;
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -140,13 +213,9 @@ export function AdminAlerts() {
 
   if (isLoading) return <p className="muted">{t('alerts.loading')}</p>;
 
-  const alerts = active
-    .map((row) => describe(row, devices))
-    .sort(
-      (a, b) =>
-        KIND_RANK[a.kind] - KIND_RANK[b.kind] ||
-        a.row.ruleKey.localeCompare(b.row.ruleKey),
-    );
+  const alerts = groupActive(active, devices, rules).sort(
+    (a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind] || a.key.localeCompare(b.key),
+  );
 
   return (
     <>
@@ -163,16 +232,14 @@ export function AdminAlerts() {
         ) : (
           <ul className="alert-cards">
             {alerts.map((alert) => (
-              <li key={alert.row.ruleKey} className="alert-card">
+              <li key={alert.key} className="alert-card">
                 <div className="alert-card-head">
                   {/* The printer, named as an operator knows it. Linked only
                       while it exists — a deleted device keeps its card, because
                       the condition was real, but a link to a 404 is worse than
                       plain text. */}
                   {alert.device === undefined ? (
-                    <strong className="alert-device">
-                      {alert.slug ?? alert.row.ruleKey}
-                    </strong>
+                    <strong className="alert-device">{alert.slug ?? alert.rawKey}</strong>
                   ) : (
                     <Link to={`/devices/${alert.device.slug}`} className="alert-device">
                       {alert.device.displayName}
@@ -194,9 +261,19 @@ export function AdminAlerts() {
                     </>
                   )}
                   {t('alerts.since', {
-                    time: relativeTime(alert.row.triggeredAt, t),
-                    count: alert.row.notifyCount,
+                    time: relativeTime(alert.triggeredAt, t),
+                    count: alert.notifyCount,
                   })}
+                </p>
+
+                {/* Which rule is why anybody was told. A condition with no rule
+                    beside it was noticed and recorded but notified nobody, and
+                    saying so is the difference between "the engine is broken"
+                    and "nothing here is subscribed to". */}
+                <p className="alert-rules muted">
+                  {alert.ruleNames.length === 0
+                    ? t('alerts.noRuleMatched')
+                    : t('alerts.matchedRules', { names: alert.ruleNames.join(', ') })}
                 </p>
 
                 <div className="alert-card-actions">

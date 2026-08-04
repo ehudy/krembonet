@@ -497,7 +497,9 @@
     "muting": "Silenciando…",
     "alreadyMuted": "En mantenimiento",
     "mutedNotice": "{{name}} está en modo mantenimiento. La condición se sigue registrando y se sigue mostrando aquí; solo se detienen el correo y los webhooks.",
-    "deviceGone": "Esta impresora ha sido eliminada."
+    "deviceGone": "Esta impresora ha sido eliminada.",
+    "matchedRules": "Regla: {{names}}",
+    "noRuleMatched": "Ninguna regla coincidió: queda registrado aquí y en el historial de actividad, pero no se avisó a nadie."
   },
   "alertRules": {
     "title": "Reglas de alerta",
@@ -618,13 +620,16 @@
     "saveButton": "Guardar cambios",
     "saved": "Guardado.",
     "tested": "Notificación de prueba entregada a {{name}}.",
-    "confirmDelete": "¿Eliminar el webhook «{{name}}»?",
     "urlHints": {
       "discord": "Canal → Editar canal → Integraciones → Webhooks → Copiar URL del webhook.",
       "slack": "Una URL de Incoming Webhook de Slack, o su equivalente en Mattermost.",
       "ntfy": "La URL completa del tema, p. ej. https://ntfy.sh/mis-alertas.",
       "generic": "Cualquier endpoint que acepte un POST con JSON."
-    }
+    },
+    "add": "Añadir destino de webhook",
+    "deleteTitle": "¿Eliminar el destino de webhook?",
+    "deleteBody": "Se elimina «{{name}}» de forma permanente y se quita de cualquier regla de alerta que publique en él. Esas reglas siguen funcionando con los destinos que les queden. Esto no se puede deshacer.",
+    "deleting": "Eliminando…"
   },
   "notFound": {
     "title": "Página no encontrada",

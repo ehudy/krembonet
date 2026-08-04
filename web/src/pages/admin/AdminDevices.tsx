@@ -15,8 +15,10 @@ import { CircleAlert, CircleCheck, Info, Radar } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { ConfirmDialog } from '../../components/ConfirmDialog.js';
+import { SortableHeader } from '../../components/SortableHeader.js';
 import { ToggleSwitch } from '../../components/ToggleSwitch.js';
 import { useTranslation } from '../../i18n/i18n.js';
+import { compareText, toggleSort, type SortState } from '../../lib/tableSort.js';
 import {
   AdapterConfigForm,
   defaultsFor,
@@ -30,6 +32,46 @@ import type {
   SmartProbeResponse,
 } from '../../types.js';
 import { AutoDiscover } from './AutoDiscover.js';
+
+type SortField = 'name' | 'address' | 'adapter' | 'reports';
+
+/**
+ * What each column sorts on.
+ *
+ * Every one is text, so they all share `compareText` — which matters most for
+ * the address column, where a character-by-character comparison files
+ * `192.168.1.10` above `192.168.1.9`. `Reports` is a list, joined in the same
+ * order the cell renders it so what sorts is what is read.
+ */
+function sortValue(device: AdminDevice, field: SortField): string | null {
+  switch (field) {
+    case 'name':
+      return device.displayName;
+    case 'address':
+      return device.host;
+    case 'adapter':
+      return device.adapter;
+    case 'reports':
+      return (device.capabilities ?? [])
+        .filter((capability) => capability !== 'reachability')
+        .join(', ');
+  }
+}
+
+/** Ties fall through to the name, so rows do not shuffle between renders. */
+function compareDevices(
+  a: AdminDevice,
+  b: AdminDevice,
+  sort: SortState<SortField>,
+): number {
+  const ordered = compareText(
+    sortValue(a, sort.field),
+    sortValue(b, sort.field),
+    sort.direction,
+  );
+  if (sort.field === 'name') return ordered;
+  return ordered || compareText(a.displayName, b.displayName, 'asc');
+}
 
 interface Draft {
   id: number | null;
@@ -225,6 +267,13 @@ function SmartProbeTip({ result }: { result: SmartProbeResponse }) {
 export function AdminDevices() {
   const { t } = useTranslation();
   const [devices, setDevices] = useState<AdminDevice[] | null>(null);
+  // A-Z by name. The endpoint already orders by display name, but that is its
+  // choice rather than the operator's, and a table you cannot reorder is one
+  // you scroll to find something in.
+  const [sort, setSort] = useState<SortState<SortField>>({
+    field: 'name',
+    direction: 'asc',
+  });
   const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [probe, setProbe] = useState<ProbeResponse | null>(null);
@@ -259,6 +308,14 @@ export function AdminDevices() {
 
   const schema =
     adapters.find((entry) => entry.id === draft?.adapter)?.configSchema ?? [];
+
+  const sorted = [...(devices ?? [])].sort((a, b) => compareDevices(a, b, sort));
+
+  function sortBy(field: SortField): void {
+    // Every column here is text, so ascending is the useful first click on all
+    // four — no per-column natural direction to look up.
+    setSort((current) => toggleSort(current, field));
+  }
 
   function updateConfig(key: string, value: unknown): void {
     setDraft((current) =>
@@ -462,15 +519,35 @@ export function AdminDevices() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>{t('devices.name')}</th>
-                <th>{t('devices.address')}</th>
-                <th>{t('devices.adapter')}</th>
-                <th>{t('devices.reports')}</th>
+                <SortableHeader
+                  field="name"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('devices.name')}
+                />
+                <SortableHeader
+                  field="address"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('devices.address')}
+                />
+                <SortableHeader
+                  field="adapter"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('devices.adapter')}
+                />
+                <SortableHeader
+                  field="reports"
+                  sort={sort}
+                  onSort={sortBy}
+                  label={t('devices.reports')}
+                />
                 <th />
               </tr>
             </thead>
             <tbody>
-              {(devices ?? []).map((device) => (
+              {sorted.map((device) => (
                 <tr key={device.id} className={device.enabled ? '' : 'is-muted'}>
                   <td>
                     <strong>{device.displayName}</strong>

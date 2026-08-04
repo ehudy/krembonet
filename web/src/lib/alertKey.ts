@@ -1,19 +1,29 @@
 /**
- * Reading an alert's rule key back into the thing it is about.
+ * Reading an alert's state key back into the thing it is about.
  *
- * The engine composes these keys so that state for one condition cannot collide
- * with another — `device:plotter:supply:MBK:low`, `device:plotter:offline` — and
- * for a long time the admin portal simply printed them. That is honest and
- * unreadable: an operator scanning "currently alerting" wants a printer name and
- * a severity, not a colon-delimited identifier they have to parse in their head.
+ * `alert_state` holds two families of key and both land in the admin portal's
+ * "currently alerting" list:
  *
- * Parsing here rather than sending a structured shape from the server keeps the
- * key as the single source of truth. `alert_state` is keyed by it, so a parallel
- * set of columns describing the same condition is a second copy that can drift.
+ *  - `device:<slug>:<subject>` — the timeline's own condition edge, written
+ *    whether or not anybody is notified. One per condition per device.
+ *  - `rule:<id>:device:<slug>:<subject>` — one notification rule's edge on that
+ *    same condition. Several can exist for one condition, because rules own
+ *    their own edges so two rules watching a cartridge at different percentages
+ *    each announce themselves once.
  *
- * Anything that does not fit the known shapes comes back as `unknown` with the
- * key intact. A future condition type must degrade to "something is alerting and
- * here is its identifier", never to a blank row.
+ * Parsing both is what the portal needs, and the second shape is why: it was
+ * added when notification became rule-driven and this parser was not taught
+ * about it, so every rule row fell through to `unknown` and rendered as a raw
+ * `rule:8fa75c95…` string over "This printer has been removed". The slug was in
+ * the key the whole time.
+ *
+ * The `subject` is deliberately identical between the two families — see
+ * `observationSubject` on the server — so the caller can group a condition with
+ * the rules that fired on it rather than showing one card per row.
+ *
+ * Anything that fits neither shape comes back as `unknown` with the key intact.
+ * A future condition type must degrade to "something is alerting and here is its
+ * identifier", never to a blank row.
  */
 
 /** The conditions a key can name, each of which reads differently to a person. */
@@ -25,6 +35,13 @@ export interface ParsedAlertKey {
   kind: AlertKind;
   /** The supply, for the two supply conditions. Null for the rest. */
   supplyName: string | null;
+  /** The rule that owns this row, for the per-rule notification keys. */
+  ruleId: string | null;
+  /**
+   * What the condition is about, in a form both key families agree on:
+   * `offline`, `media`, or `supply:<name>:low|full`. Null when unparseable.
+   */
+  subject: string | null;
 }
 
 /**
@@ -43,34 +60,77 @@ export const ALERT_TONE: Record<AlertKind, string> = {
   unknown: 'is-unknown',
 };
 
+const UNPARSEABLE: ParsedAlertKey = {
+  slug: null,
+  kind: 'unknown',
+  supplyName: null,
+  ruleId: null,
+  subject: null,
+};
+
+/** The condition half of either key shape, once the prefix has been stripped. */
+function readSubject(
+  parts: readonly string[],
+): Pick<ParsedAlertKey, 'kind' | 'supplyName' | 'subject'> {
+  if (parts.length === 1 && parts[0] === 'offline') {
+    return { kind: 'offline', supplyName: null, subject: 'offline' };
+  }
+  if (parts.length === 1 && parts[0] === 'media') {
+    return { kind: 'media', supplyName: null, subject: 'media' };
+  }
+
+  if (parts[0] === 'supply' && parts.length >= 3) {
+    const direction = parts[parts.length - 1];
+    // Whatever sits between the marker and the direction, rejoined — a device is
+    // free to name a marker with a colon in it, and the key would then have more
+    // segments than the shape suggests.
+    const supplyName = parts.slice(1, -1).join(':');
+
+    if (direction === 'low') {
+      return { kind: 'supplyLow', supplyName, subject: `supply:${supplyName}:low` };
+    }
+    if (direction === 'full') {
+      return { kind: 'wasteFull', supplyName, subject: `supply:${supplyName}:full` };
+    }
+  }
+
+  return { kind: 'unknown', supplyName: null, subject: null };
+}
+
 export function parseAlertRuleKey(ruleKey: string): ParsedAlertKey {
-  const unknown: ParsedAlertKey = { slug: null, kind: 'unknown', supplyName: null };
-
   const parts = ruleKey.split(':');
-  if (parts.length < 3 || parts[0] !== 'device') return unknown;
 
-  const slug = parts[1] as string;
-  const rest = parts.slice(2);
-
-  if (rest.length === 1 && rest[0] === 'offline') {
-    return { slug, kind: 'offline', supplyName: null };
-  }
-  if (rest.length === 1 && rest[0] === 'media') {
-    return { slug, kind: 'media', supplyName: null };
-  }
-
-  if (rest[0] === 'supply' && rest.length >= 3) {
-    const direction = rest[rest.length - 1];
-    // The supply name is whatever sits between the marker and the direction,
-    // rejoined — a device is free to name a marker with a colon in it, and the
-    // key would then have more segments than the shape suggests.
-    const supplyName = rest.slice(1, -1).join(':');
-
-    if (direction === 'low') return { slug, kind: 'supplyLow', supplyName };
-    if (direction === 'full') return { slug, kind: 'wasteFull', supplyName };
+  // A rule's own edge on a condition. The rule id is a UUID and contains no
+  // colon, so the device marker is always at a fixed offset.
+  if (parts[0] === 'rule' && parts[2] === 'device' && parts.length >= 5) {
+    return {
+      slug: parts[3] as string,
+      ruleId: parts[1] as string,
+      ...readSubject(parts.slice(4)),
+    };
   }
 
-  // Device-scoped but otherwise unrecognised: keep the slug, since linking to
-  // the printer is still useful even when the condition has no name here yet.
-  return { slug, kind: 'unknown', supplyName: null };
+  if (parts.length >= 3 && parts[0] === 'device') {
+    return {
+      slug: parts[1] as string,
+      ruleId: null,
+      ...readSubject(parts.slice(2)),
+    };
+  }
+
+  return UNPARSEABLE;
+}
+
+/**
+ * What makes two state rows the same outstanding condition.
+ *
+ * A device's own condition edge and every rule that fired on it share a slug and
+ * a subject, so they collapse into one card. Without this the list showed the
+ * same low cartridge once for the timeline and once per matching rule.
+ *
+ * Null for a row that cannot be placed; the caller shows those on their own.
+ */
+export function alertGroupKey(parsed: ParsedAlertKey): string | null {
+  if (parsed.slug === null || parsed.subject === null) return null;
+  return `${parsed.slug}\n${parsed.subject}`;
 }

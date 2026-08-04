@@ -280,7 +280,16 @@ export function matchRules(
   );
 }
 
-/** What an observation is about, for a stable per-rule alert key. */
+/**
+ * What an observation is about, for a stable per-rule alert key.
+ *
+ * Deliberately the same shape the timeline's own condition keys use — see
+ * `ruleKeyFor` in rules.ts, which produces `supply:<name>:low`. Both families of
+ * key end up describing a condition the same way, which is what lets the admin
+ * portal group a condition with the rules that fired on it instead of showing
+ * one card per row. The direction matters and is not decoration: `low` and
+ * `full` are opposite ends of the same cartridge.
+ */
 export function observationSubject(observation: Observation): string {
   switch (observation.type) {
     case 'offline':
@@ -288,8 +297,9 @@ export function observationSubject(observation: Observation): string {
     case 'media_out':
       return 'media';
     case 'supply_low':
+      return `supply:${observation.supplyName}:low`;
     case 'waste_full':
-      return `supply:${observation.supplyName}`;
+      return `supply:${observation.supplyName}:full`;
   }
 }
 
