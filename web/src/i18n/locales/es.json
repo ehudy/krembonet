@@ -243,7 +243,8 @@
       "alerts": "Alertas",
       "history": "Historial",
       "webhooks": "Webhooks",
-      "rules": "Reglas"
+      "rules": "Reglas",
+      "docs": "Documentación"
     }
   },
   "settings": {
@@ -837,6 +838,24 @@
       "action": "Restablecer de fábrica",
       "confirmTitle": "¿Restablecer de fábrica todo el centro?",
       "confirmBody": "Se borran todas las impresoras, asignaciones, ajustes y la contraseña de administrador. El centro vuelve a la configuración inicial como recién instalado y se cerrará tu sesión de inmediato. Esto no se puede deshacer."
+    }
+  },
+  "docs": {
+    "categoriesLabel": "Secciones de documentación",
+    "searchPlaceholder": "Buscar en la documentación…",
+    "onThisPage": "En esta página",
+    "noResults": "Nada en esta guía coincide con «{{query}}».",
+    "ippHelpLink": "¿Por qué ocurre esto? Consulta la guía de solución de problemas de IPP.",
+    "offlineHelpLink": "Solucionar problemas de conectividad",
+    "categories": {
+      "troubleshooting": "Solución de problemas",
+      "deviceSetup": "Configuración de dispositivos",
+      "architecture": "Sistema y arquitectura"
+    },
+    "blurbs": {
+      "troubleshooting": "Soluciones a los problemas habituales: colas rechazadas, niveles que aparecen como bajo/correcto, cambios de dirección, proxys y SQLite.",
+      "deviceSetup": "Cómo activar las consultas de estado IPP y SNMP v2c según el fabricante, para que un dispositivo informe de todo lo que puede.",
+      "architecture": "Cómo está construido el centro: un solo sondeo, una API de solo lectura y dónde residen los datos."
     }
   }
 }

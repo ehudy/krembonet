@@ -4235,3 +4235,363 @@ a.media-line:focus-visible {
 .card-head .icon-button {
   flex-shrink: 0;
 }
+
+/* ── Admin documentation ─────────────────────────────────────────────────
+   The in-app rendering of the repo's docs/ guides. Namespaced under .docs and
+   .doc- so it cannot bleed into the rest of the app, and built from the same
+   theme tokens as everything else so light/dark just work. */
+
+.docs-blurb {
+  margin: 0.35rem 0 1rem;
+  max-width: 70ch;
+}
+
+.docs-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.7rem;
+  margin-bottom: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-width: 26rem;
+}
+
+.docs-search svg {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.docs-search input {
+  border: none;
+  background: transparent;
+  padding: 0.55rem 0;
+  width: 100%;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.docs-search input:focus {
+  outline: none;
+}
+
+.docs-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 2.25rem;
+  align-items: start;
+}
+
+.docs-toc {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.docs-toc-title {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+
+.docs-toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-left: 1px solid var(--border);
+}
+
+.docs-toc a {
+  display: block;
+  padding: 0.2rem 0 0.2rem 0.75rem;
+  margin-left: -1px;
+  border-left: 2px solid transparent;
+  color: var(--text-muted);
+  text-decoration: none;
+  line-height: 1.35;
+}
+
+.docs-toc a:hover {
+  color: var(--text);
+  border-left-color: var(--border-strong);
+}
+
+/* Content */
+
+.doc-content {
+  max-width: 74ch;
+  line-height: 1.65;
+}
+
+.doc-content > :first-child {
+  margin-top: 0;
+}
+
+.doc-h {
+  scroll-margin-top: 1rem;
+  line-height: 1.3;
+  font-weight: 650;
+}
+
+.doc-h1 {
+  font-size: 1.6rem;
+  margin: 0 0 0.75rem;
+}
+
+.doc-h2 {
+  font-size: 1.2rem;
+  margin: 2rem 0 0.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.doc-h3 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.doc-h4 {
+  font-size: 0.92rem;
+  margin: 1.25rem 0 0.4rem;
+  color: var(--text-muted);
+}
+
+.doc-p {
+  margin: 0.75rem 0;
+}
+
+.doc-list {
+  margin: 0.6rem 0;
+  padding-left: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.doc-content a.doc-link {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.doc-content a.doc-link:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* A repo path with no page here: readable, clearly not a live link. */
+.doc-reflink {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.86em;
+  color: var(--text-muted);
+  border-bottom: 1px dotted var(--border-strong);
+}
+
+.doc-content code {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.86em;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.35rem;
+}
+
+.doc-hit {
+  background: var(--accent-soft);
+  color: var(--text);
+  border-radius: 2px;
+}
+
+/* Code blocks */
+
+.doc-code {
+  position: relative;
+  margin: 1rem 0;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.doc-code-lang {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-bottom-left-radius: var(--radius-sm);
+  padding: 0.2rem 0.5rem;
+}
+
+.doc-code pre {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+}
+
+.doc-code pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.83rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.doc-tok-comment {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.doc-tok-str {
+  color: var(--ok-text);
+}
+
+/* Tables */
+
+.doc-table-scroll {
+  margin: 1rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.doc-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+}
+
+.doc-table th,
+.doc-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.doc-table th {
+  background: var(--surface-sunken);
+  font-weight: 600;
+}
+
+.doc-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Callouts */
+
+.doc-callout {
+  margin: 1rem 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.doc-callout-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.doc-callout-body > :first-child {
+  margin-top: 0;
+}
+
+.doc-callout-body > :last-child {
+  margin-bottom: 0;
+}
+
+.doc-callout.is-note {
+  border-left-color: var(--border-strong);
+}
+.doc-callout.is-note .doc-callout-head {
+  color: var(--text-muted);
+}
+
+.doc-callout.is-tip {
+  border-left-color: var(--ok);
+  background: var(--ok-bg);
+}
+.doc-callout.is-tip .doc-callout-head {
+  color: var(--ok-text);
+}
+
+.doc-callout.is-important {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+.doc-callout.is-important .doc-callout-head {
+  color: var(--accent);
+}
+
+.doc-callout.is-warning {
+  border-left-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+.doc-callout.is-warning .doc-callout-head {
+  color: var(--warning-text);
+}
+
+.doc-hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
+}
+
+/* Contextual help link that sits under a probe note or an offline banner. */
+.doc-help-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.doc-help-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  /* minmax(0, 1fr), not 1fr: a bare 1fr track takes its min-content minimum,
+     which a wide code block or table blows past — pushing the page into
+     horizontal scroll. Zero floor lets those scroll inside their own boxes. */
+  .docs-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The on-page contents is a convenience; the headings themselves remain, so
+     dropping it on narrow screens costs nothing and buys the content full width. */
+  .docs-toc {
+    display: none;
+  }
+}

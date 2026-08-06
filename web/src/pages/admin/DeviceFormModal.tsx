@@ -13,12 +13,14 @@
  * for.
  */
 import { useState, type FormEvent } from 'react';
-import { CircleAlert, CircleCheck, Info, Radar } from 'lucide-react';
+import { BookOpen, CircleAlert, CircleCheck, Info, Radar } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { Modal } from '../../components/Modal.js';
 import { ToggleSwitch } from '../../components/ToggleSwitch.js';
 import { useTranslation } from '../../i18n/i18n.js';
+import { useRouter } from '../../router.js';
+import { DOC_LINKS, navigateToDoc } from '../../lib/docs.js';
 import {
   AdapterConfigForm,
   defaultsFor,
@@ -77,10 +79,18 @@ function ProbeReport({
   probe: ProbeResponse;
   adapters: readonly AdapterInfo[];
 }) {
+  const { t } = useTranslation();
+  const { navigate } = useRouter();
+
   return (
     <div className="probe-report">
       {probe.results.map(({ adapter, label, result }) => {
         const known = adapters.some((entry) => entry.id === adapter);
+        // The queue is the one thing only IPP reports, and a refusal is a
+        // security-policy setting on the device — worth a pointer to the fix
+        // rather than leaving the operator to wonder why the panel is missing.
+        const jobsRefused =
+          result.reachable && result.notes.some((note) => /Get-Jobs/i.test(note));
         return (
           <div key={adapter} className={`probe-row${result.reachable ? ' is-good' : ''}`}>
             <div className="probe-head">
@@ -136,6 +146,19 @@ function ProbeReport({
                   <li key={note}>{note}</li>
                 ))}
               </ul>
+            )}
+
+            {jobsRefused && (
+              <button
+                type="button"
+                className="doc-help-link"
+                onClick={() =>
+                  navigateToDoc(navigate, DOC_LINKS.ippRefused.category, DOC_LINKS.ippRefused.anchor)
+                }
+              >
+                <BookOpen size={13} strokeWidth={2} aria-hidden="true" />
+                {t('docs.ippHelpLink')}
+              </button>
             )}
           </div>
         );

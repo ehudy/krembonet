@@ -8,7 +8,7 @@
  * Panels render only for capabilities the device actually has, so a device that
  * cannot report a queue shows no queue rather than an empty one.
  */
-import { ExternalLink } from 'lucide-react';
+import { BookOpen, ExternalLink } from 'lucide-react';
 
 import { InkPanel } from '../components/InkPanel.js';
 import { JobTable } from '../components/JobTable.js';
@@ -17,10 +17,13 @@ import { PageHeader } from '../components/PageHeader.js';
 import { SyncPausedScreen } from '../components/SyncPausedScreen.js';
 import { useLiveSync } from '../hooks/useLiveSync.js';
 import { useTranslation } from '../i18n/i18n.js';
+import { useRouter } from '../router.js';
+import { DOC_LINKS, navigateToDoc } from '../lib/docs.js';
 import { formatDuration, formatTime, relativeTime } from '../lib/format.js';
 
 export function DeviceDetail({ slug }: { slug: string }) {
   const { t, locale } = useTranslation();
+  const { navigate } = useRouter();
   const {
     data,
     error,
@@ -96,6 +99,18 @@ export function DeviceDetail({ slug }: { slug: string }) {
             time: formatTime(data.lastSuccessAt, locale, t),
           })}
           {data.lastError !== null && <span className="detail">{data.lastError}</span>}
+          {/* A subtle pointer to the connectivity section — an offline device is
+              most often DHCP drift or a firewall, both covered there. */}
+          <button
+            type="button"
+            className="doc-help-link"
+            onClick={() =>
+              navigateToDoc(navigate, DOC_LINKS.offline.category, DOC_LINKS.offline.anchor)
+            }
+          >
+            <BookOpen size={13} strokeWidth={2} aria-hidden="true" />
+            {t('docs.offlineHelpLink')}
+          </button>
         </div>
       )}
 

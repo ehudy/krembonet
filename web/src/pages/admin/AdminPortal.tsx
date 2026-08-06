@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Bell,
+  BookOpen,
   FileStack,
   HardDrive,
   SlidersHorizontal,
@@ -24,6 +25,7 @@ import { Link, matchPath, useRouter } from '../../router.js';
 import { AdminAlertRules } from './AdminAlertRules.js';
 import { AdminAlerts } from './AdminAlerts.js';
 import { AdminDevices } from './AdminDevices.js';
+import { AdminDocs } from './AdminDocs.js';
 import { AdminLogin } from './AdminLogin.js';
 import { AdminPaperTypes } from './AdminPaperTypes.js';
 import { AdminSettings } from './AdminSettings.js';
@@ -35,6 +37,7 @@ const TABS: { to: string; key: string; icon: LucideIcon }[] = [
   { to: '/admin/devices', key: 'devices', icon: HardDrive },
   { to: '/admin/paper-types', key: 'paperTypes', icon: FileStack },
   { to: '/admin/alerts', key: 'alerts', icon: Bell },
+  { to: '/admin/docs', key: 'docs', icon: BookOpen },
 ];
 
 /**
@@ -137,7 +140,11 @@ export function AdminPortal() {
   const isWebhooks = matchPath('/admin/alerts/webhooks', path) !== null;
   const isRules = matchPath('/admin/alerts/rules', path) !== null;
   const isAlerts = matchPath('/admin/alerts', path) !== null || isWebhooks || isRules;
-  const isSettings = !isDevices && !isPaperTypes && !isAlerts;
+  // Both the bare tab and its per-guide sub-route, so the tab stays lit on
+  // `/admin/docs/troubleshooting` as well as `/admin/docs`.
+  const isDocs = path === '/admin/docs' || path.startsWith('/admin/docs/');
+  const docCategory = matchPath('/admin/docs/:category', path)?.['category'];
+  const isSettings = !isDevices && !isPaperTypes && !isAlerts && !isDocs;
 
   return (
     <>
@@ -155,8 +162,10 @@ export function AdminPortal() {
               className={`tab${
                 (tab.to === '/admin' && isSettings) ||
                 (tab.to === '/admin/alerts' && isAlerts) ||
+                (tab.to === '/admin/docs' && isDocs) ||
                 (tab.to !== '/admin' &&
                   tab.to !== '/admin/alerts' &&
+                  tab.to !== '/admin/docs' &&
                   matchPath(tab.to, path) !== null)
                   ? ' is-active'
                   : ''
@@ -203,6 +212,8 @@ export function AdminPortal() {
         <AdminAlertRules />
       ) : isAlerts ? (
         <AdminAlerts />
+      ) : isDocs ? (
+        <AdminDocs categoryId={docCategory} />
       ) : (
         <AdminSettings />
       )}

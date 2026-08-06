@@ -243,7 +243,8 @@
       "alerts": "Alerts",
       "history": "History",
       "webhooks": "Webhooks",
-      "rules": "Rules"
+      "rules": "Rules",
+      "docs": "Documentation"
     }
   },
   "settings": {
@@ -837,6 +838,24 @@
       "action": "Factory reset",
       "confirmTitle": "Factory reset the whole hub?",
       "confirmBody": "Every printer, mapping, setting, and the admin password are erased. The hub returns to onboarding as if freshly installed, and you will be signed out immediately. This cannot be undone."
+    }
+  },
+  "docs": {
+    "categoriesLabel": "Documentation sections",
+    "searchPlaceholder": "Search the documentation…",
+    "onThisPage": "On this page",
+    "noResults": "Nothing in this guide matches “{{query}}”.",
+    "ippHelpLink": "Why is this happening? Read the IPP troubleshooting guide.",
+    "offlineHelpLink": "Troubleshoot connectivity",
+    "categories": {
+      "troubleshooting": "Troubleshooting",
+      "deviceSetup": "Device setup",
+      "architecture": "System & architecture"
+    },
+    "blurbs": {
+      "troubleshooting": "Fixes for the problems that actually come up: refused queues, supply levels that read low/OK, address drift, proxies, and SQLite.",
+      "deviceSetup": "Turning on IPP status queries and SNMP v2c per vendor, so a device reports everything it can.",
+      "architecture": "How the hub is put together: one poller, a read-only API, and where the data lives."
     }
   }
 }
