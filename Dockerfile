@@ -28,6 +28,7 @@ RUN npm ci --ignore-scripts
 COPY tsconfig.base.json ./
 COPY server ./server
 COPY web ./web
+COPY docs ./docs
 
 # Builds the SPA into server/public, then compiles the server to server/dist.
 RUN npm run build
