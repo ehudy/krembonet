@@ -89,6 +89,20 @@ export interface Job {
   stateReasons: string | null;
   impressions: number | null;
   timeAtCreation: number | null;
+  /**
+   * True when the device has stopped listing this job but its engine has not
+   * gone idle — a spooler drops a job when the upload finishes, not when the
+   * paper stops. The state is then the printer's, not the job's, so the table
+   * has to say the row is inferred.
+   */
+  lingering: boolean;
+  /**
+   * Epoch ms of the last poll at which the device itself listed the job.
+   * Milliseconds rather than the ISO strings used by `lastSuccessAt` because
+   * the server holds it as a number and converting a whole queue per request
+   * buys nothing.
+   */
+  lastSeenAt: number;
 }
 
 export interface DeviceStatus {
@@ -463,8 +477,9 @@ export interface DeviceIdentity {
 
 export interface ProbeReading {
   identity: DeviceIdentity;
-  state: DeviceState;
-  stateReasons: string[];
+  /** Absent when the read did not establish what the device is doing. */
+  state?: DeviceState;
+  stateReasons?: string[];
   supplies?: Supply[];
   media?: MediaSource[];
   jobs?: Job[];

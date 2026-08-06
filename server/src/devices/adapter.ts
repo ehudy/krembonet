@@ -117,18 +117,38 @@ export const UNKNOWN_IDENTITY: DeviceIdentity = {
  * "the queue is empty"; an absent `jobs` means "this device has no queue".
  * Collapsing the two would make an SNMP printer look like it had just finished
  * every job it was ever given.
+ *
+ * `state` and `stateReasons` follow the same rule, and are optional together: a
+ * state without its reasons is incoherent. Absent means "this read did not
+ * establish what the device is doing", and the poller then leaves the stored
+ * value alone. Reporting `'unknown'` instead would be an assertion, and an
+ * adapter that made it on a read that never asked erased the one signal that
+ * says whether the print engine is still running.
  */
 export interface DeviceReading {
   identity: DeviceIdentity;
-  state: DeviceState;
-  stateReasons: string[];
+  state?: DeviceState;
+  stateReasons?: string[];
   supplies?: Supply[];
   media?: MediaSource[];
   jobs?: PrintJob[];
+  /**
+   * Terminal states for jobs that have left the active queue, when the adapter
+   * could establish them. Answers "was it cancelled or did it finish", not "has
+   * the engine stopped" — a spooler reports a job completed the moment the
+   * upload ends. Absent means the device was not asked, or refused.
+   */
+  finishedJobs?: PrintJob[];
 }
 
 export interface ReadRequest {
   sections: readonly DeviceCapability[];
+  /**
+   * Jobs the caller is still tracking. An adapter may use this to look up a
+   * terminal state for any that have since left the active queue, and can skip
+   * the extra round trip entirely when none have.
+   */
+  openJobIds?: readonly number[];
 }
 
 export interface ProbeResult {

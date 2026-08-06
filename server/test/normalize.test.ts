@@ -18,10 +18,16 @@ import {
   normalizeJobs,
   normalizeMedia,
   normalizePrinterAttributes,
+  normalizePrinterState,
   readMarkerLevel,
   readReceptacleFullness,
   sortMediaBySlot,
 } from '../src/devices/ipp/normalize.js';
+import {
+  getJobsQuery,
+  getPrinterAttributesQuery,
+  getPrinterStateQuery,
+} from '../src/devices/ipp/queries.js';
 import { levelToPercent } from '../src/devices/types.js';
 import { asArray, asDict, parsePlist } from '../src/devices/ipp/plist.js';
 
@@ -327,10 +333,100 @@ describe('media ordering', () => {
   });
 });
 
+describe('request templates', () => {
+  /*
+   * `queries.ts` says the templates match the checked-in fixtures exactly, and
+   * the recapture instructions dotted through this file only work if that stays
+   * true. It had already drifted once — three attributes were added to the
+   * printer read without the fixture following — so the claim is asserted here
+   * rather than left to a comment.
+   */
+  const cases: [string, string][] = [
+    ['get-printer-attributes.test', getPrinterAttributesQuery()],
+    ['get-printer-state.test', getPrinterStateQuery()],
+    ['get-jobs.test', getJobsQuery()],
+  ];
+
+  for (const [fixture, query] of cases) {
+    it(`matches ${fixture}`, () => {
+      assert.equal(query, readFixture(fixture));
+    });
+  }
+
+  it('adds a limit only when one is asked for', () => {
+    // Unbounded, a busy device answers `which-jobs completed` with its whole
+    // history. The active-queue request keeps no limit so it stays byte-equal
+    // to the fixture above.
+    assert.ok(getJobsQuery('completed', 25).includes('ATTR integer limit 25'));
+    assert.ok(!getJobsQuery().includes('limit'));
+  });
+});
+
+describe('printer state', () => {
+  /*
+   * The state-only read is what a queue refresh carries, so that the hub can
+   * tell "the spooler let go of the job" from "the paper has stopped". These
+   * run through the real parser for the same reason the rest of the file does.
+   *
+   * Recapture with:
+   *   ipptool -X ipp://printer.example:631/ipp/print \
+   *     server/test/fixtures/get-printer-state.test > \
+   *     server/test/fixtures/printer-state-processing.plist
+   */
+  it('reads printer-state 4 as processing, with its reasons', () => {
+    const response = parseIpptoolOutput(readFixture('printer-state-processing.plist'), URI);
+
+    assert.deepEqual(normalizePrinterState(response.attributes), {
+      state: 'processing',
+      stateReasons: ['media-low-report'],
+    });
+  });
+
+  it('reads printer-state 3 as idle and drops the "none" reason', () => {
+    const response = parseIpptoolOutput(readFixture('printer-state-idle.plist'), URI);
+
+    assert.deepEqual(normalizePrinterState(response.attributes), {
+      state: 'idle',
+      stateReasons: [],
+    });
+  });
+
+  it('agrees with the full attribute read about what a state code means', () => {
+    // Two request shapes, one mapping table. A state-only refresh that decoded
+    // 4 differently from the hourly supplies poll would make the queue flap.
+    const full = parseIpptoolOutput(readFixture('printer-attributes.plist'), URI);
+    const snapshot = normalizePrinterAttributes(full.attributes);
+
+    assert.deepEqual(normalizePrinterState(full.attributes), {
+      state: snapshot.state,
+      stateReasons: snapshot.stateReasons,
+    });
+  });
+
+  it('reports unknown when the device did not answer with a state', () => {
+    assert.deepEqual(normalizePrinterState([]), { state: 'unknown', stateReasons: [] });
+  });
+});
+
 describe('jobs', () => {
   it('returns an empty queue when the printer reports no jobs', () => {
     const response = parseIpptoolOutput(readFixture('jobs-empty.plist'), URI);
     assert.deepEqual(normalizeJobs(response.attributes), []);
+  });
+
+  it('parses a completed-jobs response into terminal states', () => {
+    // What `which-jobs completed` is for: telling a cancel from a finish. It is
+    // not evidence the engine has stopped — a spooler reports `completed` when
+    // the upload ends — which is why the reconciler only acts on 7 and 8 here.
+    const response = parseIpptoolOutput(readFixture('jobs-completed.plist'), URI);
+
+    assert.deepEqual(
+      normalizeJobs(response.attributes).map((entry) => [entry.jobId, entry.state]),
+      [
+        [412, 'completed'],
+        [413, 'canceled'],
+      ],
+    );
   });
 
   it('maps job-state 7/8/9 to canceled/aborted/completed', () => {

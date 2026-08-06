@@ -51,12 +51,23 @@ import {
   type DeviceView,
   type ResolvedMediaSource,
 } from './cache.js';
+import { reconcileJobs, type TrackedJob } from './reconcile.js';
 
 export type DeviceRow = typeof devices.$inferSelect;
 
 /** How stale an on-demand read may be before it triggers a device query. */
 export const SUPPLIES_TTL_MS = 60_000;
 export const JOBS_TTL_MS = 15_000;
+
+/**
+ * How long a job may be held after the device stops reporting it.
+ *
+ * A safety valve, not a tuning knob: the release that matters is the device
+ * going `idle`, and this only catches firmware that never does. Long enough for
+ * a batch of large-format plots, which is what makes the shorter caps wrong —
+ * dropping a batch mid-run is the complaint this whole mechanism answers.
+ */
+export const MAX_LINGER_MS = 30 * 60_000;
 
 /** Sections refreshed together on the background cadence. */
 const SUPPLY_SECTIONS: DeviceCapability[] = ['supplies', 'media'];
@@ -142,13 +153,33 @@ function resolveMedia(sources: MediaSource[], deviceId: number): ResolvedMediaSo
 
 // --- persistence ---------------------------------------------------------
 
-function persistReading(device: DeviceRow, reading: DeviceReading): void {
+/**
+ * `tracked` is the reconciled queue rather than `reading.jobs`, because what
+ * counts as still open has to agree between the cache and the table. Absent
+ * whenever the read did not cover jobs.
+ */
+function persistReading(
+  device: DeviceRow,
+  reading: DeviceReading,
+  tracked: TrackedJob[] | undefined,
+): void {
   const now = new Date();
 
   db.transaction((tx) => {
     const statusValues = {
-      state: reading.state,
-      stateReasons: reading.stateReasons.join(', ') || null,
+      // Only written when the read actually established it. A jobs-only refresh
+      // that could not reach the state attributes must leave the last known one
+      // standing rather than blanking it to "unknown" — the column feeds
+      // `assessAttention`, the floor view, and the queue reconciler.
+      //
+      // The insert branch needs no equivalent: `state` is `notNull()` with an
+      // `'unknown'` default, so a device's first-ever row still validates.
+      ...(reading.state === undefined
+        ? {}
+        : {
+            state: reading.state,
+            stateReasons: reading.stateReasons?.join(', ') || null,
+          }),
       isOnline: true,
       lastSuccessAt: now,
       lastError: null,
@@ -260,16 +291,23 @@ function persistReading(device: DeviceRow, reading: DeviceReading): void {
       }
     }
 
-    if (reading.jobs !== undefined) {
-      persistJobs(tx, device.id, reading.jobs, now);
+    if (tracked !== undefined) {
+      persistJobs(tx, device.id, tracked, now);
     }
   });
 }
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-function persistJobs(tx: Tx, deviceId: number, active: PrintJob[], now: Date): void {
-  for (const job of active) {
+function persistJobs(tx: Tx, deviceId: number, tracked: TrackedJob[], now: Date): void {
+  for (const job of tracked) {
+    // A retained job is skipped rather than upserted, which does two things at
+    // once: `lastSeenAt` keeps pointing at the device's last real sighting —
+    // it is the linger clock, and refreshing it here would make the cap
+    // unreachable — and the promoted "processing" state stays out of the
+    // table. What the device said is what gets stored.
+    if (job.lingering) continue;
+
     tx.insert(jobsTable)
       .values({
         deviceId,
@@ -299,10 +337,11 @@ function persistJobs(tx: Tx, deviceId: number, active: PrintJob[], now: Date): v
       .run();
   }
 
-  // Anything previously open that the device no longer lists has finished, one
+  // Anything previously open that we are no longer tracking has finished, one
   // way or another. Devices drop jobs from the queue without ever reporting a
-  // terminal state, so absence is the only signal available.
-  const activeIds = active.map((job) => job.jobId);
+  // terminal state, so absence is the only signal available. Retained jobs
+  // count as still open: the engine has not let go of them yet.
+  const activeIds = tracked.map((job) => job.jobId);
   const stillOpen = and(eq(jobsTable.deviceId, deviceId), isNull(jobsTable.finishedAt));
 
   tx.update(jobsTable)
@@ -364,27 +403,56 @@ async function readSections(
       const adapter = getAdapter(device.adapter);
       const { config: parsed } = parseConfigFor(device);
 
+      // Read before the poll, not after: `existing.jobs` is what the queue
+      // looked like last time, which is the only way to tell a job that has
+      // just left the device's list from one that was never there.
+      const existing = getDeviceView(device.slug) ?? emptyView(device);
+
       const reading = await adapter.read(
         parsed,
-        { sections },
+        {
+          sections,
+          // Lets the adapter resolve what became of any of these that have left
+          // the queue since. Only meaningful on a read that covers jobs.
+          ...(sections.includes('jobs')
+            ? { openJobIds: existing.jobs.map((job) => job.jobId) }
+            : {}),
+        },
         { timeoutMs: config.deviceTimeoutMs, host: device.host },
       );
 
-      persistReading(device, reading);
+      const polledAt = Date.now();
 
-      const now = new Date().toISOString();
-      const existing = getDeviceView(device.slug) ?? emptyView(device);
+      const tracked =
+        reading.jobs === undefined
+          ? undefined
+          : reconcileJobs({
+              reported: reading.jobs,
+              finished: reading.finishedJobs,
+              previous: existing.jobs,
+              // This poll's state only. `existing.state` could be an hour old.
+              deviceState: reading.state,
+              now: polledAt,
+              maxLingerMs: MAX_LINGER_MS,
+            });
+
+      persistReading(device, reading, tracked);
+
+      const now = new Date(polledAt).toISOString();
 
       const view: DeviceView = {
         ...existing,
         model: reading.identity.makeAndModel ?? existing.model,
-        state: reading.state,
-        stateReasons: reading.stateReasons,
+        // Absent state leaves the cached one in place, for the same reason it
+        // leaves the stored one in place. See `persistReading`.
+        ...(reading.state === undefined
+          ? {}
+          : { state: reading.state, stateReasons: reading.stateReasons ?? [] }),
         ...(reading.supplies === undefined ? {} : { supplies: reading.supplies }),
         ...(reading.media === undefined
           ? {}
           : { media: resolveMedia(reading.media, device.id) }),
-        ...(reading.jobs === undefined ? {} : { jobs: reading.jobs }),
+        ...(tracked === undefined ? {} : { jobs: tracked }),
         isOnline: true,
         lastError: null,
         consecutiveFailures: 0,
@@ -607,6 +675,12 @@ export function hydrateDeviceView(device: DeviceRow): DeviceView {
       stateReasons: row.stateReasons,
       impressions: row.impressions,
       timeAtCreation: null,
+      // Nothing is retained across a restart — the first poll decides. What
+      // does carry over is the stored sighting time: defaulting it to now would
+      // hand every open row a fresh linger window on every container restart,
+      // and a hub that restarts nightly would grow permanent ghosts.
+      lingering: false,
+      lastSeenAt: row.lastSeenAt.getTime(),
     })),
     isOnline: status?.isOnline ?? false,
     lastSuccessAt: status?.lastSuccessAt?.toISOString() ?? null,

@@ -7,12 +7,8 @@
  * refreshed on demand. Every HTTP request reads from here, so device load stays
  * flat no matter how many dashboards are open.
  */
-import type {
-  DeviceState,
-  MediaSource,
-  PrintJob,
-  Supply,
-} from '../devices/types.js';
+import type { DeviceState, MediaSource, Supply } from '../devices/types.js';
+import type { TrackedJob } from './reconcile.js';
 
 /** A media source with its vendor media code resolved for display. */
 export interface ResolvedMediaSource extends MediaSource {
@@ -31,7 +27,12 @@ export interface DeviceView {
   stateReasons: string[];
   supplies: Supply[];
   media: ResolvedMediaSource[];
-  jobs: PrintJob[];
+  /**
+   * The reconciled queue, not the device's raw list: it can include a job the
+   * device has stopped reporting whose paper is still moving. See
+   * `./reconcile.ts`.
+   */
+  jobs: TrackedJob[];
 
   /**
    * What this device is known to report. Drives conditional rendering, so a

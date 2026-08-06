@@ -394,6 +394,18 @@ export function normalizeJobs(groups: Record<string, PlistValue>[]): PrintJob[] 
   return jobs.sort((a, b) => a.jobId - b.jobId);
 }
 
+/**
+ * The engine state from a Get-Printer-Attributes response that asked for
+ * nothing else. Same merge and same mapping as the full read, so a state-only
+ * refresh and a supplies refresh can never disagree about what `4` means.
+ */
+export function normalizePrinterState(groups: Record<string, PlistValue>[]): {
+  state: DeviceState;
+  stateReasons: string[];
+} {
+  return normalizeDeviceState(mergeGroups(groups));
+}
+
 export function normalizePrinterAttributes(
   groups: Record<string, PlistValue>[],
 ): Omit<DeviceSnapshot, 'jobs'> {

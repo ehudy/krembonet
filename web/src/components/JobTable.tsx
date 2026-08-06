@@ -76,6 +76,14 @@ export function JobTable({
                   {job.stateReasons !== null && (
                     <span className="state-reason">{job.stateReasons}</span>
                   )}
+                  {/*
+                    The badge above reads "Printing" for a retained job, which
+                    is the hub's inference and not the device's word. Saying so
+                    is the whole reason the flag is on the wire.
+                  */}
+                  {job.lingering && (
+                    <span className="state-reason">{t('queue.lingering')}</span>
+                  )}
                 </td>
               </tr>
             );

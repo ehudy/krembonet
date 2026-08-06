@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+<key>ipptoolVersion</key>
+<string>CUPS v2.3.4</string>
+<key>Transfer</key>
+<string>auto</string>
+<key>Tests</key>
+<array>
+<dict>
+<key>Name</key>
+<string>/fixtures/get-printer-state</string>
+<key>Version</key>
+<string>1.1</string>
+<key>Operation</key>
+<string>Get-Printer-Attributes</string>
+<key>RequestId</key>
+<integer>5762</integer>
+<key>RequestAttributes</key>
+<array>
+<dict>
+<key>attributes-charset</key>
+<string>utf-8</string>
+<key>attributes-natural-language</key>
+<string>en</string>
+<key>printer-uri</key>
+<string>ipp://printer.example:631/ipp/print</string>
+<key>requested-attributes</key>
+<array>
+<string>printer-state</string>
+<string>printer-state-reasons</string>
+</array>
+</dict>
+</array>
+<key>Successful</key>
+<true />
+<key>StatusCode</key>
+<string>successful-ok</string>
+<key>ResponseAttributes</key>
+<array>
+<dict>
+<key>attributes-charset</key>
+<string>utf-8</string>
+<key>attributes-natural-language</key>
+<string>en</string>
+</dict>
+<dict>
+<key>printer-state</key>
+<integer>3</integer>
+<key>printer-state-reasons</key>
+<array>
+<string>none</string>
+</array>
+</dict>
+</array>
+</dict>
+</array>
+<key>Successful</key>
+<true />
+</dict>
+</plist>

@@ -188,6 +188,7 @@
     "emptyStopped": "No jobs in the queue. The device is stopped and needs attention.",
     "emptyIdle": "No active print jobs. The device is idle.",
     "empty": "No active print jobs.",
+    "lingering": "Finishing — the device no longer lists this job, but reports it is still printing.",
     "states": {
       "pending": "Pending",
       "pending-held": "Held",

@@ -29,6 +29,19 @@ export const PRINTER_ATTRIBUTES = [
   'media-source-supported',
 ] as const;
 
+/**
+ * The engine-state attributes on their own.
+ *
+ * A queue refresh needs to know whether the print engine is still running, but
+ * not what the ink levels are. Asking for the full printer attribute set every
+ * minute to learn one enum is a lot of response for a plotter to marshal, and
+ * `printer-state` cannot ride along in a Get-Jobs response.
+ */
+export const PRINTER_STATE_ATTRIBUTES = [
+  'printer-state',
+  'printer-state-reasons',
+] as const;
+
 export const JOB_ATTRIBUTES = [
   'job-id',
   'job-name',
@@ -51,7 +64,29 @@ export function getPrinterAttributesQuery(): string {
 `;
 }
 
-export function getJobsQuery(whichJobs: 'not-completed' | 'completed' = 'not-completed'): string {
+export function getPrinterStateQuery(): string {
+  return `{
+  OPERATION Get-Printer-Attributes
+  GROUP operation-attributes-tag
+  ATTR charset attributes-charset utf-8
+  ATTR language attributes-natural-language en
+  ATTR uri printer-uri $uri
+  ATTR keyword requested-attributes ${PRINTER_STATE_ATTRIBUTES.join(',')}
+}
+`;
+}
+
+/**
+ * `limit` is RFC 8011's cap on how many jobs come back. It matters only for
+ * `which-jobs completed`, where a busy device would otherwise return its entire
+ * history. Omitted by default so the active-queue request stays byte-identical
+ * to `test/fixtures/get-jobs.test`, which is replayed by hand to recapture the
+ * fixtures.
+ */
+export function getJobsQuery(
+  whichJobs: 'not-completed' | 'completed' = 'not-completed',
+  limit?: number,
+): string {
   return `{
   OPERATION Get-Jobs
   GROUP operation-attributes-tag
@@ -59,7 +94,7 @@ export function getJobsQuery(whichJobs: 'not-completed' | 'completed' = 'not-com
   ATTR language attributes-natural-language en
   ATTR uri printer-uri $uri
   ATTR keyword which-jobs ${whichJobs}
-  ATTR keyword requested-attributes ${JOB_ATTRIBUTES.join(',')}
+${limit === undefined ? '' : `  ATTR integer limit ${limit}\n`}  ATTR keyword requested-attributes ${JOB_ATTRIBUTES.join(',')}
 }
 `;
 }

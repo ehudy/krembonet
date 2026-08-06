@@ -19,10 +19,20 @@ import {
   type DeviceAdapter,
   type DeviceCapability,
   type DeviceReading,
+  type ReadRequest,
 } from '../adapter.js';
+import type { PrintJob } from '../types.js';
 import { IppError, ipptool } from '../ipp/ipptool.js';
-import { normalizeJobs, normalizePrinterAttributes } from '../ipp/normalize.js';
-import { getJobsQuery, getPrinterAttributesQuery } from '../ipp/queries.js';
+import {
+  normalizeJobs,
+  normalizePrinterAttributes,
+  normalizePrinterState,
+} from '../ipp/normalize.js';
+import {
+  getJobsQuery,
+  getPrinterAttributesQuery,
+  getPrinterStateQuery,
+} from '../ipp/queries.js';
 
 export interface IppConfig {
   ippUri: string;
@@ -41,6 +51,28 @@ export const COMMON_IPP_PATHS = [
   '/printers/print',
   '/',
 ] as const;
+
+/**
+ * How many completed jobs to ask for when resolving a disappearance.
+ *
+ * RFC 8011 does not pin the ordering of the completed list, so a limit can in
+ * principle return the wrong window — jobs are looked up by id and a miss is
+ * simply treated as unresolved. Without any limit a busy device returns its
+ * whole history, which is the worse failure.
+ */
+const COMPLETED_JOBS_LIMIT = 25;
+
+/**
+ * URIs that answered Get-Jobs but refused `which-jobs completed`.
+ *
+ * Plenty of firmware implements one and not the other. Remembering the refusal
+ * costs nothing and stops a pointless round trip on every print for the rest of
+ * the process; a restart re-tries, which is the right cadence for something
+ * that only changes with a firmware update. Deliberately not a
+ * `DeviceCapability` — that is a persisted column needing a re-probe of every
+ * existing install to learn one optional nicety.
+ */
+const completedJobsRefused = new Set<string>();
 
 const CONFIG_SCHEMA: readonly ConfigField[] = [
   {
@@ -173,15 +205,32 @@ export const ippPrinterAdapter: DeviceAdapter<IppConfig> = {
       // Sequential rather than concurrent: the caller already serialises per
       // device, and issuing both at once is exactly what upsets fragile
       // printer network stacks.
-      const base = wantsSupplies
+      let base: DeviceReading = wantsSupplies
         ? await readSupplies(config, context)
-        : {
-            identity: UNKNOWN_IDENTITY,
-            state: 'unknown' as const,
-            stateReasons: [],
-          };
+        : { identity: UNKNOWN_IDENTITY };
 
       if (!wantsJobs) return base;
+
+      if (!wantsSupplies) {
+        // A queue read has to carry the engine state with it. The spooler drops
+        // a job from `not-completed` when the upload finishes, so whether the
+        // job is still on the paper path is a question only `printer-state`
+        // answers — and the poller cannot reuse a state read an hour ago.
+        //
+        // Its own try/catch: a device that answers Get-Jobs but refuses this
+        // should still get its queue read. Leaving `state` absent says "not
+        // established", which the reconciler treats as no evidence.
+        try {
+          const stateResponse = await ipptool({
+            uri: config.ippUri,
+            query: getPrinterStateQuery(),
+            timeoutMs: context.timeoutMs,
+          });
+          base = { ...base, ...normalizePrinterState(stateResponse.attributes) };
+        } catch {
+          // Deliberately swallowed. See above.
+        }
+      }
 
       const response = await ipptool({
         uri: config.ippUri,
@@ -189,9 +238,47 @@ export const ippPrinterAdapter: DeviceAdapter<IppConfig> = {
         timeoutMs: context.timeoutMs,
       });
 
-      return { ...base, jobs: normalizeJobs(response.attributes) };
+      const jobs = normalizeJobs(response.attributes);
+      const finishedJobs = await readFinishedJobs(config, context, request, jobs);
+
+      return { ...base, jobs, ...(finishedJobs === undefined ? {} : { finishedJobs }) };
     } catch (error) {
       throw toDeviceError(error, config.ippUri);
     }
   },
 };
+
+/**
+ * Looks up terminal states for jobs the caller is tracking that have just left
+ * the active queue.
+ *
+ * Only issued when something actually disappeared, which is roughly once per
+ * print rather than on every queue refresh. A device that refuses is recorded
+ * and never asked again, and any failure here yields `undefined` rather than
+ * propagating: a queue read must not fail because an optional lookup did.
+ */
+async function readFinishedJobs(
+  config: IppConfig,
+  context: AdapterContext,
+  request: ReadRequest,
+  active: PrintJob[],
+): Promise<PrintJob[] | undefined> {
+  const openJobIds = request.openJobIds;
+  if (openJobIds === undefined || openJobIds.length === 0) return undefined;
+  if (completedJobsRefused.has(config.ippUri)) return undefined;
+
+  const stillListed = new Set(active.map((job) => job.jobId));
+  if (openJobIds.every((jobId) => stillListed.has(jobId))) return undefined;
+
+  try {
+    const response = await ipptool({
+      uri: config.ippUri,
+      query: getJobsQuery('completed', COMPLETED_JOBS_LIMIT),
+      timeoutMs: context.timeoutMs,
+    });
+    return normalizeJobs(response.attributes);
+  } catch {
+    completedJobsRefused.add(config.ippUri);
+    return undefined;
+  }
+}

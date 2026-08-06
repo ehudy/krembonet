@@ -188,6 +188,7 @@
     "emptyStopped": "No hay trabajos en la cola. El dispositivo está detenido y requiere atención.",
     "emptyIdle": "No hay trabajos de impresión activos. El dispositivo está inactivo.",
     "empty": "No hay trabajos de impresión activos.",
+    "lingering": "Terminando — el dispositivo ya no incluye este trabajo, pero indica que sigue imprimiendo.",
     "states": {
       "pending": "Pendiente",
       "pending-held": "En espera",
