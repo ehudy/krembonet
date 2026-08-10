@@ -39,6 +39,7 @@ import {
   renderAlertEmail,
   type EmailBranding,
 } from './email-template.js';
+import { LOGO_CID, resolveLogoAttachment, type InlineImage } from './logo-attachment.js';
 import { sendMail } from './mailer.js';
 import { suppressionReason, type MuteFlags } from './mute.js';
 import {
@@ -209,6 +210,8 @@ export interface Notification {
   text: string;
   /** Branded HTML body. Absent for the plain recovery all-clear. */
   html?: string;
+  /** Inline logo, referenced from the HTML by Content-ID. */
+  attachments?: InlineImage[];
   lines: string[];
 }
 
@@ -259,6 +262,9 @@ async function dispatch(
             subject: notification.subject,
             text: notification.text,
             ...(notification.html !== undefined ? { html: notification.html } : {}),
+            ...(notification.attachments !== undefined
+              ? { attachments: notification.attachments }
+              : {}),
           },
           settings,
           recipients,
@@ -490,10 +496,15 @@ async function runNotificationRules(
   if (rules.length === 0) return;
 
   const settings = getSettings();
+  // Resolved once per pass: the header references this by Content-ID and the
+  // same bytes ride on the message, so a broken image is not representable — the
+  // img is only emitted when the attachment exists.
+  const logo = resolveLogoAttachment(settings.logoUrl);
   const branding: EmailBranding = {
     hubTitle: settings.hubTitle,
-    logoUrl: settings.logoUrl,
+    logoCid: logo !== null ? LOGO_CID : null,
   };
+  const attachments = logo !== null ? [logo] : undefined;
   const actionUrl = deviceUrl(device.slug);
 
   for (const firing of decideFirings(device, observations, rules)) {
@@ -519,7 +530,7 @@ async function runNotificationRules(
     const delivered = await dispatch(
       device,
       firing.rule,
-      { ruleKeys: firing.ruleKeys, ...message },
+      { ruleKeys: firing.ruleKeys, ...message, ...(attachments !== undefined ? { attachments } : {}) },
       log,
     );
 

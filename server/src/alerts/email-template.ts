@@ -22,8 +22,13 @@
 export interface EmailBranding {
   /** Organisation / hub name, used as the header text when there is no logo. */
   hubTitle: string;
-  /** A URL or inline `data:` image. Empty falls back to the title text. */
-  logoUrl: string;
+  /**
+   * Content-ID of the logo attached to this message, or null when there is no
+   * usable logo. Non-null means the caller has attached the bytes and the header
+   * can reference them as `cid:<logoCid>`; null renders a text header, never a
+   * broken `<img>`. The logo is never an external URL — see `logo-attachment.ts`.
+   */
+  logoCid: string | null;
 }
 
 export interface AlertDevice {
@@ -138,14 +143,18 @@ function documentShell(options: {
 }): string {
   const { branding, timestamp, bodyHtml, footerNote } = options;
 
+  // The image is referenced by Content-ID, so it is only ever rendered when the
+  // caller has actually attached the bytes. With no logo we emit a styled text
+  // header and no `<img>` at all — a broken image with alt text is precisely the
+  // failure this whole change exists to remove.
   const header =
-    branding.logoUrl !== ''
-      ? `<img src="${esc(
-          branding.logoUrl,
+    branding.logoCid !== null
+      ? `<img src="cid:${esc(
+          branding.logoCid,
         )}" alt="${esc(branding.hubTitle)}" height="32" style="max-height:32px;border:0;line-height:1;" />`
-      : `<span style="font-size:18px;font-weight:700;color:${COLOR.text};">${esc(
+      : `<h1 style="margin:0;font-size:18px;font-weight:700;line-height:1.2;color:${COLOR.text};">${esc(
           branding.hubTitle,
-        )}</span>`;
+        )}</h1>`;
 
   const footerLines = [
     esc(branding.hubTitle),

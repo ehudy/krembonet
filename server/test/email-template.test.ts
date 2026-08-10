@@ -17,7 +17,7 @@ import {
 } from '../src/alerts/email-template.js';
 
 const BASE: AlertEmailInput = {
-  branding: { hubTitle: 'Acme Print', logoUrl: '' },
+  branding: { hubTitle: 'Acme Print', logoCid: null },
   severity: 'warning',
   headline: 'Magenta Toner is low (1%)',
   details: ['Magenta Toner is low (1%)'],
@@ -72,19 +72,19 @@ describe('renderAlertEmail: the conditional action button', () => {
 });
 
 describe('renderAlertEmail: the header fallback', () => {
-  it('shows the org title as text when no logo is set', () => {
-    const html = alert({ branding: { hubTitle: 'Acme Print', logoUrl: '' } });
-    assert.ok(!html.includes('<img'), 'no image without a logo');
-    assert.ok(html.includes('Acme Print'));
+  it('shows the org title as a text header, with NO img, when there is no logo', () => {
+    // Deliberately not BASE's title: proves the header is rendered from input.
+    const html = alert({ branding: { hubTitle: 'Example Corp', logoCid: null } });
+    assert.ok(!html.includes('<img'), 'no image without a logo — that is the whole fix');
+    assert.ok(/<h1[^>]*>Example Corp<\/h1>/.test(html));
   });
 
-  it('shows the logo image when one is set', () => {
-    const html = alert({
-      branding: { hubTitle: 'Acme Print', logoUrl: 'https://cdn.example/logo.png' },
-    });
-    assert.ok(html.includes('<img src="https://cdn.example/logo.png"'));
-    // The title rides along as the alt text so a blocked image still names the hub.
-    assert.ok(html.includes('alt="Acme Print"'));
+  it('references the attached logo by Content-ID when one is present', () => {
+    const html = alert({ branding: { hubTitle: 'Acme Print', logoCid: 'krembonet-logo' } });
+    assert.ok(html.includes('<img src="cid:krembonet-logo"'));
+    // No external or data URL is ever emitted — the bytes ride on the message.
+    assert.ok(!html.includes('src="http'));
+    assert.ok(!html.includes('src="data:'));
   });
 });
 
@@ -148,21 +148,22 @@ describe('renderAlertEmail: escaping device-reported text', () => {
 describe('renderTestEmail', () => {
   it('confirms configuration and points at Alert Rules', () => {
     const html = renderTestEmail({
-      branding: { hubTitle: 'Acme Print', logoUrl: '' },
+      branding: { hubTitle: 'Acme Print', logoCid: null },
       timestamp: new Date('2026-08-10T14:30:00Z'),
     });
     assert.ok(html.includes('SMTP Configuration Successful'));
     assert.ok(html.includes('Admin → Alert Rules'));
     assert.ok(html.includes('Acme Print'));
+    assert.ok(!html.includes('<img'), 'text header when there is no logo');
   });
 
   it('has no action button — it is not about a device', () => {
     const html = renderTestEmail({
-      branding: { hubTitle: 'Acme Print', logoUrl: 'https://cdn.example/logo.png' },
+      branding: { hubTitle: 'Acme Print', logoCid: 'krembonet-logo' },
       timestamp: new Date(),
     });
     assert.ok(!/<a\s/i.test(html));
-    // But the logo fallback still applies.
-    assert.ok(html.includes('<img src="https://cdn.example/logo.png"'));
+    // But the CID logo still applies.
+    assert.ok(html.includes('<img src="cid:krembonet-logo"'));
   });
 });

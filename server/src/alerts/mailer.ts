@@ -14,11 +14,14 @@ import {
   type AppSettings,
 } from '../settings/settings.js';
 import { renderTestEmail } from './email-template.js';
+import { LOGO_CID, resolveLogoAttachment, type InlineImage } from './logo-attachment.js';
 
 export interface MailMessage {
   subject: string;
   text: string;
   html?: string;
+  /** Inline images referenced from the HTML by Content-ID. */
+  attachments?: InlineImage[];
 }
 
 export interface SendResult {
@@ -77,6 +80,9 @@ export async function sendMail(
       subject: message.subject,
       text: message.text,
       ...(message.html !== undefined ? { html: message.html } : {}),
+      ...(message.attachments !== undefined && message.attachments.length > 0
+        ? { attachments: message.attachments }
+        : {}),
     });
     return { ok: true, recipients: to };
   } catch (error) {
@@ -93,6 +99,10 @@ export async function sendMail(
 export async function sendTestEmail(): Promise<SendResult> {
   const current = getSettings();
 
+  // Resolved once: the same attachment is what the header references and what
+  // rides on the message, so the img and the bytes cannot disagree.
+  const logo = resolveLogoAttachment(current.logoUrl);
+
   return sendMail(
     {
       subject: `[${current.hubTitle}] — Test Email`,
@@ -106,9 +116,10 @@ export async function sendTestEmail(): Promise<SendResult> {
         'containers, paper jams, or offline status, go to Admin → Alert Rules.',
       ].join('\n'),
       html: renderTestEmail({
-        branding: { hubTitle: current.hubTitle, logoUrl: current.logoUrl },
+        branding: { hubTitle: current.hubTitle, logoCid: logo !== null ? LOGO_CID : null },
         timestamp: new Date(),
       }),
+      ...(logo !== null ? { attachments: [logo] } : {}),
     },
     current,
   );
