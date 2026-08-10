@@ -13,6 +13,7 @@ import {
   isSmtpTransportConfigured,
   type AppSettings,
 } from '../settings/settings.js';
+import { renderTestEmail } from './email-template.js';
 
 export interface MailMessage {
   subject: string;
@@ -94,15 +95,20 @@ export async function sendTestEmail(): Promise<SendResult> {
 
   return sendMail(
     {
-      subject: `${current.hubTitle} — test email`,
+      subject: `[${current.hubTitle}] — Test Email`,
       text: [
-        `This is a test message from ${current.hubTitle}.`,
+        'SMTP Configuration Successful',
         '',
-        'If you received it, SMTP is configured correctly and low-ink alerts',
-        'will be delivered to this address.',
+        "This is a test message confirming that Krembonet's email delivery settings",
+        'are configured correctly.',
         '',
-        `Sent ${new Date().toLocaleString()}`,
+        'Next Step: To set up automated notifications for low supply levels, waste',
+        'containers, paper jams, or offline status, go to Admin → Alert Rules.',
       ].join('\n'),
+      html: renderTestEmail({
+        branding: { hubTitle: current.hubTitle, logoUrl: current.logoUrl },
+        timestamp: new Date(),
+      }),
     },
     current,
   );

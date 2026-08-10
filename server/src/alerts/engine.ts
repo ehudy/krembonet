@@ -34,6 +34,11 @@ import { levelToPercent } from '../devices/types.js';
 import type { DeviceView } from '../poller/cache.js';
 import type { DeviceRow } from '../poller/pollDevice.js';
 import { getSettings, isSmtpTransportConfigured } from '../settings/settings.js';
+import {
+  alertSeverity,
+  renderAlertEmail,
+  type EmailBranding,
+} from './email-template.js';
 import { sendMail } from './mailer.js';
 import { suppressionReason, type MuteFlags } from './mute.js';
 import {
@@ -202,6 +207,8 @@ export interface Notification {
   ruleKeys: string[];
   subject: string;
   text: string;
+  /** Branded HTML body. Absent for the plain recovery all-clear. */
+  html?: string;
   lines: string[];
 }
 
@@ -248,7 +255,11 @@ async function dispatch(
   const [mail, deliveries] = await Promise.all([
     smtpReady
       ? sendMail(
-          { subject: notification.subject, text: notification.text },
+          {
+            subject: notification.subject,
+            text: notification.text,
+            ...(notification.html !== undefined ? { html: notification.html } : {}),
+          },
           settings,
           recipients,
         )
@@ -392,15 +403,19 @@ function decideFirings(
 function buildRuleMail(
   device: DeviceRow,
   firing: Firing,
-  hubTitle: string,
-): { subject: string; text: string; lines: string[] } {
+  branding: EmailBranding,
+  actionUrl: string | null,
+): { subject: string; text: string; html: string; lines: string[] } {
   const lines = firing.observations.map((observation) => observation.description);
   const first = lines[0] as string;
 
   const subject =
     lines.length === 1
-      ? `[${hubTitle}] ${device.displayName}: ${first}`
-      : `[${hubTitle}] ${device.displayName}: ${lines.length} conditions`;
+      ? `[${branding.hubTitle}] ${device.displayName}: ${first}`
+      : `[${branding.hubTitle}] ${device.displayName}: ${lines.length} conditions`;
+
+  const headline = lines.length === 1 ? first : `${lines.length} conditions need attention`;
+  const severity = alertSeverity(firing.observations.map((observation) => observation.type));
 
   // The closing line depends on what happens next, and getting it wrong is
   // worse than omitting it: a daily reminder that promises silence reads as a
@@ -416,19 +431,43 @@ function buildRuleMail(
           'condition holds. It stops when the condition clears.',
         ];
 
-  return {
-    subject,
-    lines,
-    text: [
-      `${device.displayName} (${device.host}) matched the alert rule "${firing.rule.name}":`,
-      '',
-      ...lines.map((line) => `  - ${line}`),
-      '',
-      ...cadence,
-      '',
-      `Checked ${new Date().toLocaleString()}`,
-    ].join('\n'),
-  };
+  // The text part carries the same device facts the HTML card does, so a
+  // plain-text client is just as self-contained on an isolated VLAN.
+  const deviceFacts = [
+    `Device: ${device.displayName}${device.model !== null ? ` — ${device.model}` : ''}`,
+    `Location: ${device.location ?? '—'}`,
+    `Address: ${device.host}`,
+  ];
+
+  const text = [
+    ...deviceFacts,
+    '',
+    `Matched the alert rule "${firing.rule.name}":`,
+    '',
+    ...lines.map((line) => `  - ${line}`),
+    '',
+    ...cadence,
+    ...(actionUrl !== null ? ['', `Open in ${branding.hubTitle}: ${actionUrl}`] : []),
+    '',
+    `Checked ${new Date().toLocaleString()}`,
+  ].join('\n');
+
+  const html = renderAlertEmail({
+    branding,
+    severity,
+    headline,
+    details: lines,
+    device: {
+      name: device.displayName,
+      model: device.model,
+      location: device.location,
+      host: device.host,
+    },
+    actionUrl,
+    timestamp: new Date(),
+  });
+
+  return { subject, text, html, lines };
 }
 
 /**
@@ -450,13 +489,18 @@ async function runNotificationRules(
   const rules = listNotificationRules().filter((rule) => rule.enabled);
   if (rules.length === 0) return;
 
-  const hubTitle = getSettings().hubTitle;
+  const settings = getSettings();
+  const branding: EmailBranding = {
+    hubTitle: settings.hubTitle,
+    logoUrl: settings.logoUrl,
+  };
+  const actionUrl = deviceUrl(device.slug);
 
   for (const firing of decideFirings(device, observations, rules)) {
     const reason = suppressionReason(device);
 
     if (reason !== null) {
-      const { subject } = buildRuleMail(device, firing, hubTitle);
+      const { subject } = buildRuleMail(device, firing, branding, actionUrl);
       for (const ruleKey of firing.ruleKeys) {
         logAlert(ruleKey, device.id, subject, [], 'muted', 'none', reason);
       }
@@ -471,7 +515,7 @@ async function runNotificationRules(
       continue;
     }
 
-    const message = buildRuleMail(device, firing, hubTitle);
+    const message = buildRuleMail(device, firing, branding, actionUrl);
     const delivered = await dispatch(
       device,
       firing.rule,
