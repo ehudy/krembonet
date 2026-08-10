@@ -11,9 +11,10 @@ import { X } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { DataReset } from './DataReset.js';
+import { FaviconPicker } from '../../components/FaviconPicker.js';
 import { LogoPicker } from '../../components/LogoPicker.js';
 import { VersionBadge } from '../../components/VersionBadge.js';
-import { useBranding } from '../../hooks/useBranding.js';
+import { applyFavicon, useBranding } from '../../hooks/useBranding.js';
 import { LANGUAGE_LABELS, useTranslation } from '../../i18n/i18n.js';
 import type { AdminSettings as Settings } from '../../types.js';
 
@@ -162,6 +163,17 @@ export function AdminSettings() {
     setDraft((current) => (current === null ? current : { ...current, [key]: value }));
   }
 
+  // Live tab-icon preview: picking or clearing a favicon (or the logo it falls
+  // back to) repaints the browser tab immediately, before Save. It writes over
+  // the same <link> the shell's useBranding set, so discarding the edit — which
+  // restores the draft to the saved values — puts the saved icon back.
+  const draftFavicon = draft?.faviconUrl;
+  const draftLogo = draft?.logoUrl;
+  useEffect(() => {
+    if (draftFavicon === undefined || draftLogo === undefined) return;
+    applyFavicon(draftFavicon, draftLogo);
+  }, [draftFavicon, draftLogo]);
+
   /**
    * Puts every field back to the last loaded or saved state.
    *
@@ -282,6 +294,11 @@ export function AdminSettings() {
           <LogoPicker
             value={draft.logoUrl}
             onChange={(next) => update('logoUrl', next)}
+          />
+
+          <FaviconPicker
+            value={draft.faviconUrl}
+            onChange={(next) => update('faviconUrl', next)}
           />
         </div>
 

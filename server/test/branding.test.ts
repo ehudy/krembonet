@@ -10,7 +10,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { MAX_CUSTOM_CSS_LENGTH, sanitizeCustomCss } from '../src/settings/branding.js';
+import {
+  MAX_CUSTOM_CSS_LENGTH,
+  MAX_IMAGE_URL_LENGTH,
+  parseFaviconUrl,
+  parseLogoUrl,
+  sanitizeCustomCss,
+} from '../src/settings/branding.js';
 
 describe('closing style tags', () => {
   it('escapes a literal </style>', () => {
@@ -111,5 +117,78 @@ describe('length', () => {
   it('leaves a stylesheet exactly at the cap alone', () => {
     const { warnings } = sanitizeCustomCss('a'.repeat(MAX_CUSTOM_CSS_LENGTH));
     assert.deepEqual(warnings, []);
+  });
+});
+
+describe('parseLogoUrl', () => {
+  const url = (raw: unknown): string | null => {
+    const result = parseLogoUrl(raw);
+    return 'url' in result ? result.url : null;
+  };
+
+  it('accepts a blank value as "no logo"', () => {
+    assert.deepEqual(parseLogoUrl(''), { url: '' });
+    assert.deepEqual(parseLogoUrl('   '), { url: '' });
+    assert.deepEqual(parseLogoUrl(null), { url: '' });
+  });
+
+  it('accepts a site-relative path but rejects protocol-relative', () => {
+    assert.equal(url('/assets/logo.svg'), '/assets/logo.svg');
+    assert.ok('error' in parseLogoUrl('//evil.example/logo.png'));
+  });
+
+  it('accepts the inline image types a browser renders as <img>', () => {
+    for (const type of ['png', 'jpeg', 'gif', 'webp', 'svg+xml']) {
+      assert.equal(url(`data:image/${type};base64,AAAA`), `data:image/${type};base64,AAAA`);
+    }
+  });
+
+  it('does not accept an .ico data URI as a logo', () => {
+    assert.ok('error' in parseLogoUrl('data:image/x-icon;base64,AAAA'));
+  });
+
+  it('accepts http(s) and rejects other schemes', () => {
+    assert.equal(url('https://cdn.example/logo.png'), 'https://cdn.example/logo.png');
+    assert.ok('error' in parseLogoUrl('javascript:alert(1)'));
+    assert.ok('error' in parseLogoUrl('ftp://host/logo.png'));
+  });
+
+  it('rejects an over-long inline image', () => {
+    assert.ok('error' in parseLogoUrl(`data:image/png;base64,${'A'.repeat(MAX_IMAGE_URL_LENGTH)}`));
+  });
+});
+
+describe('parseFaviconUrl', () => {
+  const url = (raw: unknown): string | null => {
+    const result = parseFaviconUrl(raw);
+    return 'url' in result ? result.url : null;
+  };
+
+  it('accepts .ico in both MIME spellings a browser may produce', () => {
+    assert.equal(url('data:image/x-icon;base64,AAAA'), 'data:image/x-icon;base64,AAAA');
+    assert.equal(
+      url('data:image/vnd.microsoft.icon;base64,AAAA'),
+      'data:image/vnd.microsoft.icon;base64,AAAA',
+    );
+  });
+
+  it('accepts png, svg and webp icons', () => {
+    for (const type of ['png', 'svg+xml', 'webp']) {
+      assert.equal(url(`data:image/${type};base64,AAAA`), `data:image/${type};base64,AAAA`);
+    }
+  });
+
+  it('rejects photographic inline formats that make no sense at tab size', () => {
+    assert.ok('error' in parseFaviconUrl('data:image/jpeg;base64,AAAA'));
+    assert.ok('error' in parseFaviconUrl('data:image/gif;base64,AAAA'));
+  });
+
+  it('accepts a site-relative path and an http(s) URL', () => {
+    assert.equal(url('/favicon.ico'), '/favicon.ico');
+    assert.equal(url('https://cdn.example/icon.png'), 'https://cdn.example/icon.png');
+  });
+
+  it('rejects non-http schemes', () => {
+    assert.ok('error' in parseFaviconUrl('javascript:alert(1)'));
   });
 });

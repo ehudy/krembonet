@@ -23,12 +23,14 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
    * says anything about a device.
    */
   app.get('/api/hub', async () => {
-    const { hubTitle, hubSubtitle, logoUrl, theme, language, customCss } = getSettings();
+    const { hubTitle, hubSubtitle, logoUrl, faviconUrl, theme, language, customCss } =
+      getSettings();
 
     return {
       title: hubTitle,
       subtitle: hubSubtitle,
       logoUrl,
+      faviconUrl,
       theme,
       language,
       customCss,

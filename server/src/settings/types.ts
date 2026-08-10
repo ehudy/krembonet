@@ -76,6 +76,17 @@ export interface AppSettings {
    */
   logoUrl: string;
 
+  /**
+   * Optional favicon, shown as the browser tab icon.
+   *
+   * Stored the same way as `logoUrl` — a URL or an inline `data:` URI — but a
+   * separate field because a wordmark logo and a tab-sized icon are rarely the
+   * same image. Blank is a real choice: it means "reuse the logo", and the
+   * client resolves `faviconUrl -> logoUrl -> /favicon.ico` so a hub that only
+   * sets a logo still gets a matching tab icon for free.
+   */
+  faviconUrl: string;
+
   /** See `AccessMode`. The viewer passcode itself is hashed outside this record. */
   accessMode: AccessMode;
 
@@ -130,6 +141,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hubTitle: DEFAULT_HUB_TITLE,
   hubSubtitle: DEFAULT_HUB_SUBTITLE,
   logoUrl: '',
+  faviconUrl: '',
 
   // Matches how every pre-M4 hub behaved. An upgrade must not lock people out.
   accessMode: 'public',

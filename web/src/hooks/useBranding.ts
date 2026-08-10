@@ -24,6 +24,9 @@ export const DEFAULT_HUB_TITLE = 'KremboNet';
 
 const STYLE_ELEMENT_ID = 'krembonet-custom-css';
 
+/** Last resort of the favicon fallback chain — the browser's default request. */
+const DEFAULT_FAVICON = '/favicon.ico';
+
 const DEFAULT_BRANDING: HubBranding = {
   title: DEFAULT_HUB_TITLE,
   // Until the fetch resolves the hub has no opinion about its own version, and
@@ -41,6 +44,7 @@ const DEFAULT_BRANDING: HubBranding = {
   // that has none is worse than one that arrives a moment late.
   subtitle: '',
   logoUrl: '',
+  faviconUrl: '',
   theme: 'system',
   // Seeded from the last resolved locale so the first paint is already in the
   // right language. Without it the whole shell renders in English and then
@@ -51,6 +55,32 @@ const DEFAULT_BRANDING: HubBranding = {
 
 function applyTheme(theme: ThemeName): void {
   document.documentElement.dataset['theme'] = theme;
+}
+
+/**
+ * Points the browser tab icon at the operator's favicon.
+ *
+ * Fallback chain: an explicit `faviconUrl`, then the `logoUrl` so a hub that
+ * only set a logo still gets a matching tab icon, then the static
+ * `/favicon.ico`. Writes to a single `<link rel="icon">` — reusing one the page
+ * already ships or creating it once — so a settings change repaints the tab in
+ * place rather than leaving the browser to choose between stacked icons.
+ *
+ * Exported so the settings form can preview a pick live, before it is saved.
+ */
+export function applyFavicon(faviconUrl: string, logoUrl: string): void {
+  const href = faviconUrl !== '' ? faviconUrl : logoUrl !== '' ? logoUrl : DEFAULT_FAVICON;
+
+  let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+  if (link === null) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.append(link);
+  }
+
+  // Only when it actually changed: rewriting an identical href makes some
+  // browsers re-request the image and flicker the tab.
+  if (link.getAttribute('href') !== href) link.setAttribute('href', href);
 }
 
 function applyCustomCss(css: string): void {
@@ -94,6 +124,7 @@ export function useBranding(): HubBranding {
           // Not defaulted: blank is the operator saying "no subtitle".
           subtitle: hub.subtitle ?? '',
           logoUrl: hub.logoUrl ?? '',
+          faviconUrl: hub.faviconUrl ?? '',
           theme: hub.theme,
           customCss: hub.customCss,
         });
@@ -115,6 +146,13 @@ export function useBranding(): HubBranding {
   useEffect(() => {
     document.title = branding.title;
   }, [branding.title]);
+
+  // No teardown: this hook lives for the app's lifetime, and reverting the tab
+  // icon to the default on unmount would be wrong. The settings form applies its
+  // own live preview on top of this and the two write to the same element.
+  useEffect(() => {
+    applyFavicon(branding.faviconUrl, branding.logoUrl);
+  }, [branding.faviconUrl, branding.logoUrl]);
 
   return branding;
 }

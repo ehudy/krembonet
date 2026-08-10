@@ -265,6 +265,8 @@ export interface HubBranding extends UpdateStatus {
   subtitle: string;
   /** Blank means no logo; the text title is shown instead. */
   logoUrl: string;
+  /** Blank means "reuse the logo"; the client resolves the fallback chain. */
+  faviconUrl: string;
   theme: ThemeName;
   language: LanguageName;
   customCss: string;
@@ -284,6 +286,7 @@ export interface AdminSettings {
   hubTitle: string;
   hubSubtitle: string;
   logoUrl: string;
+  faviconUrl: string;
   accessMode: AccessMode;
   /** The passcode itself is never sent to the browser. */
   viewerPasscodeSet: boolean;

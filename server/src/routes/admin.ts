@@ -85,7 +85,7 @@ import {
   MIN_PASSCODE_LENGTH,
 } from '../auth/viewer.js';
 import { reschedulePoller } from '../poller/scheduler.js';
-import { sanitizeCustomCss } from '../settings/branding.js';
+import { parseFaviconUrl, parseLogoUrl, sanitizeCustomCss } from '../settings/branding.js';
 import {
   getPublicSettings,
   getSettings,
@@ -119,6 +119,7 @@ const EDITABLE_KEYS: (keyof AppSettings)[] = [
   'hubTitle',
   'hubSubtitle',
   'logoUrl',
+  'faviconUrl',
   'accessMode',
   'theme',
   'language',
@@ -138,48 +139,6 @@ function clampNumber(value: unknown, min: number, max: number): number | undefin
   const parsed = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
   if (!Number.isFinite(parsed)) return undefined;
   return Math.min(Math.max(Math.round(parsed), min), max);
-}
-
-/** Roughly 512KB of base64, which is a generous inline logo. */
-const MAX_LOGO_URL_LENGTH = 700_000;
-
-/**
- * Validates the branding logo URL.
- *
- * The browser loads this, not the server, so there is no SSRF surface here —
- * the risk is markup. `javascript:` in an `<img src>` is inert in every current
- * engine, but it is refused anyway rather than relying on that, and so is
- * anything outside the three schemes a logo can legitimately use: `data:` for
- * an inlined image, `http(s):` for one hosted somewhere, and a site-relative
- * path for one served from this hub.
- */
-function parseLogoUrl(raw: unknown): { url: string } | { error: string } {
-  const value = String(raw ?? '').trim();
-  if (value === '') return { url: '' };
-
-  if (value.length > MAX_LOGO_URL_LENGTH) {
-    return { error: 'Logo URL is too long. Inline images must be under ~512KB.' };
-  }
-
-  // Site-relative, e.g. /assets/logo.svg. Rejects `//host/x`, which is
-  // protocol-relative and therefore remote.
-  if (value.startsWith('/') && !value.startsWith('//')) return { url: value };
-
-  if (/^data:image\/(png|jpeg|gif|webp|svg\+xml);/i.test(value)) return { url: value };
-
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return {
-      error: 'Logo must be a full URL, a /relative path, or a data:image URI.',
-    };
-  }
-
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    return { error: `Logo URL cannot use the "${parsed.protocol}" scheme.` };
-  }
-  return { url: parsed.toString() };
 }
 
 // --- notification rules ------------------------------------------------
@@ -722,6 +681,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
             const result = parseLogoUrl(value);
             if ('error' in result) errors.push(result.error);
             else patch.logoUrl = result.url;
+            break;
+          }
+          case 'faviconUrl': {
+            const result = parseFaviconUrl(value);
+            if ('error' in result) errors.push(result.error);
+            else patch.faviconUrl = result.url;
             break;
           }
           case 'accessMode': {

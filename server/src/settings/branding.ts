@@ -95,3 +95,73 @@ export function sanitizeCustomCss(raw: string): CssSanitizeResult {
 
   return { css: css.trim(), warnings };
 }
+
+// --- image asset URLs (logo, favicon) ------------------------------------
+
+/** Roughly 512KB of base64, which is a generous inline image. */
+export const MAX_IMAGE_URL_LENGTH = 700_000;
+
+/**
+ * Validates a branding image URL — a logo or a favicon.
+ *
+ * The browser loads this, not the server, so there is no SSRF surface: the risk
+ * is markup. `javascript:` in an `<img src>` or a `<link href>` is inert in
+ * every current engine, but it is refused anyway rather than relying on that,
+ * and so is anything outside the three shapes an image can legitimately take —
+ * a `data:` URI of an allowed type, an `http(s):` URL, or a site-relative path
+ * served from this hub.
+ *
+ * `dataTypes` is the set of `image/<subtype>` values accepted inline, which is
+ * the one thing that differs between a logo (photographic formats included) and
+ * a favicon (which also allows `.ico`).
+ */
+function parseImageUrl(
+  raw: unknown,
+  options: { kind: 'Logo' | 'Favicon'; dataTypes: RegExp },
+): { url: string } | { error: string } {
+  const { kind, dataTypes } = options;
+  const value = String(raw ?? '').trim();
+  if (value === '') return { url: '' };
+
+  if (value.length > MAX_IMAGE_URL_LENGTH) {
+    return { error: `${kind} URL is too long. Inline images must be under ~512KB.` };
+  }
+
+  // Site-relative, e.g. /assets/logo.svg. Rejects `//host/x`, which is
+  // protocol-relative and therefore remote.
+  if (value.startsWith('/') && !value.startsWith('//')) return { url: value };
+
+  if (dataTypes.test(value)) return { url: value };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return {
+      error: `${kind} must be a full URL, a /relative path, or a data:image URI.`,
+    };
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return { error: `${kind} URL cannot use the "${parsed.protocol}" scheme.` };
+  }
+  return { url: parsed.toString() };
+}
+
+/** Inline logo types: the raster and vector formats a browser renders as `<img>`. */
+const LOGO_DATA_TYPES = /^data:image\/(png|jpeg|gif|webp|svg\+xml);/i;
+
+/**
+ * Inline favicon types. Adds `.ico` in both MIME spellings a browser may
+ * produce (`x-icon`, `vnd.microsoft.icon`), and drops the photographic formats
+ * that make no sense at tab size.
+ */
+const FAVICON_DATA_TYPES = /^data:image\/(x-icon|vnd\.microsoft\.icon|png|svg\+xml|webp);/i;
+
+export function parseLogoUrl(raw: unknown): { url: string } | { error: string } {
+  return parseImageUrl(raw, { kind: 'Logo', dataTypes: LOGO_DATA_TYPES });
+}
+
+export function parseFaviconUrl(raw: unknown): { url: string } | { error: string } {
+  return parseImageUrl(raw, { kind: 'Favicon', dataTypes: FAVICON_DATA_TYPES });
+}
