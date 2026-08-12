@@ -2,8 +2,6 @@
   <img src="web/public/logo.svg" alt="KremboNet — hardware telemetry hub" width="420" />
 </p>
 
-# KremboNet
-
 A small self-hosted dashboard for hardware on your local network. It polls devices that
 a cloud service can't reach, and serves their telemetry over plain HTTP.
 
