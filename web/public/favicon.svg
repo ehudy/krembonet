@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="100%" height="100%">
+  <!-- Pure K Letterform: #A1A1AA Grey Pillar + #f59e0b Amber Arms -->
+  <rect x="66" y="52" width="32" height="152" fill="#A1A1AA"/>
+  <path d="M 186 52 L 118 128 L 190 204 H 148 L 98 152 V 104 L 142 52 Z" fill="#f59e0b"/>
+</svg>

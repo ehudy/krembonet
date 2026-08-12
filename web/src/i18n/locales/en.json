@@ -343,6 +343,8 @@
     "pollInterval": "Background poll (minutes)",
     "pollIntervalHint": "How often ink and paper are read and alert rules evaluated.",
     "about": "About",
+    "logoAlt": "KremboNet",
+    "sourceCode": "Source code",
     "latestRelease": "Latest release: {{version}}",
     "noCheckYet": "No update check has completed yet.",
     "checkFailed": "The last update check could not reach GitHub.",

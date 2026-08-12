@@ -24,8 +24,13 @@ export const DEFAULT_HUB_TITLE = 'KremboNet';
 
 const STYLE_ELEMENT_ID = 'krembonet-custom-css';
 
-/** Last resort of the favicon fallback chain — the browser's default request. */
-const DEFAULT_FAVICON = '/favicon.ico';
+/**
+ * Last resort of the favicon fallback chain: the KremboNet mark shipped in
+ * `web/public`. It must name a file this hub actually serves — this value is
+ * written over the `<link rel="icon">` in index.html on first paint, so a path
+ * that 404s would replace a working default with a broken one.
+ */
+const DEFAULT_FAVICON = '/favicon.svg';
 
 const DEFAULT_BRANDING: HubBranding = {
   title: DEFAULT_HUB_TITLE,
@@ -61,8 +66,8 @@ function applyTheme(theme: ThemeName): void {
  * Points the browser tab icon at the operator's favicon.
  *
  * Fallback chain: an explicit `faviconUrl`, then the `logoUrl` so a hub that
- * only set a logo still gets a matching tab icon, then the static
- * `/favicon.ico`. Writes to a single `<link rel="icon">` — reusing one the page
+ * only set a logo still gets a matching tab icon, then the shipped
+ * `/favicon.svg`. Writes to a single `<link rel="icon">` — reusing one the page
  * already ships or creating it once — so a settings change repaints the tab in
  * place rather than leaving the browser to choose between stacked icons.
  *

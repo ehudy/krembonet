@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 120" width="100%" height="100%">
+  <!-- Hardware Chassis Icon -->
+  <g transform="translate(10, 0)">
+    <!-- Top Paper Input -->
+    <path d="M 35 35 V 15 C 35 12, 37 10, 40 10 H 80 C 83 10, 85 12, 85 15 V 35" fill="none" stroke="#A1A1AA" stroke-width="8" stroke-linecap="square"/>
+    
+    <!-- Main Chassis -->
+    <rect x="15" y="35" width="90" height="50" rx="8" fill="none" stroke="#A1A1AA" stroke-width="8"/>
+    
+    <!-- Output Tray -->
+    <path d="M 30 85 V 105 C 30 108, 32 110, 35 110 H 85 C 88 110, 90 108, 90 105 V 85" fill="none" stroke="#A1A1AA" stroke-width="8" stroke-linecap="square"/>
+    
+    <!-- Amber Status Gauges -->
+    <rect x="30" y="55" width="40" height="8" rx="2" fill="#f59e0b"/>
+    <circle cx="82" cy="59" r="5" fill="#f59e0b"/>
+    <rect x="42" y="95" width="36" height="6" rx="2" fill="#f59e0b"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="140" y="78" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="60" font-weight="800" letter-spacing="-1">
+    <tspan fill="#A1A1AA">Krembo</tspan><tspan fill="#f59e0b">Net</tspan>
+  </text>
+  
+  <!-- Subtitle (Matched to #A1A1AA) -->
+  <text x="142" y="104" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="600" letter-spacing="1.5" fill="#A1A1AA">
+    HARDWARE TELEMETRY HUB
+  </text>
+</svg>

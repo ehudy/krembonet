@@ -7,7 +7,7 @@
  * credential they may not have.
  */
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { ExternalLink, X } from 'lucide-react';
 
 import { api } from '../../api.js';
 import { DataReset } from './DataReset.js';
@@ -666,7 +666,10 @@ export function AdminSettings() {
 
         <div className="about-row">
           <span>
-            <strong>KremboNet</strong>
+            {/* The product's own mark, served from web/public — deliberately not
+                `branding.logoUrl`. This card describes the software, so it keeps
+                saying KremboNet on a hub an operator has rebranded. */}
+            <img className="about-logo" src="/logo.svg" alt={t('settings.logoAlt')} />
             <small className="field-hint">
               {branding.checkedAt === null
                 ? t('settings.noCheckYet')
@@ -675,9 +678,22 @@ export function AdminSettings() {
                   : t('settings.latestRelease', { version: branding.latestVersion })}
             </small>
           </span>
-          {branding.currentVersion !== '' && (
-            <VersionBadge status={branding} variant="inline" />
-          )}
+          <span className="about-meta">
+            {branding.currentVersion !== '' && (
+              <VersionBadge status={branding} variant="inline" />
+            )}
+            <a
+              className="about-repo"
+              href="https://github.com/ehudy/krembonet"
+              target="_blank"
+              // noreferrer as well as noopener, matching the release link: the
+              // repository has no reason to learn which hub linked to it.
+              rel="noopener noreferrer"
+            >
+              <ExternalLink size={13} strokeWidth={2.25} aria-hidden="true" />
+              {t('settings.sourceCode')}
+            </a>
+          </span>
         </div>
 
         <label className="field field-check">

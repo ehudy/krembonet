@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="web/public/logo.svg" alt="KremboNet — hardware telemetry hub" width="420" />
+</p>
+
 # KremboNet
 
 A small self-hosted dashboard for hardware on your local network. It polls devices that
@@ -484,7 +488,8 @@ which is usually easiest on a LAN with no web server to host from.
 **The favicon** has its own field, because the image that works in a header
 rarely works at 16 pixels — a wide wordmark that reads fine above the nav
 becomes an unreadable smear in a tab. Set it and the tab icon is yours; leave it
-blank and the hub falls back to the logo, then to its own `/favicon.ico`, so a
+blank and the hub falls back to the logo, then to the KremboNet mark it ships as
+`/favicon.svg`, so a
 hub that only ever sets a logo still gets a matching tab without touching this
 field. It accepts the same shapes the logo does, plus `.ico` — in both MIME
 spellings browsers use for it — and the portal shows the result at roughly tab

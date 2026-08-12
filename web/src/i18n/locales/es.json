@@ -343,6 +343,8 @@
     "pollInterval": "Sondeo en segundo plano (minutos)",
     "pollIntervalHint": "Cada cuánto se leen tinta y papel y se evalúan las reglas de alerta.",
     "about": "Acerca de",
+    "logoAlt": "KremboNet",
+    "sourceCode": "Código fuente",
     "latestRelease": "Última versión: {{version}}",
     "noCheckYet": "Todavía no se ha completado ninguna comprobación de actualizaciones.",
     "checkFailed": "La última comprobación de actualizaciones no pudo conectar con GitHub.",

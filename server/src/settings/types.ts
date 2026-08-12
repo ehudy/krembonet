@@ -82,7 +82,7 @@ export interface AppSettings {
    * Stored the same way as `logoUrl` — a URL or an inline `data:` URI — but a
    * separate field because a wordmark logo and a tab-sized icon are rarely the
    * same image. Blank is a real choice: it means "reuse the logo", and the
-   * client resolves `faviconUrl -> logoUrl -> /favicon.ico` so a hub that only
+   * client resolves `faviconUrl -> logoUrl -> /favicon.svg` so a hub that only
    * sets a logo still gets a matching tab icon for free.
    */
   faviconUrl: string;
