@@ -221,6 +221,33 @@ Configure them under **Admin → Alerts → Webhooks**, where each has a Test bu
 The test posts to the _saved_ row, not to the form, so a green result means the
 destination that will actually fire at 2am works.
 
+#### What the mail looks like
+
+Alert email is branded HTML, carrying the hub's own name and logo, with a plain
+alternative for clients that will not render it.
+
+The body is **self-contained by design**. Printers and the hub often sit on an
+isolated VLAN the person reading the alert cannot reach, so the message carries
+every fact needed to act — device name, model, location, address, and each
+condition in the batch — rather than a link and a promise. Severity follows the
+same rule the portal uses: a low consumable is a warning, a stopped or offline
+device is critical, and a batch containing both is critical. The button back to
+the hub is a convenience, not the point, and is omitted entirely when
+`PUBLIC_BASE_URL` is unset — a dead link is worse than no link.
+
+The logo is **attached to the message** and referenced by Content-ID, not linked.
+This is the one part worth knowing about, because the obvious approach does not
+work: `<img src="{logoUrl}">` fails for all three shapes a self-hosted hub's logo
+actually takes — a `data:` URI, a site-relative path, and a URL on a private
+VLAN. Gmail's image proxy cannot fetch any of them, and each arrived as a broken
+image. Attaching the bytes sidesteps the fetch entirely.
+
+A remote `http(s)` logo is deliberately **not** fetched. Reaching out to an
+operator-supplied URL at send time is network I/O with an SSRF surface on it, and
+the mailer declines. It falls back to a text header carrying the hub name, which
+is also what happens when there is no logo, or when the file is unreadable or is
+not an image. The header degrades to text; it never renders a broken image.
+
 #### Alert rules
 
 Notification is **opt-in**. Nothing is emailed or posted to a webhook unless a
@@ -453,6 +480,15 @@ hides the line under the name entirely rather than falling back to a default —
 blank is a layout choice, not a missing value. A logo replaces the name and
 subtitle; it takes a URL, a path this hub serves, or an inline `data:` image,
 which is usually easiest on a LAN with no web server to host from.
+
+**The favicon** has its own field, because the image that works in a header
+rarely works at 16 pixels — a wide wordmark that reads fine above the nav
+becomes an unreadable smear in a tab. Set it and the tab icon is yours; leave it
+blank and the hub falls back to the logo, then to its own `/favicon.ico`, so a
+hub that only ever sets a logo still gets a matching tab without touching this
+field. It accepts the same shapes the logo does, plus `.ico` — in both MIME
+spellings browsers use for it — and the portal shows the result at roughly tab
+size, since that is the only size at which the choice can actually be judged.
 
 Saved CSS is sanitised, and the portal reports what it changed. A literal
 `</style>` is escaped (it would end the element and turn the rest into markup —
