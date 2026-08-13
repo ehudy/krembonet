@@ -18,6 +18,7 @@ import {
   OFFLINE_AFTER_FAILURES,
   decideReachability,
   offlineRuleKey,
+  remainsOnlineAfterFailure,
 } from '../src/alerts/reachability.js';
 
 /** Shorthand: (failures, succeeded, alreadyAlerted). */
@@ -107,6 +108,59 @@ describe('a full outage cycle', () => {
     step(0, true);
 
     assert.deepEqual(announced, ['offline', 'recovered', 'offline', 'recovered']);
+  });
+});
+
+/**
+ * The stored `is_online` column follows the same threshold as the alert.
+ *
+ * Before it did, the two disagreed for a cycle: a plotter waking from sleep was
+ * rendered "unreachable" on every open dashboard on the first failed poll, then
+ * back to normal on the next — the same flapping the alert threshold exists to
+ * prevent, just on a screen rather than in a mailbox.
+ */
+describe('holding a device online through one failed cycle', () => {
+  /** Shorthand: (wasOnline, failures). */
+  const remains = (wasOnline: boolean, consecutiveFailures: number) =>
+    remainsOnlineAfterFailure({ wasOnline, consecutiveFailures });
+
+  it('keeps a reachable device online through its first failure', () => {
+    assert.equal(remains(true, 1), true);
+  });
+
+  it('takes it offline at the same threshold the alert uses', () => {
+    assert.equal(OFFLINE_AFTER_FAILURES, 2);
+    assert.equal(remains(true, 2), false);
+  });
+
+  it('keeps it offline for as long as it keeps failing', () => {
+    for (const failures of [2, 3, 10, 500]) {
+      assert.equal(remains(true, failures), false, `${failures} failures`);
+    }
+  });
+
+  it('never brings an offline device back — only a success does that', () => {
+    // The grace cycle may preserve a status, never invent one. A device down
+    // for a week must not blink back online because of how the count is read.
+    assert.equal(remains(false, 1), false);
+    assert.equal(remains(false, 2), false);
+  });
+
+  it('does not grant the grace cycle to a device never yet reached', () => {
+    // A missing status row reads as `wasOnline: false`, so a newly added
+    // device that fails its very first poll is reported as unreachable rather
+    // than spending a cycle claiming to be online.
+    assert.equal(remains(false, 1), false);
+  });
+
+  it('agrees with the alert: the cycle that goes offline is the one that mails', () => {
+    // Two views of one event. If these ever drift, an operator gets an email
+    // about a device the dashboard still shows as up.
+    assert.equal(remains(true, 1), true);
+    assert.equal(decide(1, false, false), null);
+
+    assert.equal(remains(true, 2), false);
+    assert.equal(decide(2, false, false), 'offline');
   });
 });
 

@@ -20,6 +20,19 @@ import { fileURLToPath } from 'node:url';
 /** The Content-ID the template references as `cid:krembonet-logo`. */
 export const LOGO_CID = 'krembonet-logo';
 
+/**
+ * The mark used when no logo is configured — the same KremboNet wordmark the
+ * SPA falls back to in its sidebar, so an alert email and the dashboard it
+ * links to are wearing the same identity.
+ *
+ * A site-relative path rather than embedded bytes, so it goes down the existing
+ * `fromDiskPath` route and inherits its behaviour: a build where the SPA is not
+ * staged next to the server has no such file, `readFileSync` throws, and the
+ * caller renders the text header it already renders today. The fallback can
+ * only add an image, never break one.
+ */
+export const DEFAULT_LOGO_PATH = '/logo.svg';
+
 /** A nodemailer-shaped inline attachment. */
 export interface InlineImage {
   filename: string;
@@ -105,10 +118,15 @@ function fromDiskPath(sitePath: string): InlineImage | null {
  * site-relative path served from the static root. A remote `http(s)` URL is
  * deliberately not fetched — that is network I/O with an SSRF surface at send
  * time — so it falls through to null and the caller's text header.
+ *
+ * An unset logo resolves to the shipped KremboNet mark rather than to null, to
+ * match what the dashboard now shows for the same setting. Null is still the
+ * answer for everything that cannot produce bytes, so the callers' text-header
+ * path is unchanged and still reachable.
  */
 export function resolveLogoAttachment(logoUrl: string): InlineImage | null {
   const value = logoUrl.trim();
-  if (value === '') return null;
+  if (value === '') return fromDiskPath(DEFAULT_LOGO_PATH);
   if (value.startsWith('data:')) return fromDataUri(value);
   if (value.startsWith('/') && !value.startsWith('//')) return fromDiskPath(value);
   return null;

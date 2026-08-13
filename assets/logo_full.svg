@@ -20,4 +20,9 @@
   <text x="140" y="78" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="60" font-weight="800" letter-spacing="-1">
     <tspan fill="#A1A1AA">Krembo</tspan><tspan fill="#f59e0b">Net</tspan>
   </text>
+  
+  <!-- Subtitle (Matched to #A1A1AA) -->
+  <text x="142" y="104" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="600" letter-spacing="1.5" fill="#A1A1AA">
+    HARDWARE TELEMETRY HUB
+  </text>
 </svg>

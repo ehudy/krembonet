@@ -6,11 +6,16 @@
  * anything that is not an image becomes null — and null is what makes the
  * template draw a text header instead of a broken picture.
  *
+ * An unset logo is the one case that changed: it resolves to the shipped
+ * KremboNet mark, matching what the dashboard shows for the same blank setting.
+ * It still obeys the rule — a tree with no staged mark yields null and the text
+ * header stands.
+ *
  * Imports nothing but the resolver, so it never opens the SQLite file the poller
  * and engine pull in as an import side effect.
  */
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
@@ -56,12 +61,60 @@ describe('resolveLogoAttachment: embedded data URIs', () => {
   });
 });
 
-describe('resolveLogoAttachment: what it will not embed', () => {
-  it('returns null for no logo', () => {
-    assert.equal(resolveLogoAttachment(''), null);
-    assert.equal(resolveLogoAttachment('   '), null);
+describe('resolveLogoAttachment: no logo configured', () => {
+  /**
+   * Stages the shipped default where a real deployment has it, and puts the
+   * directory back as it was afterwards.
+   *
+   * The file is a build artifact — `web/public/logo.svg` copied into the server's
+   * static root by the SPA build — so a checked-out tree may or may not have one.
+   * Writing it here rather than depending on it is what keeps this test from
+   * passing or failing according to whether someone has run a build.
+   */
+  function withDefaultLogo(body: () => void): void {
+    const path = join(staticRoot, 'logo.svg');
+    const preexisting = existsSync(path);
+    if (!preexisting) {
+      mkdirSync(staticRoot, { recursive: true });
+      writeFileSync(path, "<svg xmlns='http://www.w3.org/2000/svg'></svg>");
+    }
+    try {
+      body();
+    } finally {
+      if (!preexisting) rmSync(path, { force: true });
+    }
+  }
+
+  it('falls back to the shipped KremboNet mark', () => {
+    withDefaultLogo(() => {
+      // The same fallback the dashboard applies to a blank logo setting, so an
+      // alert email and the hub it links to wear one identity rather than two.
+      for (const blank of ['', '   ']) {
+        const logo = resolveLogoAttachment(blank);
+        assert.equal(logo?.contentType, 'image/svg+xml', `blank input ${JSON.stringify(blank)}`);
+        assert.equal(logo?.cid, LOGO_CID);
+      }
+    });
   });
 
+  it('returns null when the default is not staged, so the text header still works', () => {
+    // A server running without the SPA built next to it. The fallback may only
+    // ever add an image; it must not turn a working text header into a broken
+    // picture. The file is moved aside rather than skipped over when present,
+    // so this asserts the same thing on a built tree and a clean one.
+    const path = join(staticRoot, 'logo.svg');
+    const parked = `${path}.parked-${process.pid}`;
+    const present = existsSync(path);
+    if (present) renameSync(path, parked);
+    try {
+      assert.equal(resolveLogoAttachment(''), null);
+    } finally {
+      if (present) renameSync(parked, path);
+    }
+  });
+});
+
+describe('resolveLogoAttachment: what it will not embed', () => {
   it('does not fetch a remote http(s) URL', () => {
     assert.equal(resolveLogoAttachment('https://cdn.example/logo.png'), null);
     assert.equal(resolveLogoAttachment('http://10.0.0.5/logo.png'), null);

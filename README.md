@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="web/public/logo.svg" alt="KremboNet — hardware telemetry hub" width="420" />
+  <img src="assets/logo_full.svg" alt="KremboNet — hardware telemetry hub" width="420" />
+</p>
+
+<p align="center">
+  <img src="assets/overview.png" alt="The KremboNet overview: a status card per printer showing state, loaded paper and supply levels" width="100%" />
 </p>
 
 A small self-hosted dashboard for hardware on your local network. It polls devices that
@@ -41,6 +45,35 @@ be turned off. Everything else stays on your network.
   a volume you control.
 - **Stays on your network.** No account, no agent, no telemetry. Secrets are encrypted at
   rest with AES-256-GCM.
+
+## Screenshots & Features
+
+### Fleet health, and one device in depth
+
+| Command Center | Device detail |
+| :-- | :-- |
+| <img src="assets/command_center.png" alt="The Command Center view: counters for monitored, unreachable and low devices, an all-clear banner, critical supplies and a recent activity feed" width="100%" /> | <img src="assets/device-detail.png" alt="Device detail for a Canon TZ-32000: supply levels, loaded media per roll, and an idle print queue" width="100%" /> |
+| The same route as the card grid above, behind the **Command Center / Floor & Queue** toggle. How many devices are monitored, how many are unreachable, need attention or are running low — over whatever is currently critical and a feed of what has gone offline and come back. | One printer in full: ink and toner levels, the maintenance tank, what is loaded on each roll and tray, and the live queue. The queue refreshes every 60s and then stops on its own, so a tab left open does not poll a printer all afternoon. |
+
+### Supplies and media
+
+| Fleet-wide supplies | Media Catalog |
+| :-- | :-- |
+| <img src="assets/supplies.png" alt="The Supplies table: every consumable across the fleet with level bars, remaining percentage and re-order state" width="100%" /> | <img src="assets/media-catalog.png" alt="Media Catalog grouped by stock, showing which printers and trays hold each paper type" width="100%" /> |
+| Every consumable on every printer in one table. Filter to what needs re-ordering, sort by what is emptiest, and take the result away as CSV or a copied re-order list. | What paper is loaded across the whole fleet, grouped by stock, size or device — including how many slots sit empty and which stock is still unidentified. |
+
+### Devices and paper naming
+
+| Devices in admin | Paper types |
+| :-- | :-- |
+| <img src="assets/admin-devices.png" alt="Admin devices tab: a table of printers with address, adapter and what each reports, above an auto-discover panel" width="100%" /> | <img src="assets/admin-paper-types.png" alt="Admin paper types: mapping the code com.canon-012f to the friendly name Premium Plain Paper 80" width="100%" /> |
+| Add, edit, enable and remove devices, and see at a glance which adapter each one uses and what it can actually report. Auto-discover sweeps a subnet for anything answering on IPP or SNMP. | Printers report media as opaque vendor codes. Map one to a friendly name, globally or per printer, and it reads that way everywhere. Codes are discovered as printers report them, unmapped ones listed first. |
+
+### Alerting
+
+| Alert rules | What a rule can say |
+| :-- | :-- |
+| <img src="assets/admin-alerts.png" alt="The Add alert rule dialog: conditions, which printers it covers, and where the notification goes" width="100%" /> | **Conditions** — device offline, supply level low, waste box full, or paper out. Any one of them firing fires the rule.<br><br>**Thresholds** — your own number per condition, or leave it blank to inherit the hub's, which is the same mark that turns the bar red.<br><br>**Scope** — every printer including ones added later, or only the ones you tick.<br><br>**Destinations** — email, Discord, Slack, ntfy or a generic JSON endpoint. Once only, or repeating hourly, twice daily or daily.<br><br>Nothing is sent unless a rule asks for it: a hub with no rules is silent. |
 
 ## Pages
 
@@ -247,8 +280,12 @@ image. Attaching the bytes sidesteps the fetch entirely.
 A remote `http(s)` logo is deliberately **not** fetched. Reaching out to an
 operator-supplied URL at send time is network I/O with an SSRF surface on it, and
 the mailer declines. It falls back to a text header carrying the hub name, which
-is also what happens when there is no logo, or when the file is unreadable or is
-not an image. The header degrades to text; it never renders a broken image.
+is also what happens when the file is unreadable or is not an image. With no logo
+configured at all the shipped KremboNet mark is attached instead — the same
+fallback the dashboard applies, so an alert and the hub it links to wear one
+identity — and the text header stands only when even that is absent, as on a
+server running without the SPA built alongside it. The header degrades to text;
+it never renders a broken image.
 
 #### Alert rules
 
@@ -479,9 +516,11 @@ Override the custom properties on `:root` rather than restyling each component:
 
 **Hub name, subtitle and logo** are set in the same place. A blank subtitle
 hides the line under the name entirely rather than falling back to a default —
-blank is a layout choice, not a missing value. A logo replaces the name and
-subtitle; it takes a URL, a path this hub serves, or an inline `data:` image,
-which is usually easiest on a LAN with no web server to host from.
+blank is a layout choice, not a missing value. A logo replaces the name; it takes
+a URL, a path this hub serves, or an inline `data:` image, which is usually
+easiest on a LAN with no web server to host from. Left blank, the sidebar wears
+the KremboNet mark the hub ships with rather than the hub name as text, and the
+portal previews that default so you can see what you are getting.
 
 **The favicon** has its own field, because the image that works in a header
 rarely works at 16 pixels — a wide wordmark that reads fine above the nav

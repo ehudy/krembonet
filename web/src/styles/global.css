@@ -358,52 +358,58 @@ body {
   padding: 0 6px 20px;
 }
 
-/* A logo image, when the operator supplies one. Capped rather than scaled to
-   a fixed size: logos are not all the same aspect ratio, and squashing one is
-   worse than letting it be a little smaller than its neighbour. */
+/* The mark, whether the operator's or the shipped KremboNet default.
+
+   The height is fixed and the width derived from it, rather than the other way
+   around. An SVG exported as `width="100%" height="100%"` with a viewBox — which
+   is what our own logo.svg is, and what most editors emit — has an intrinsic
+   *ratio* but no intrinsic *size*. Left to size itself in the column flex below,
+   it has nothing of its own to measure and takes its width from whatever else is
+   in the group: the mark tracked the length of the subtitle text, rendering at
+   37px wide next to "Floor 3" and collapsing to 0x0 when the subtitle was empty.
+   A definite height breaks that dependency, so the mark is the same size whatever
+   sits under it.
+
+   `max-width` is kept as a bound for the pathological case — a very wide
+   banner-shaped logo would otherwise run past the sidebar at this height — and
+   `object-fit: contain` means hitting it letterboxes the image rather than
+   squashing it, which is the behaviour a mixed set of operator logos wants. It
+   only works because the group below has a definite width to resolve the
+   percentage against; against a content-sized parent it was part of the problem.
+
+   `flex-shrink: 0` is the belt to that braces: in a column flex container the
+   main axis is the height, so without it the mark is a candidate for shrinking
+   the moment anything else in the group competes for room. */
 .brand-logo {
+  height: 32px;
+  width: auto;
   max-width: 100%;
-  max-height: 34px;
+  flex-shrink: 0;
   object-fit: contain;
   display: block;
 }
 
-/* Stacks a custom logo over its subtitle, left-aligned so the subtitle sits
-   under the mark's left edge — the same column the text name and its subtitle
-   use, just with an image on top. */
+/* Stacks the logo over its subtitle, left-aligned so the subtitle sits under
+   the mark's left edge.
+
+   `flex: 1` rather than the default shrink-to-fit, so the group's width comes
+   from the sidebar rather than from its own contents. That is what gives the
+   logo's `max-width: 100%` a real number to resolve against — the two rules are
+   a pair, and dropping this one silently re-breaks that one. */
 .brand-logo-group {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   min-width: 0;
+  flex: 1;
 }
 
-/* Matches the subtitle under a text name — muted, small — with a subtle gap
-   from the mark above it. */
+/* Muted and small, with a subtle gap from the mark above it. */
 .brand-subtitle {
   margin-top: 4px;
   font-size: 11px;
   line-height: 1.25;
   color: var(--text-muted);
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-  min-width: 0;
-}
-
-.brand-text strong {
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.brand-text small {
-  color: var(--text-muted);
-  font-size: 11px;
 }
 
 .nav {

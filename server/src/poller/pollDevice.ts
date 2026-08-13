@@ -13,6 +13,7 @@
  */
 import { and, eq, inArray, isNull, not } from 'drizzle-orm';
 
+import { remainsOnlineAfterFailure } from '../alerts/reachability.js';
 import { db } from '../db/client.js';
 import { levelFromColumns, levelsDiffer, levelToColumns } from '../db/levels.js';
 import { buildMediaResolver } from '../db/media-resolve.js';
@@ -354,19 +355,43 @@ function persistJobs(tx: Tx, deviceId: number, tracked: TrackedJob[], now: Date)
     .run();
 }
 
-function persistFailure(device: DeviceRow, error: DeviceError): number {
+/**
+ * Records a failed poll and reports whether the device now counts as offline.
+ *
+ * The failure count always goes up, but `isOnline` is left to
+ * `remainsOnlineAfterFailure`, which holds a reachable device online through
+ * one failed cycle. The IPP layer has already retried inside that cycle, so a
+ * device reaching here twice in a row has missed four attempts.
+ *
+ * `lastError` and `lastErrorCode` are written on every failure regardless, so
+ * the blip is never invisible — the device page surfaces it as a refresh
+ * warning while the device is still shown online.
+ */
+function persistFailure(
+  device: DeviceRow,
+  error: DeviceError,
+): { failures: number; isOnline: boolean } {
   const now = new Date();
 
   const [existing] = db
-    .select({ consecutiveFailures: deviceStatus.consecutiveFailures })
+    .select({
+      consecutiveFailures: deviceStatus.consecutiveFailures,
+      isOnline: deviceStatus.isOnline,
+    })
     .from(deviceStatus)
     .where(eq(deviceStatus.deviceId, device.id))
     .all();
 
   const failures = (existing?.consecutiveFailures ?? 0) + 1;
 
+  const isOnline = remainsOnlineAfterFailure({
+    // A missing row means the device has never been reached at all.
+    wasOnline: existing?.isOnline ?? false,
+    consecutiveFailures: failures,
+  });
+
   const values = {
-    isOnline: false,
+    isOnline,
     lastError: error.message,
     lastErrorCode: error.code,
     consecutiveFailures: failures,
@@ -380,7 +405,7 @@ function persistFailure(device: DeviceRow, error: DeviceError): number {
     .onConflictDoUpdate({ target: deviceStatus.deviceId, set: values })
     .run();
 
-  return failures;
+  return { failures, isOnline };
 }
 
 // --- polling -------------------------------------------------------------
@@ -492,12 +517,15 @@ function handleFailure(device: DeviceRow, error: unknown): DeviceError {
       ? error
       : new DeviceError(String(error), 'BAD_RESPONSE', { cause: error });
 
-  const failures = persistFailure(device, deviceError);
+  const { failures, isOnline } = persistFailure(device, deviceError);
 
   // Keep the last good reading visible but flagged, rather than blanking the
-  // dashboard the moment one poll fails.
+  // dashboard the moment one poll fails. `isOnline` mirrors what was just
+  // persisted rather than being hardcoded false: the cache is what the status
+  // routes serve, so a first-failure grace cycle that only reached the database
+  // would still show up as an unreachable device on every open page.
   patchDeviceView(device.slug, {
-    isOnline: false,
+    isOnline,
     lastError: deviceError.message,
     consecutiveFailures: failures,
   });

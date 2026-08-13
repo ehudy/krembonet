@@ -26,7 +26,7 @@ import { api } from '../api.js';
 import { ADMIN_ONLY_ROUTES } from '../auth/adminRoutes.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { usePinnedDevices } from '../hooks/usePinnedDevices.js';
-import { DEFAULT_HUB_TITLE } from '../hooks/useBranding.js';
+import { DEFAULT_HUB_TITLE, resolveLogoUrl } from '../hooks/useBranding.js';
 import { useTranslation } from '../i18n/i18n.js';
 import { Link, matchPath, useRouter } from '../router.js';
 import type { UpdateStatus } from '../types.js';
@@ -83,19 +83,24 @@ interface AppShellProps {
   title?: string;
   /** Blank hides the line under the title entirely. */
   subtitle?: string;
-  /** Blank falls back to the text title. */
+  /** Blank falls back to the shipped KremboNet mark. */
   logoUrl?: string;
   /** Omitted until the branding fetch resolves. */
   update?: UpdateStatus;
 }
 
 /**
- * The hub's own mark: a logo when one is configured, the name otherwise.
+ * The hub's own mark: the operator's logo, or the shipped KremboNet one.
  *
  * There is deliberately no initials badge. A generated two-letter square is a
  * placeholder pretending to be an identity — it made every hub look like the
  * same unbranded product, and it was the loudest coloured element on a palette
  * that is otherwise almost entirely neutral.
+ *
+ * An unset logo used to render the hub title as text. It now falls back to the
+ * KremboNet mark instead, so a fresh install wears the product's own identity
+ * rather than a line of type. `resolveLogoUrl` owns that choice; nothing here
+ * distinguishes a configured logo from the default.
  */
 function Brand({
   title,
@@ -108,26 +113,17 @@ function Brand({
 }) {
   return (
     <div className="brand">
-      {logoUrl === '' ? (
-        <span className="brand-text">
-          <strong>{title}</strong>
-          {/* Rendered only when there is something to say. An empty element
-              would still occupy its line-height and leave the title floating. */}
-          {subtitle !== '' && <small>{subtitle}</small>}
-        </span>
-      ) : (
-        <span className="brand-logo-group">
-          {/* The title becomes the alt text: if the image fails, the hub is
-              still named rather than showing a broken-image icon with no
-              context. */}
-          <img className="brand-logo" src={logoUrl} alt={title} />
-          {/* The subtitle belongs under a logo just as it does under a text
-              name — a custom mark is not a reason to drop the line of context
-              beneath it. Rendered only when there is one, so an empty element
-              does not leave the logo floating over its own line-height. */}
-          {subtitle !== '' && <small className="brand-subtitle">{subtitle}</small>}
-        </span>
-      )}
+      <span className="brand-logo-group">
+        {/* The title becomes the alt text: if the image fails, the hub is
+            still named rather than showing a broken-image icon with no
+            context. */}
+        <img className="brand-logo" src={resolveLogoUrl(logoUrl)} alt={title} />
+        {/* The subtitle belongs under a logo just as it does under a text
+            name — a custom mark is not a reason to drop the line of context
+            beneath it. Rendered only when there is one, so an empty element
+            does not leave the logo floating over its own line-height. */}
+        {subtitle !== '' && <small className="brand-subtitle">{subtitle}</small>}
+      </span>
     </div>
   );
 }

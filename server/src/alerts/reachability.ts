@@ -12,7 +12,14 @@
  * follow, and for the same reason.
  */
 
-/** Consecutive failures before a device is called offline. */
+/**
+ * Consecutive failures before a device is called offline.
+ *
+ * Shared with the poller, which applies the same threshold to the `is_online`
+ * column — see `persistFailure`. One constant rather than two so the state the
+ * dashboard renders and the state that sends an email cannot disagree about
+ * whether a device is down.
+ */
 export const OFFLINE_AFTER_FAILURES = 2;
 
 export type ReachabilityTransition = 'offline' | 'recovered' | null;
@@ -44,6 +51,30 @@ export function decideReachability(input: ReachabilityInput): ReachabilityTransi
 
   if (input.isOfflineAlertActive) return null;
   return input.consecutiveFailures >= OFFLINE_AFTER_FAILURES ? 'offline' : null;
+}
+
+/**
+ * Whether a device that has just failed a poll should still be recorded online.
+ *
+ * The same threshold as the alert, applied to the stored `is_online` column, so
+ * the dashboard and the mail agree about when a device is down. Without it the
+ * column flipped on the first failed cycle: a plotter waking from deep sleep
+ * showed as unreachable for one cycle and recovered on the next, which is the
+ * "offline/recovered" churn the alert threshold exists to prevent — just
+ * rendered on a screen instead of mailed.
+ *
+ * `wasOnline` gates the grace cycle so it can only ever preserve a reachable
+ * device's status, never invent one. A device that was already offline stays
+ * offline, and a device that has never been reached at all — no status row, so
+ * `wasOnline` is false — does not spend its first-ever failed poll pretending
+ * otherwise.
+ */
+export function remainsOnlineAfterFailure(input: {
+  wasOnline: boolean;
+  /** Failures recorded so far, including the one that just happened. */
+  consecutiveFailures: number;
+}): boolean {
+  return input.wasOnline && input.consecutiveFailures < OFFLINE_AFTER_FAILURES;
 }
 
 /** One rule key per device, so offline state cannot collide with a supply. */

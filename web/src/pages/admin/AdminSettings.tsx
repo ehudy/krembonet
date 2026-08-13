@@ -14,7 +14,7 @@ import { DataReset } from './DataReset.js';
 import { FaviconPicker } from '../../components/FaviconPicker.js';
 import { LogoPicker } from '../../components/LogoPicker.js';
 import { VersionBadge } from '../../components/VersionBadge.js';
-import { applyFavicon, useBranding } from '../../hooks/useBranding.js';
+import { applyFavicon, resolveLogoUrl, useBranding } from '../../hooks/useBranding.js';
 import { LANGUAGE_LABELS, useTranslation } from '../../i18n/i18n.js';
 import type { AdminSettings as Settings } from '../../types.js';
 
@@ -302,17 +302,24 @@ export function AdminSettings() {
           />
         </div>
 
-        {draft.logoUrl !== '' && (
-          <div className="logo-preview">
-            <span className="field-hint">{t('common.preview')}</span>
-            {/* Rendered against the sidebar colour, not the card, so what is
-                previewed is what will actually be seen. */}
-            <div className="logo-preview-frame">
-              <img src={draft.logoUrl} alt="Logo preview" />
-              {/* The same clear as the input row's button — a second reach for
-                  it, right on the thing being removed, so an operator does not
-                  have to hunt back up to the field to undo a logo they just
-                  saw was wrong. */}
+        {/* Always shown, including with the field empty: blank no longer means
+            "no mark in the sidebar", it means the shipped KremboNet one, and an
+            operator should be able to see what they are getting rather than
+            discovering it on the next page load. */}
+        <div className="logo-preview">
+          <span className="field-hint">
+            {draft.logoUrl === '' ? t('settings.logoDefault') : t('common.preview')}
+          </span>
+          {/* Rendered against the sidebar colour, not the card, so what is
+              previewed is what will actually be seen. */}
+          <div className="logo-preview-frame">
+            <img src={resolveLogoUrl(draft.logoUrl)} alt={t('settings.logoPreviewAlt')} />
+            {/* The same clear as the input row's button — a second reach for
+                it, right on the thing being removed, so an operator does not
+                have to hunt back up to the field to undo a logo they just
+                saw was wrong. Absent on the default, which is not theirs to
+                remove and which clearing would only return them to. */}
+            {draft.logoUrl !== '' && (
               <button
                 type="button"
                 className="logo-preview-remove"
@@ -322,9 +329,9 @@ export function AdminSettings() {
               >
                 <X size={13} strokeWidth={2.5} aria-hidden="true" />
               </button>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </section>
 
       <section className="card">

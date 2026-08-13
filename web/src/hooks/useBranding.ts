@@ -32,6 +32,24 @@ const STYLE_ELEMENT_ID = 'krembonet-custom-css';
  */
 const DEFAULT_FAVICON = '/favicon.svg';
 
+/**
+ * The mark a hub wears when the operator has not chosen one: the KremboNet
+ * wordmark shipped in `web/public`.
+ *
+ * Deliberately *not* folded into `DEFAULT_BRANDING.logoUrl` or into the
+ * favicon chain. Blank has to keep meaning "nothing configured" everywhere
+ * else — the settings form shows an empty field and offers no Remove button,
+ * the server stores an empty string, and `applyFavicon` still ends at
+ * `/favicon.svg` rather than hanging a wide wordmark in a 16px tab. This is a
+ * render-time fallback only, applied by whoever is drawing the brand.
+ */
+export const DEFAULT_LOGO = '/logo.svg';
+
+/** The logo to draw: the operator's if they set one, the KremboNet mark otherwise. */
+export function resolveLogoUrl(logoUrl: string): string {
+  return logoUrl === '' ? DEFAULT_LOGO : logoUrl;
+}
+
 const DEFAULT_BRANDING: HubBranding = {
   title: DEFAULT_HUB_TITLE,
   // Until the fetch resolves the hub has no opinion about its own version, and
