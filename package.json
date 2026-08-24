@@ -1,6 +1,6 @@
 {
   "name": "krembonet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Self-hosted dashboard for local network hardware. Monitors printer supplies, media, and print queues over IPP.",
   "license": "MIT",

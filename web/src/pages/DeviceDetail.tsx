@@ -30,7 +30,7 @@ export function DeviceDetail({ slug }: { slug: string }) {
     isPaused,
     isLoading,
     isRefreshing,
-    lastFetchedAt,
+    lastReadAt,
     remainingMs,
     resume,
     refreshNow,
@@ -129,8 +129,12 @@ export function DeviceDetail({ slug }: { slug: string }) {
       ) : (
         <div className="sync-bar">
           <div>
+            {/* Frozen on the last successful reading while the device is
+                unreachable, so this never claims a freshness the banner above
+                has already denied. The banner is the only place device state is
+                announced — nothing stale-specific belongs in here. */}
             <strong>{t('sync.queueUpdated')}</strong>{' '}
-            {formatTime(lastFetchedAt?.toISOString(), locale, t)}
+            {formatTime(lastReadAt?.toISOString(), locale, t)}
             <br />
             <small>
               {t('sync.cadence', {

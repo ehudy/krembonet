@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '../api.js';
+import { queueReadAt } from '../lib/queueTimestamp.js';
 import type { DeviceStatus } from '../types.js';
 
 const SESSION_LIMIT_MS = 10 * 60 * 1000;
@@ -26,7 +27,12 @@ export interface LiveSync {
   isPaused: boolean;
   isLoading: boolean;
   isRefreshing: boolean;
-  lastFetchedAt: Date | null;
+  /**
+   * When the device was last read — not when the hub was last called. The hub
+   * serves cached data with a 200 for a printer that never replied, so those
+   * two are the same instant only while the device is reachable.
+   */
+  lastReadAt: Date | null;
   /** Milliseconds left in the session budget, floored at zero. */
   remainingMs: number;
   resume: () => void;
@@ -39,7 +45,7 @@ export function useLiveSync(slug: string): LiveSync {
   const [isPaused, setIsPaused] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
+  const [lastReadAt, setLastReadAt] = useState<Date | null>(null);
   const [remainingMs, setRemainingMs] = useState(SESSION_LIMIT_MS);
 
   /**
@@ -69,10 +75,23 @@ export function useLiveSync(slug: string): LiveSync {
         });
         setData(next);
         setError(null);
-        setLastFetchedAt(new Date());
+        // A resolved request is not a completed reading: the hub answers from
+        // cache with `isOnline: false` when the device did not respond. Reading
+        // the stamp off the payload keeps the queue's "updated" time and the
+        // stale banner's "last successful reading" the same number by
+        // construction, instead of two clocks that agree only while healthy.
+        setLastReadAt(
+          queueReadAt({
+            isOnline: next.isOnline,
+            lastSuccessAt: next.lastSuccessAt,
+            receivedAt: new Date(),
+          }),
+        );
       } catch (cause) {
         if (cause instanceof DOMException && cause.name === 'AbortError') return;
         setError(cause instanceof Error ? cause.message : String(cause));
+        // The stamp is deliberately left untouched. A failed request read
+        // nothing, so the last reading is still whenever it was.
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -142,7 +161,7 @@ export function useLiveSync(slug: string): LiveSync {
     isPaused,
     isLoading,
     isRefreshing,
-    lastFetchedAt,
+    lastReadAt,
     remainingMs,
     resume,
     refreshNow,
