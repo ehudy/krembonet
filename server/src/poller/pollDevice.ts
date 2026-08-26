@@ -7,6 +7,10 @@
  *  - The print queue is only useful live, so it is refreshed on demand behind
  *    a short TTL — and only for devices whose adapter can report one.
  *
+ * Both TTLs are advisory: `forceRefresh` skips them for the manual refresh
+ * button, under a cooldown of its own. The rules for all three live in
+ * `./refresh-policy.ts`.
+ *
  * Every read goes through the adapter registry and the concurrency guards, so
  * simultaneous viewers collapse into one query and a single device is never
  * being talked to twice at once.
@@ -45,20 +49,24 @@ import type {
 } from '../devices/types.js';
 import { config } from '../config.js';
 import {
-  ageMs,
   getDeviceView,
   patchDeviceView,
   setDeviceView,
   type DeviceView,
   type ResolvedMediaSource,
 } from './cache.js';
+import { shouldReplaceMedia } from './media-continuity.js';
+import {
+  forceCooldownRemainingMs,
+  markForced,
+  planRefresh,
+  FORCE_REFRESH_COOLDOWN_MS,
+  SUPPLY_SECTIONS,
+  type RefreshPlan,
+} from './refresh-policy.js';
 import { reconcileJobs, type TrackedJob } from './reconcile.js';
 
 export type DeviceRow = typeof devices.$inferSelect;
-
-/** How stale an on-demand read may be before it triggers a device query. */
-export const SUPPLIES_TTL_MS = 60_000;
-export const JOBS_TTL_MS = 15_000;
 
 /**
  * How long a job may be held after the device stops reporting it.
@@ -69,9 +77,6 @@ export const JOBS_TTL_MS = 15_000;
  * dropping a batch mid-run is the complaint this whole mechanism answers.
  */
 export const MAX_LINGER_MS = 30 * 60_000;
-
-/** Sections refreshed together on the background cadence. */
-const SUPPLY_SECTIONS: DeviceCapability[] = ['supplies', 'media'];
 
 export function listEnabledDevices(): DeviceRow[] {
   return db.select().from(devices).where(eq(devices.enabled, true)).all();
@@ -290,6 +295,28 @@ function persistReading(
           })
           .run();
       }
+
+      // Media is only ever read whole — there is no partial media read — so any
+      // stored slot missing from this reading is a slot the device no longer
+      // has. Without this the row survives forever: the cache drops it on the
+      // next poll, but `hydrateDeviceView` reads the table, so a restart
+      // resurrects a tray that was removed months ago.
+      //
+      // Safe against the sleeping-printer case because a reading that carried
+      // no media evidence never reaches here — `readSections` strips `media`
+      // from it first. See ./media-continuity.ts.
+      const liveKeys = reading.media.map((source) => source.key);
+
+      tx.delete(mediaSources)
+        .where(
+          liveKeys.length === 0
+            ? eq(mediaSources.deviceId, device.id)
+            : and(
+                eq(mediaSources.deviceId, device.id),
+                not(inArray(mediaSources.key, liveKeys)),
+              ),
+        )
+        .run();
     }
 
     if (tracked !== undefined) {
@@ -433,7 +460,7 @@ async function readSections(
       // just left the device's list from one that was never there.
       const existing = getDeviceView(device.slug) ?? emptyView(device);
 
-      const reading = await adapter.read(
+      const raw = await adapter.read(
         parsed,
         {
           sections,
@@ -447,6 +474,21 @@ async function readSections(
       );
 
       const polledAt = Date.now();
+
+      // A successful read that carried no loaded-media evidence must not blank
+      // paper the device is still holding. Dropping `media` from the reading
+      // here — rather than patching it back afterwards — is what keeps the
+      // cache and the table saying the same thing: `persistReading` skips the
+      // section for exactly the same reason the view below does.
+      const reading =
+        raw.media === undefined ||
+        shouldReplaceMedia({
+          existing: existing.media,
+          incoming: raw.media,
+          reported: raw.mediaReported ?? true,
+        })
+          ? raw
+          : { ...raw, media: undefined };
 
       const tracked =
         reading.jobs === undefined
@@ -534,6 +576,42 @@ function handleFailure(device: DeviceRow, error: unknown): DeviceError {
 }
 
 /**
+ * Runs a plan, then returns whatever the cache holds afterwards.
+ *
+ * Sequential rather than Promise.allSettled: the per-device queue would
+ * serialise these anyway, and awaiting in order keeps the failure handling
+ * straightforward. A `DeviceError` is returned rather than thrown, because a
+ * failed poll still has a last good reading worth serving; anything else is a
+ * bug and propagates.
+ */
+async function runPlan(
+  device: DeviceRow,
+  plan: RefreshPlan,
+): Promise<{ view: DeviceView | undefined; error: DeviceError | undefined }> {
+  let error: DeviceError | undefined;
+
+  if (plan.supplies) {
+    try {
+      await pollSupplies(device);
+    } catch (cause) {
+      if (cause instanceof DeviceError) error = cause;
+      else throw cause;
+    }
+  }
+
+  if (plan.jobs) {
+    try {
+      await pollJobs(device);
+    } catch (cause) {
+      if (cause instanceof DeviceError) error = cause;
+      else throw cause;
+    }
+  }
+
+  return { view: getDeviceView(device.slug), error };
+}
+
+/**
  * Refreshes whichever readings have aged past their TTL, then returns the view.
  *
  * This is what makes a page load show live data without letting twenty
@@ -544,45 +622,87 @@ export async function ensureFresh(
   device: DeviceRow,
   options: { supplies?: boolean; jobs?: boolean } = { supplies: true, jobs: true },
 ): Promise<{ view: DeviceView | undefined; error: DeviceError | undefined }> {
-  const view = getDeviceView(device.slug);
-  const supported = capabilitiesOf(device);
+  return runPlan(
+    device,
+    planRefresh({
+      view: getDeviceView(device.slug),
+      supported: capabilitiesOf(device),
+      wantSupplies: options.supplies === true,
+      wantJobs: options.jobs === true,
+      force: false,
+    }),
+  );
+}
 
-  const wantSupplies =
-    options.supplies === true &&
-    SUPPLY_SECTIONS.some((section) => supported.includes(section)) &&
-    ageMs(view?.suppliesUpdatedAt) > SUPPLIES_TTL_MS;
+export interface ForcedRefresh {
+  view: DeviceView | undefined;
+  error: DeviceError | undefined;
+  /** False when the cooldown refused, and the cache was served untouched. */
+  refreshed: boolean;
+  /** Milliseconds before this device may be force-refreshed again. */
+  cooldownMs: number;
+}
 
-  // Never ask a device for a queue it does not have. This is what keeps an
-  // SNMP-only printer from being polled for jobs that protocol cannot report.
-  const wantJobs =
-    options.jobs === true &&
-    supported.includes('jobs') &&
-    ageMs(view?.jobsUpdatedAt) > JOBS_TTL_MS;
-
-  let error: DeviceError | undefined;
-
-  // Sequential rather than Promise.allSettled: the per-device queue would
-  // serialise these anyway, and awaiting in order keeps the failure handling
-  // straightforward.
-  if (wantSupplies) {
-    try {
-      await pollSupplies(device);
-    } catch (cause) {
-      if (cause instanceof DeviceError) error = cause;
-      else throw cause;
-    }
+/**
+ * Queries the device now, whatever the TTL says.
+ *
+ * This is the manual refresh button, and the TTL is exactly what it exists to
+ * override: someone who has just changed a roll and walked back to their desk
+ * is asking about the printer, not about the cache.
+ *
+ * What it does *not* override is the traffic bound. The reads still go through
+ * `pollSupplies`/`pollJobs` into `guarded()`, so concurrent forces collapse
+ * into one query and never overlap another section on the same device, and the
+ * cooldown stops one person's enthusiasm reaching the printer as a burst. A
+ * refusal is not an error: the caller gets the cached view and is told the
+ * reading is not fresh, which is a more useful answer than a failure.
+ */
+export async function forceRefresh(device: DeviceRow): Promise<ForcedRefresh> {
+  const cooldownMs = forceCooldownRemainingMs(device.slug);
+  if (cooldownMs > 0) {
+    return {
+      view: getDeviceView(device.slug),
+      error: undefined,
+      refreshed: false,
+      cooldownMs,
+    };
   }
 
-  if (wantJobs) {
-    try {
-      await pollJobs(device);
-    } catch (cause) {
-      if (cause instanceof DeviceError) error = cause;
-      else throw cause;
-    }
-  }
+  // Claimed before the await, so two requests arriving together cannot both
+  // pass the check while the first is still on the wire.
+  markForced(device.slug);
 
-  return { view: getDeviceView(device.slug), error };
+  try {
+    const { view, error } = await runPlan(
+      device,
+      planRefresh({
+        view: getDeviceView(device.slug),
+        supported: capabilitiesOf(device),
+        wantSupplies: true,
+        wantJobs: true,
+        force: true,
+      }),
+    );
+
+    return { view, error, refreshed: true, cooldownMs: FORCE_REFRESH_COOLDOWN_MS };
+  } finally {
+    /*
+     * Re-stamped on the way out, so the cooldown measures quiet time on the
+     * wire rather than time since the request arrived.
+     *
+     * Without this the window is eaten by the read itself, and the slower the
+     * device the less protection it gets — a printer that takes nine seconds
+     * to time out would be refreshable again one second later, which is very
+     * nearly the continuous polling the cooldown exists to prevent. The
+     * devices that answer slowly are exactly the ones with the fragile network
+     * stacks.
+     *
+     * In a `finally` so a read that threw still closes the window: a device
+     * failing in a way that escapes `runPlan` must not become the one that can
+     * be hammered.
+     */
+    markForced(device.slug);
+  }
 }
 
 // --- hydration -----------------------------------------------------------

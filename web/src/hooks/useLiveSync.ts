@@ -9,6 +9,13 @@
  *  - After 10 minutes the loop stops until someone asks for it back, so a
  *    dashboard left open on a spare monitor does not poll forever.
  *
+ * All three of those are cached reads: the hub answers from its own TTL and
+ * only reaches the printer when what it holds has gone stale. `refreshNow` is
+ * the exception and the only one — it posts to the forced-refresh endpoint,
+ * which queries the device whatever the TTL says. Keeping the automatic
+ * cadence off that path is the whole point: a button someone presses is a
+ * different thing from a timer nobody asked for.
+ *
  * Refetches JSON rather than reloading the page, so scroll position and focus
  * survive a refresh.
  */
@@ -35,6 +42,12 @@ export interface LiveSync {
   lastReadAt: Date | null;
   /** Milliseconds left in the session budget, floored at zero. */
   remainingMs: number;
+  /**
+   * Milliseconds before another forced refresh will be honoured, or 0 when one
+   * may go now. Mirrors the server's own cooldown so the button can disable
+   * itself instead of firing requests that come back refused.
+   */
+  cooldownMs: number;
   resume: () => void;
   refreshNow: () => void;
 }
@@ -47,6 +60,7 @@ export function useLiveSync(slug: string): LiveSync {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastReadAt, setLastReadAt] = useState<Date | null>(null);
   const [remainingMs, setRemainingMs] = useState(SESSION_LIMIT_MS);
+  const [cooldownMs, setCooldownMs] = useState(0);
 
   /**
    * The budget is per visit to this page, not per browser session. An earlier
@@ -60,21 +74,58 @@ export function useLiveSync(slug: string): LiveSync {
   // Lets an in-flight request be abandoned on unmount or manual refresh
   // without its late response overwriting newer state.
   const abortRef = useRef<AbortController | null>(null);
+  const cooldownTimer = useRef<number | undefined>(undefined);
+
+  /**
+   * Holds the button for as long as the server said it would refuse.
+   *
+   * A single timeout rather than a per-second countdown: the label says the
+   * refresh has just happened, not how many seconds are left, so there is
+   * nothing to re-render in between.
+   */
+  const startCooldown = useCallback((seconds: number): void => {
+    if (seconds <= 0) return;
+
+    window.clearTimeout(cooldownTimer.current);
+    setCooldownMs(seconds * 1000);
+    cooldownTimer.current = window.setTimeout(() => {
+      setCooldownMs(0);
+    }, seconds * 1000);
+  }, []);
 
   const fetchStatus = useCallback(
-    async (mode: 'full' | 'jobs'): Promise<void> => {
+    async (mode: 'full' | 'jobs' | 'force'): Promise<void> => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
       setIsRefreshing(true);
 
       try {
-        const next = await api.deviceStatus(slug, {
-          ...(mode === 'jobs' ? { refresh: 'jobs' as const } : {}),
-          signal: controller.signal,
-        });
+        // 'force' is the only branch that guarantees the printer is contacted;
+        // the other two are cached reads the hub may satisfy without a packet.
+        const forced =
+          mode === 'force' ? await api.refreshDevice(slug, controller.signal) : null;
+
+        const next =
+          forced ??
+          (await api.deviceStatus(slug, {
+            ...(mode === 'jobs' ? { refresh: 'jobs' as const } : {}),
+            signal: controller.signal,
+          }));
+
         setData(next);
-        setError(null);
+
+        if (forced === null) {
+          setError(null);
+        } else {
+          startCooldown(forced.cooldownSeconds);
+          // A forced refresh that reached an unreachable device answers 200
+          // with the last good reading and the reason attached. Surfacing it
+          // as the page's error is the honest reading of "I asked, and this is
+          // what happened" — it is why the numbers below did not move.
+          setError(forced.refreshError);
+        }
+
         // A resolved request is not a completed reading: the hub answers from
         // cache with `isOnline: false` when the device did not respond. Reading
         // the stamp off the payload keeps the queue's "updated" time and the
@@ -110,7 +161,7 @@ export function useLiveSync(slug: string): LiveSync {
   }, []);
 
   const refreshNow = useCallback(() => {
-    void fetchStatus('full');
+    void fetchStatus('force');
   }, [fetchStatus]);
 
   useEffect(() => {
@@ -153,7 +204,13 @@ export function useLiveSync(slug: string): LiveSync {
     };
   }, [fetchStatus, isPaused]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      window.clearTimeout(cooldownTimer.current);
+    },
+    [],
+  );
 
   return {
     data,
@@ -163,6 +220,7 @@ export function useLiveSync(slug: string): LiveSync {
     isRefreshing,
     lastReadAt,
     remainingMs,
+    cooldownMs,
     resume,
     refreshNow,
   };

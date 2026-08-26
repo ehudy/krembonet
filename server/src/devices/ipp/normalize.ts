@@ -299,6 +299,20 @@ function toMillimetres(dimension: number | undefined): number | null {
   return dimension / 100;
 }
 
+/**
+ * Whether the response said anything about what is *loaded*, as opposed to
+ * which slots exist.
+ *
+ * `media-col-ready` is the only attribute that carries loaded paper, and a
+ * printer waking from deep sleep routinely answers without it. Presence is
+ * checked rather than length: an attribute that is there and empty is the
+ * device saying "nothing is loaded", which is a real answer and must be
+ * believed. An attribute that is missing is the device saying nothing at all.
+ */
+export function reportsLoadedMedia(attrs: Record<string, PlistValue>): boolean {
+  return attrs['media-col-ready'] !== undefined;
+}
+
 export function normalizeMedia(attrs: Record<string, PlistValue>): MediaSource[] {
   const loaded = new Map<string, { code: string | null; widthMm: number | null }>();
 
@@ -418,5 +432,6 @@ export function normalizePrinterAttributes(
     stateReasons,
     supplies: normalizeSupplies(attrs),
     media: normalizeMedia(attrs),
+    mediaReported: reportsLoadedMedia(attrs),
   };
 }

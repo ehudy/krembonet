@@ -126,6 +126,9 @@ async function readSupplies(
     stateReasons: snapshot.stateReasons,
     supplies: snapshot.supplies,
     media: snapshot.media,
+    // Carried through so the poller can tell "no paper loaded" from "the
+    // printer was too asleep to say". See poller/media-continuity.ts.
+    mediaReported: snapshot.mediaReported,
   };
 }
 

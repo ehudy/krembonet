@@ -5,6 +5,9 @@
  * refreshed every 60s while this tab is open. The header shows both ages so it
  * is never ambiguous which number is live and which is up to an hour old.
  *
+ * "Refresh all" is the one control that reaches the printer itself — everything
+ * else on this page is served from the hub's cache.
+ *
  * Panels render only for capabilities the device actually has, so a device that
  * cannot report a queue shows no queue rather than an empty one.
  */
@@ -32,6 +35,7 @@ export function DeviceDetail({ slug }: { slug: string }) {
     isRefreshing,
     lastReadAt,
     remainingMs,
+    cooldownMs,
     resume,
     refreshNow,
   } = useLiveSync(slug);
@@ -153,13 +157,23 @@ export function DeviceDetail({ slug }: { slug: string }) {
               {t('device.openWebConsole')}
               <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
             </a>
+            {/* Refreshing queries the printer directly rather than reading the
+                hub's cache, so the button holds for the server's cooldown
+                afterwards — pressing it again inside that window would be
+                refused anyway, and a button that visibly waits is a truer
+                account of what the hub will do than one that looks live. */}
             <button
               type="button"
               className="btn-primary"
               onClick={refreshNow}
-              disabled={isRefreshing}
+              disabled={isRefreshing || cooldownMs > 0}
+              title={cooldownMs > 0 ? t('sync.cooldownHint') : undefined}
             >
-              {isRefreshing ? t('sync.refreshing') : t('sync.refreshAll')}
+              {isRefreshing
+                ? t('sync.refreshing')
+                : cooldownMs > 0
+                  ? t('sync.justRefreshed')
+                  : t('sync.refreshAll')}
             </button>
           </div>
         </div>

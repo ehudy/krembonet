@@ -19,6 +19,7 @@ import type {
   MediaCatalogResponse,
   MediaType,
   DeviceListResponse,
+  DeviceRefreshResponse,
   DeviceStatus,
   DiscoveryResponse,
   ProbeResponse,
@@ -92,6 +93,20 @@ export const api = {
         options?.refresh === 'jobs' ? '?refresh=jobs' : ''
       }`,
       { signal: options?.signal },
+    ),
+
+  /**
+   * Queries the device now, ignoring the server's TTLs. This is the refresh
+   * button, and the only call in this file that puts traffic on the wire on
+   * purpose — everything else is happy with a cached reading.
+   *
+   * The server refuses more than one of these per device every ten seconds and
+   * says so in `refreshed`, rather than failing the request.
+   */
+  refreshDevice: (slug: string, signal?: AbortSignal) =>
+    request<DeviceRefreshResponse>(
+      `/api/devices/${encodeURIComponent(slug)}/refresh`,
+      { method: 'POST', signal },
     ),
 
   /** Every supply on every device, for the re-order matrix and the Overview widget. */

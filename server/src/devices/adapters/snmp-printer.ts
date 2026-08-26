@@ -209,13 +209,18 @@ export function readingFromWalk(
   sections: readonly DeviceCapability[],
 ): DeviceReading {
   const { state, stateReasons } = normalizeState(walk);
+  const media = sections.includes('media') ? normalizeMedia(walk) : undefined;
 
   return {
     identity: normalizeIdentity(walk),
     state,
     stateReasons,
     ...(sections.includes('supplies') ? { supplies: normalizeSupplies(walk) } : {}),
-    ...(sections.includes('media') ? { media: normalizeMedia(walk) } : {}),
+    // An empty `prtInput` table is the SNMP equivalent of a printer answering
+    // without `media-col-ready`: the walk succeeded and told us nothing about
+    // the trays. Reported as "no evidence" so a sleeping device cannot blank
+    // paper it is still holding — see poller/media-continuity.ts.
+    ...(media === undefined ? {} : { media, mediaReported: media.length > 0 }),
   };
 }
 

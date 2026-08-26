@@ -131,6 +131,17 @@ export interface DeviceReading {
   stateReasons?: string[];
   supplies?: Supply[];
   media?: MediaSource[];
+  /**
+   * Whether `media` carries evidence of what is actually loaded, rather than
+   * just an enumeration of the slots.
+   *
+   * A printer waking from sleep answers Get-Printer-Attributes without
+   * `media-col-ready`, which normalises to every slot empty — indistinguishable
+   * from a genuinely empty printer unless the adapter says which it was.
+   * Absent means "assume it did", which is the right default for an adapter
+   * that has no way to tell.
+   */
+  mediaReported?: boolean;
   jobs?: PrintJob[];
   /**
    * Terminal states for jobs that have left the active queue, when the adapter

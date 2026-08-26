@@ -1,9 +1,15 @@
 /**
- * Read-only device endpoints.
+ * Device status endpoints.
  *
  * Handlers never query a device directly. They ask the poller to refresh
  * anything past its TTL, which is coalesced, then serve the cache. Ten
  * dashboards open at once still amount to one query per TTL window.
+ *
+ * The one exception is `POST /api/devices/:slug/refresh`, which is a person
+ * asking rather than a page loading, and skips the TTL on purpose. It is still
+ * a read of the device — nothing here changes anything on a printer — but it
+ * is a POST because it does put traffic on the wire, and that should not be
+ * something a link preview or a browser prefetch can trigger.
  */
 import type { FastifyInstance } from 'fastify';
 
@@ -26,11 +32,11 @@ import {
 import {
   ensureFresh,
   findDeviceBySlug,
+  forceRefresh,
   type DeviceRow,
-  JOBS_TTL_MS,
   listEnabledDevices,
-  SUPPLIES_TTL_MS,
 } from '../poller/pollDevice.js';
+import { JOBS_TTL_MS, SUPPLIES_TTL_MS } from '../poller/refresh-policy.js';
 import { getSettings } from '../settings/settings.js';
 
 /**
@@ -72,6 +78,20 @@ function decorate(view: DeviceView, deviceId: number) {
         attentionReasons: attention.conditions.map((condition) => condition.label),
       };
     })(),
+  };
+}
+
+/**
+ * The device-detail payload.
+ *
+ * Shared by the status route and the forced refresh so the two can never drift:
+ * the browser stores whichever it last received, and a refresh that returned a
+ * differently-shaped object would leave the page half-updated.
+ */
+function statusPayload(view: DeviceView, device: DeviceRow) {
+  return {
+    ...decorate(view, device.id),
+    ttl: { suppliesSeconds: SUPPLIES_TTL_MS / 1000, jobsSeconds: JOBS_TTL_MS / 1000 },
   };
 }
 
@@ -235,11 +255,60 @@ export async function statusRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    return {
-      ...decorate(view, device.id),
-      ttl: { suppliesSeconds: SUPPLIES_TTL_MS / 1000, jobsSeconds: JOBS_TTL_MS / 1000 },
-    };
+    return statusPayload(view, device);
   });
+
+  /**
+   * A live read of one device, ignoring both TTLs. The manual refresh button.
+   *
+   * Answers with the same payload as the status route plus three fields about
+   * the refresh itself:
+   *
+   *  - `refreshed` — whether the device was actually queried. False means the
+   *    cooldown refused, and what follows is the cache.
+   *  - `cooldownSeconds` — how long before another force is allowed. Lets the
+   *    button disable itself rather than firing requests that will be refused.
+   *  - `refreshError` — the device failed to answer, but a previous reading is
+   *    being served. Named so it cannot be mistaken for the `error` field the
+   *    client's fetch wrapper reads off a failed response: this is a successful
+   *    response carrying stale data, which is different from a failed request.
+   *
+   * A refused refresh is a 200, not a 429. The caller asked for this device's
+   * status and is getting it; that the reading is a few seconds old is a fact
+   * about the payload, not a failure of the request, and turning it into an
+   * exception would put an error banner on the page for pressing a button
+   * twice.
+   */
+  app.post<{ Params: { slug: string } }>(
+    '/api/devices/:slug/refresh',
+    async (request, reply) => {
+      const device = findDeviceBySlug(request.params.slug);
+      if (device === undefined) {
+        return reply.code(404).send({ error: `Unknown device: ${request.params.slug}` });
+      }
+
+      const { view, error, refreshed, cooldownMs } = await forceRefresh(device);
+
+      if (view === undefined) {
+        return reply.code(503).send({
+          error: 'No data for this device yet',
+          detail: error?.message ?? null,
+        });
+      }
+
+      request.log.info(
+        { device: device.slug, refreshed, cooldownMs, failed: error !== undefined },
+        'manual refresh',
+      );
+
+      return {
+        ...statusPayload(view, device),
+        refreshed,
+        cooldownSeconds: Math.ceil(cooldownMs / 1000),
+        refreshError: error?.message ?? null,
+      };
+    },
+  );
 
   /** Recent queue history, including jobs the device has already dropped. */
   app.get<{ Params: { slug: string } }>(

@@ -155,6 +155,8 @@
     "cadence": "Queue refreshes every 60s · pausing in {{remaining}} · supplies read {{age}}",
     "refreshAll": "Refresh all",
     "refreshing": "Refreshing…",
+    "justRefreshed": "Just refreshed",
+    "cooldownHint": "This queries the printer directly. Available again in a few seconds.",
     "pausedTitle": "Live sync paused",
     "pausedBody": "Auto-refresh stopped after 10 minutes so idle dashboards don’t keep querying the device. The readings below are no longer updating.",
     "resume": "Resume live sync"

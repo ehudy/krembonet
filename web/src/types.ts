@@ -135,6 +135,26 @@ export interface DeviceStatus {
 }
 
 /**
+ * What `POST /api/devices/:slug/refresh` answers: a full status payload, plus
+ * what became of the refresh itself.
+ *
+ * A superset of `DeviceStatus`, so the page can store it exactly as it stores a
+ * status response.
+ */
+export interface DeviceRefreshResponse extends DeviceStatus {
+  /** False when the server's cooldown refused, and this is the cache. */
+  refreshed: boolean;
+  /** Seconds before another forced refresh is allowed. */
+  cooldownSeconds: number;
+  /**
+   * Set when the device was asked and did not answer. The payload is then the
+   * last good reading — the request itself succeeded, so this is not an error
+   * in the fetch sense.
+   */
+  refreshError: string | null;
+}
+
+/**
  * How badly a device needs someone to walk over to it.
  *
  * Decided server-side from the device's own state reasons — see

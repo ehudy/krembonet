@@ -155,6 +155,8 @@
     "cadence": "La cola se actualiza cada 60 s · se pausa en {{remaining}} · consumibles leídos {{age}}",
     "refreshAll": "Actualizar todo",
     "refreshing": "Actualizando…",
+    "justRefreshed": "Recién actualizado",
+    "cooldownHint": "Esto consulta la impresora directamente. Disponible de nuevo en unos segundos.",
     "pausedTitle": "Sincronización en directo pausada",
     "pausedBody": "La actualización automática se detuvo tras 10 minutos para que los paneles inactivos no sigan consultando el dispositivo. Las lecturas de abajo ya no se actualizan.",
     "resume": "Reanudar la sincronización"

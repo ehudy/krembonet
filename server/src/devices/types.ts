@@ -147,6 +147,12 @@ export interface DeviceSnapshot {
   stateReasons: string[];
   supplies: Supply[];
   media: MediaSource[];
+  /**
+   * Whether the response actually carried loaded-media evidence, as opposed to
+   * merely listing the slots. A device waking from sleep can answer without it.
+   * See `poller/media-continuity.ts` for what depends on the distinction.
+   */
+  mediaReported: boolean;
   jobs: PrintJob[];
 }
 
