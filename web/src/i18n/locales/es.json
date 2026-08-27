@@ -179,7 +179,9 @@
     "loaded": "Cargado",
     "unknownCode": "Todavía no hay un nombre legible para este código de papel",
     "rollWidth": "rollo de {{inches}} in",
-    "sheetWidth": "{{inches}} in"
+    "sheetWidth": "{{inches}} in",
+    "rollRemaining": "quedan {{feet}} ft",
+    "rollRemainingPercent": "queda {{percent}} %"
   },
   "queue": {
     "job": "Trabajo",

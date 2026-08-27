@@ -19,7 +19,7 @@ import { useTranslation } from '../i18n/i18n.js';
 import { formatDate } from '../lib/format.js';
 import type { UpdateStatus } from '../types.js';
 
-const REBUILD_COMMAND = 'docker compose up -d --build';
+const REBUILD_COMMAND = 'git pull origin main && docker compose up -d --build';
 
 function UpdateModal({ status, onClose }: { status: UpdateStatus; onClose: () => void }) {
   const { t, locale } = useTranslation();

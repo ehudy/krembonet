@@ -179,7 +179,9 @@
     "loaded": "Loaded",
     "unknownCode": "No friendly name for this media code yet",
     "rollWidth": "{{inches}}in roll",
-    "sheetWidth": "{{inches}}in"
+    "sheetWidth": "{{inches}}in",
+    "rollRemaining": "{{feet}} ft left",
+    "rollRemainingPercent": "{{percent}}% left"
   },
   "queue": {
     "job": "Job",
